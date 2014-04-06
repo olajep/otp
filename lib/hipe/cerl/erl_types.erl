@@ -141,6 +141,7 @@
 	 t_is_maybe_improper_list/1, t_is_maybe_improper_list/2,
 	 t_is_reference/1, t_is_reference/2,
 	 t_is_remote/1,
+         t_is_singleton/2,
 	 t_is_string/1,
 	 t_is_subtype/2,
 	 t_is_tuple/1, t_is_tuple/2,
@@ -153,6 +154,7 @@
 	 t_list_termination/1, t_list_termination/2,
 	 t_map/0,
 	 t_map/1,
+         t_map_entries/2,
 	 t_matchstate/0,
 	 t_matchstate/2,
 	 t_matchstate_present/1,
@@ -181,6 +183,7 @@
 	 t_product/1,
 	 t_reference/0,
 	 t_remote/3,
+	 t_singleton_to_term/2,
 	 t_string/0,
 	 t_struct_from_opaque/2,
 	 t_subst/2,
@@ -1604,6 +1607,8 @@ lift_list_to_pos_empty(?list(Content, Termination, _)) ->
 %%-----------------------------------------------------------------------------
 %% Maps
 %%
+%% The entries ?map(E) are only those that are known, any other entries might
+%% exist as well.
 
 -spec t_map() -> erl_type().
 
@@ -1612,8 +1617,8 @@ t_map() ->
 
 -spec t_map([{erl_type(), erl_type()}]) -> erl_type().
 
-t_map(_) ->
-  ?map([]).
+t_map(L) ->
+  ?map(L).
 
 -spec t_is_map(erl_type()) -> boolean().
 
@@ -1627,6 +1632,14 @@ t_is_map(Type, Opaques) ->
 
 is_map1(?map(_)) -> true;
 is_map1(_) -> false.
+
+-spec t_map_entries(erl_type(), opaques()) -> [{erl_type(), erl_type()}].
+
+t_map_entries(M, Opaques) ->
+  do_opaque(M, Opaques, fun map_entries/1).
+
+map_entries(?map(E)) ->
+  E.
 
 %%-----------------------------------------------------------------------------
 %% Tuples
@@ -1963,7 +1976,8 @@ t_from_term(T) when is_function(T) ->
   {arity, Arity} = erlang:fun_info(T, arity),
   t_fun(Arity, t_any());
 t_from_term(T) when is_integer(T) ->   t_integer(T);
-t_from_term(T) when is_map(T) ->       t_map();
+t_from_term(T) when is_map(T) ->
+  t_map([{t_from_term(K), t_from_term(V)} || {K, V} <- maps:to_list(T)]);
 t_from_term(T) when is_pid(T) ->       t_pid();
 t_from_term(T) when is_port(T) ->      t_port();
 t_from_term(T) when is_reference(T) -> t_reference();
@@ -2255,6 +2269,12 @@ t_sup(?tuple_set(List1), T2 = ?tuple(_, Arity, _)) ->
   sup_tuple_sets(List1, [{Arity, [T2]}]);
 t_sup(?tuple(_, Arity, _) = T1, ?tuple_set(List2)) ->
   sup_tuple_sets([{Arity, [T1]}], List2);
+t_sup(?map(A), ?map(B)) ->
+  AFiltered = [E || E = {K, _} <- A, is_singleton_type(K)],
+  BFiltered = [E || E = {K, _} <- B, is_singleton_type(K)],
+  t_map([{K, t_sup(V1, V2)} ||
+	  {K, V1} <- AFiltered,
+	  {_, V2} <- [lists:keyfind(K, 1, BFiltered)]]);
 t_sup(T1, T2) ->
   ?union(U1) = force_union(T1),
   ?union(U2) = force_union(T2),
@@ -2493,6 +2513,24 @@ t_inf(?identifier(Set1), ?identifier(Set2), _Opaques) ->
   case set_intersection(Set1, Set2) of
     ?none -> ?none;
     Set -> ?identifier(Set)
+  end;
+t_inf(?map(A), ?map(B), _Opaques) ->
+  %% First handle the case of the same key existing in both maps. If the
+  %% infinimum of their values is ?none, the entire map infinimum is ?none.
+  CombinedEntries = [{K, t_inf(V1, V2)} ||
+		      {K, V1} <- A, is_singleton_type(K),
+		      {_, V2} <- [lists:keyfind(K, 1, B)]],
+  case lists:any(fun({_, T}) -> T =:= ?none end,
+		 CombinedEntries) of
+    true  -> t_none();
+    false ->
+      %% Some entries cannot be known to match, or exist only in one of the
+      %% maps. We list them here.
+      EntriesFromB = [E || E = {K, _} <- B, not is_singleton_type(K)
+		       orelse (lists:keyfind(K, 1, A) =:= false)],
+      EntriesFromA = [E || E = {K, _} <- A, not is_singleton_type(K)
+		       orelse (lists:keyfind(K, 1, B) =:= false)],
+      t_map(CombinedEntries ++ EntriesFromB ++ EntriesFromA)
   end;
 t_inf(?matchstate(Pres1, Slots1), ?matchstate(Pres2, Slots2), _Opaques) ->
   ?matchstate(t_inf(Pres1, Pres2), t_inf(Slots1, Slots2));
@@ -3148,6 +3186,22 @@ t_unify(?tuple_set(List1) = T1, ?tuple_set(List2) = T2, VarMap) ->
     {Tuples, NewVarMap} -> {t_sup(Tuples), NewVarMap}
   catch _:_ -> throw({mismatch, T1, T2})
   end;
+t_unify(?map(A0), ?map(B0), VarMap) ->
+  SubstMap = fun(K) -> t_subst_kv(K, VarMap) end,
+  A1 = lists:keymap(SubstMap, 1, A0),
+  B1 = lists:keymap(SubstMap, 1, B0),
+  %% We only handle the case of the same key existing in both maps by
+  %% aligning the keys and unifying the values.
+  {KeysInBoth, ValsInBoth} =
+    lists:unzip([{K, {V1, V2}} ||
+		  {K, V1} <- A1, is_singleton_type(K),
+		  {_, V2} <- [lists:keyfind(K, 1, B1)]]),
+  {BothValsLeft, BothValsRight} = lists:unzip(ValsInBoth),
+  {UnifiedValues, NewVarMap} =
+    unify_lists(BothValsLeft, BothValsRight, VarMap),
+  CombinedEntries = lists:zip(KeysInBoth, UnifiedValues),
+  %% Non-precise (not known to be singleton) keys are discarded.
+  {t_map(CombinedEntries), NewVarMap};
 t_unify(?opaque(_) = T1, ?opaque(_) = T2, VarMap) ->
   t_unify(t_opaque_structure(T1), t_opaque_structure(T2), VarMap);
 t_unify(T1, ?opaque(_) = T2, VarMap) ->
@@ -4849,6 +4903,51 @@ map_keys(?map(Pairs)) ->
 
 map_values(?map(Pairs)) ->
   [V || {_, V} <- Pairs].
+
+%% Tests if a type has exactly one possible value.
+-spec t_is_singleton(erl_type(), opaques()) -> boolean().
+
+t_is_singleton(Type, Opaques) ->
+  do_opaque(Type, Opaques, fun is_singleton_type/1).
+
+%% Incomplete; not all representable singleton types are included.
+is_singleton_type(?nil) -> true;
+is_singleton_type(?atom(?any)) -> false;
+is_singleton_type(?atom(Set)) ->
+  ordsets:size(Set) =:= 1;
+is_singleton_type(?int_range(V, V)) -> true;
+is_singleton_type(?int_set(Set)) ->
+  ordsets:size(Set) =:= 1;
+is_singleton_type(?tuple(Types, Arity, _)) when is_integer(Arity) ->
+  lists:all(fun is_singleton_type/1, Types);
+is_singleton_type(?tuple_set([{Arity, [OnlyTuple]}])) when is_integer(Arity) ->
+  is_singleton_type(OnlyTuple);
+is_singleton_type(_) ->
+  false.
+
+%% Returns the only possible value of a singleton type.
+-spec t_singleton_to_term(erl_type(), opaques()) -> term().
+
+t_singleton_to_term(Type, Opaques) ->
+  do_opaque(Type, Opaques, fun singleton_type_to_term/1).
+
+singleton_type_to_term(?nil) -> [];
+singleton_type_to_term(?atom(Set)) when Set =/= ?any ->
+  case ordsets:size(Set) of
+    1 -> hd(ordsets:to_list(Set));
+    _ -> error(badarg)
+  end;
+singleton_type_to_term(?int_range(V, V)) -> V;
+singleton_type_to_term(?int_set(Set)) ->
+  case ordsets:size(Set) of
+    1 -> hd(ordsets:to_list(Set));
+    _ -> error(badarg)
+  end;
+singleton_type_to_term(?tuple(Types, Arity, _)) when is_integer(Arity) ->
+  lists:map(fun singleton_type_to_term/1, Types);
+singleton_type_to_term(?tuple_set([{Arity, [OnlyTuple]}]))
+  when is_integer(Arity) ->
+  singleton_type_to_term(OnlyTuple).
 
 %% -----------------------------------
 %% Set
