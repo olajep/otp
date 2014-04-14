@@ -2,7 +2,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2001-2013. All Rights Reserved.
+%% Copyright Ericsson AB 2001-2015. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -1164,6 +1164,9 @@ option_text(caller_save_spill_restore) ->
   "Activates caller save register spills and restores";
 option_text(debug) ->
   "Outputs internal debugging information during compilation";
+option_text(icode_call_elim) ->
+  "Performs call elimination of BIFs that are side-effect free\n" ++
+  "only on some argument types";
 option_text(icode_range) ->
   "Performs integer range analysis on the Icode level";
 option_text(icode_ssa_check) ->
@@ -1317,6 +1320,7 @@ opt_keys() ->
      get_called_modules,
      split_arith,
      split_arith_unsafe,
+     icode_call_elim,
      icode_inline_bifs,
      icode_ssa_check,
      icode_ssa_copy_prop,
@@ -1398,7 +1402,7 @@ o1_opts(TargetArch) ->
 
 o2_opts(TargetArch) ->
   Common = [icode_ssa_const_prop, icode_ssa_copy_prop, % icode_ssa_struct_reuse,
-	    icode_type, icode_inline_bifs, rtl_lcm,
+	    icode_type, icode_inline_bifs, icode_call_elim, rtl_lcm,
 	    rtl_ssa, rtl_ssa_const_prop,
 	    spillmin_color, use_indexing, remove_comments,
 	    concurrent_comp, binary_opt | o1_opts(TargetArch)],
@@ -1428,6 +1432,7 @@ opt_negations() ->
    {no_icode_inline_bifs, icode_inline_bifs},
    {no_icode_range, icode_range},
    {no_icode_split_arith, icode_split_arith},
+   {no_icode_call_elim, icode_call_elim},
    {no_icode_ssa_check, icode_ssa_check},
    {no_icode_ssa_copy_prop, icode_ssa_copy_prop},
    {no_icode_ssa_const_prop, icode_ssa_const_prop},
