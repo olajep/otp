@@ -53,7 +53,7 @@ enter_slave_bifs(struct master_command_setup *cmd)
     int i;
     ASSERT(BIF_SIZE == cmd->bif_size);
     for (i = 0; i < BIF_SIZE; i++) {
-	SlaveBifEntry *bif = &cmd->bif_table[i];
+	BifEntry *bif = &cmd->bif_table[i];
 	Export *ep = slave_export_put(bif->module,
 				      bif->name,
 				      bif->arity);

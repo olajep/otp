@@ -23,22 +23,9 @@
 
 #include "erl_term.h"
 #include "erl_process.h"
-#include "slave_fifo.h"
 #include "erl_bif_table.h"
-
-/*
- * We override the default alignment of structs that are shared between slave
- * and master.
- */
-#define SHARED_DATA __attribute__((aligned(8)))
-
-typedef struct {
-    Eterm module;
-    Eterm name;
-    int arity;
-    BifFunction f;
-    BifFunction traced;
-} SHARED_DATA SlaveBifEntry;
+#include "slave.h"
+#include "slave_fifo.h"
 
 enum slave_syscall {
     /* 0 must be NONE, which means no syscall is pending */
@@ -54,7 +41,7 @@ struct slave_syscall_ready {
     Eterm id, parent_id, group_leader;
     Eterm mod, func, args;
     Eterm *heap, *htop, *stop;
-} SHARED_DATA;
+} SLAVE_SHARED_DATA;
 
 /* Declared in slave_bif.h */
 struct slave_syscall_bif;
@@ -77,7 +64,7 @@ struct slave_command_buffers {
     /* Syscalls */
     enum slave_syscall volatile syscall;
     void *volatile syscall_arg;
-} SHARED_DATA;
+} SLAVE_SHARED_DATA;
 
 struct slave {
     struct slave_command_buffers *buffers;
@@ -96,13 +83,13 @@ enum master_command {
 struct master_command_setup {
     LoaderTarget *target;
     int num_instructions;
-    SlaveBifEntry *bif_table;
+    BifEntry *bif_table;
     int bif_size;
-} SHARED_DATA;
+} SLAVE_SHARED_DATA;
 
 struct master_command_free_message {
     ErlMessage *m;
-} SHARED_DATA;
+} SLAVE_SHARED_DATA;
 
 enum slave_command {
     SLAVE_COMMAND_MESSAGE,
@@ -111,7 +98,7 @@ enum slave_command {
 struct slave_command_message {
     ErlMessage *m;
     Eterm receiver;
-} SHARED_DATA;
+} SLAVE_SHARED_DATA;
 
 #ifndef ERTS_SLAVE
 void erts_init_slave_command(void);

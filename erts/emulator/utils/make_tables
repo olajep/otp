@@ -155,6 +155,7 @@ my $bif_size = @bif;
 print <<EOF;
 #ifndef __ERL_BIF_TABLE_H__
 #define __ERL_BIF_TABLE_H__
+#include "slave.h"
 typedef void *BifFunction;
 
 typedef struct bif_entry {
@@ -163,7 +164,7 @@ typedef struct bif_entry {
     int arity;
     BifFunction f;
     BifFunction traced;
-} BifEntry;
+} SLAVE_SHARED_DATA BifEntry;
 
 extern BifEntry bif_table[];
 extern Export* bif_export[];
