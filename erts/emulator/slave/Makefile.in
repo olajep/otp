@@ -506,7 +506,7 @@ EMU_OBJS = \
 #	$(OBJDIR)/code_ix.o \
 
 RUN_OBJS = \
-	$(OBJDIR)/erl_gc_stub.o \
+	$(OBJDIR)/erl_gc.o \
 	$(OBJDIR)/erl_alloc_stub.o \
 	$(OBJDIR)/erl_arith.o		$(OBJDIR)/erl_bif_guard.o \
 	$(OBJDIR)/erl_bif_op.o		$(OBJDIR)/bif.o \
@@ -535,6 +535,7 @@ SLAVE_OBJS = \
 	$(OBJDIR)/slave_fifo.o \
 	$(OBJDIR)/slave_io.o \
 	$(OBJDIR)/slave_command.o \
+	$(OBJDIR)/slave_state.o \
 	$(OBJDIR)/slave_bif.o
 
 

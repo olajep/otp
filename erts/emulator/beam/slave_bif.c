@@ -23,6 +23,7 @@
 #endif
 
 #include "sys.h"
+#include "global.h"
 #include "erl_thr_progress.h"
 #include "slave_bif.h"
 
@@ -51,13 +52,9 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     }
 #endif
 
-#define X(F) p->F = arg->F
-    SLAVE_BIF_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
-#undef X
+    slave_state_swapin(p, &arg->state);
 
 #ifdef ERTS_SMP
-    /* Lock the main lock so lc is happy */
-    erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
     delay = erts_thr_progress_unmanaged_delay();
 #endif
 
@@ -66,7 +63,6 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 
 #ifdef ERTS_SMP
     erts_thr_progress_unmanaged_continue(delay);
-    erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);
 #endif
 
     if (old_state != erts_smp_atomic32_read_acqb(&p->state)) {
@@ -75,11 +71,29 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 		 erts_smp_atomic32_read_acqb(&p->state));
     }
 
-#define X(F) arg->F = p->F
-    SLAVE_BIF_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
-#undef X
+    slave_state_swapout(p, &arg->state);
 
 #if HARDDEBUG
     erts_printf("Replying with result %T\n", arg->result);
+#endif
+}
+
+void
+erts_slave_serve_gc(struct slave *slave, struct slave_syscall_gc *arg)
+{
+    Process *p = slave->c_p;
+
+#if HARDDEBUG
+    erts_printf("Garbage collecting %T (heap size %d, %d additional roots)\n",
+		p->common.id, p->hend - p->heap, arg->nobj);
+#endif
+
+    slave_state_swapin(p, &arg->state);
+    arg->ret = erts_garbage_collect(p, arg->need, arg->objv, arg->nobj);
+    slave_state_swapout(p, &arg->state);
+
+#if HARDDEBUG
+    erts_printf("[gc %T] ret=%d, heap size %d\n", p->common.id, arg->ret,
+		p->hend - p->heap);
 #endif
 }

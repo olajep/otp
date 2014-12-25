@@ -18,26 +18,34 @@
  *
  */
 
-#ifndef SLAVE_BIF_H__
-#define SLAVE_BIF_H__
-
-#include "erl_term.h"
-#include "erl_process.h"
-#include "erl_bif_table.h"
-#include "slave_command.h"
-
-struct slave_syscall_bif {
-    /* To master */
-    Uint bif_no;
-    Eterm args[3];
-    /* Bidirectional */
-    struct slave_state state;
-    /* To slave */
-    Eterm result;
-} SLAVE_SHARED_DATA;
-
-#ifndef ERTS_SLAVE
-void erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg);
+#ifdef HAVE_CONFIG_H
+#  include "config.h"
 #endif
 
-#endif /* SLAVE_BIF_H__ */
+#include "sys.h"
+#include "slave_state.h"
+
+void
+slave_state_swapin(Process *p, struct slave_state *state)
+{
+#if defined(ERTS_SMP) && !defined(ERTS_SLAVE)
+    /* Lock the main lock so lc is happy */
+    erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
+#endif
+
+#define X(T, F) p->F = state->F
+    SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#undef X
+}
+
+void
+slave_state_swapout(Process *p, struct slave_state *state)
+{
+#define X(T, F) state->F = p->F
+    SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#undef X
+
+#if defined(ERTS_SMP) && !defined(ERTS_SLAVE)
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);
+#endif
+}

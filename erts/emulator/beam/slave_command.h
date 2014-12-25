@@ -26,12 +26,14 @@
 #include "erl_bif_table.h"
 #include "slave.h"
 #include "slave_fifo.h"
+#include "slave_state.h"
 
 enum slave_syscall {
     /* 0 must be NONE, which means no syscall is pending */
     SLAVE_SYSCALL_NONE,
     SLAVE_SYSCALL_READY,
     SLAVE_SYSCALL_BIF,
+    SLAVE_SYSCALL_GC,
 };
 
 struct slave_syscall_ready {
@@ -45,6 +47,17 @@ struct slave_syscall_ready {
 
 /* Declared in slave_bif.h */
 struct slave_syscall_bif;
+
+struct slave_syscall_gc {
+    /* To master */
+    int need;
+    Eterm* objv;
+    int nobj;
+    /* Bidirectional */
+    struct slave_state state;
+    /* To slave */
+    int ret;
+} SLAVE_SHARED_DATA;
 
 /*
  * We use the shared-memory fifos for command buffers.
@@ -112,6 +125,8 @@ void erts_slave_send_command(struct slave *slave, enum slave_command code,
 			     const void *data, size_t size);
 void *erts_slave_syscall_arg(struct slave *slave, enum slave_syscall no);
 void erts_slave_finish_syscall(struct slave *slave, enum slave_syscall no);
+
+void erts_slave_serve_gc(struct slave *slave, struct slave_syscall_gc *arg);
 
 int erts_dispatch_slave_commands(void);
 #else

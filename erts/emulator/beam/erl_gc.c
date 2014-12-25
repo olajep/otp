@@ -589,11 +589,11 @@ erts_garbage_collect_hibernate(Process* p)
     /*
      *  Update all pointers.
      */
-    ERTS_HEAP_FREE(ERTS_ALC_T_HEAP,
+    ERTS_HEAP_FREE(HEAP_ALC(p),
 		   (void*)HEAP_START(p),
 		   HEAP_SIZE(p) * sizeof(Eterm));
     if (p->old_heap) {
-	ERTS_HEAP_FREE(ERTS_ALC_T_OLD_HEAP,
+	ERTS_HEAP_FREE(OLD_HEAP_ALC(p),
 		       (void*)p->old_heap,
 		       (p->old_hend - p->old_heap) * sizeof(Eterm));
 	p->old_heap = p->old_htop = p->old_hend = 0;
@@ -627,7 +627,7 @@ erts_garbage_collect_hibernate(Process* p)
     ASSERT(p->hend - p->stop == 0); /* Empty stack */
     ASSERT(actual_size < p->heap_sz);
 
-    heap = ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP, sizeof(Eterm)*heap_size);
+    heap = ERTS_HEAP_ALLOC(HEAP_ALC(p), sizeof(Eterm)*heap_size);
     sys_memcpy((void *) heap, (void *) p->heap, actual_size*sizeof(Eterm));
     ERTS_HEAP_FREE(ERTS_ALC_T_TMP_HEAP, p->heap, p->heap_sz*sizeof(Eterm));
 
@@ -695,7 +695,7 @@ erts_garbage_collect_literals(Process* p, Eterm* literals,
     
     ASSERT(p->old_heap == 0);	/* Must NOT have an old heap yet. */
     old_heap_size = erts_next_heap_size(lit_size, 0);
-    p->old_heap = p->old_htop = (Eterm*) ERTS_HEAP_ALLOC(ERTS_ALC_T_OLD_HEAP,
+    p->old_heap = p->old_htop = (Eterm*) ERTS_HEAP_ALLOC(OLD_HEAP_ALC(p),
 							 sizeof(Eterm)*old_heap_size);
     p->old_hend = p->old_heap + old_heap_size;
 
@@ -849,7 +849,7 @@ minor_collection(Process* p, int need, Eterm* objv, int nobj, Uint *recl)
         Uint new_sz = erts_next_heap_size(HEAP_TOP(p) - HEAP_START(p), 1);
 
         /* Create new, empty old_heap */
-        n_old = (Eterm *) ERTS_HEAP_ALLOC(ERTS_ALC_T_OLD_HEAP,
+        n_old = (Eterm *) ERTS_HEAP_ALLOC(OLD_HEAP_ALC(p),
 					  sizeof(Eterm)*new_sz);
 
         OLD_HEND(p) = n_old + new_sz;
@@ -1010,7 +1010,7 @@ do_minor(Process *p, Uint new_sz, Eterm* objv, int nobj)
     Eterm* old_htop = OLD_HTOP(p);
     Eterm* n_heap;
 
-    n_htop = n_heap = (Eterm*) ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP,
+    n_htop = n_heap = (Eterm*) ERTS_HEAP_ALLOC(HEAP_ALC(p),
 					       sizeof(Eterm)*new_sz);
 
     if (MBUF(p) != NULL) {
@@ -1189,7 +1189,7 @@ do_minor(Process *p, Uint new_sz, Eterm* objv, int nobj)
     }
 #endif
 
-    ERTS_HEAP_FREE(ERTS_ALC_T_HEAP,
+    ERTS_HEAP_FREE(HEAP_ALC(p),
 		   (void*)HEAP_START(p),
 		   HEAP_SIZE(p) * sizeof(Eterm));
     HEAP_START(p) = n_heap;
@@ -1250,7 +1250,7 @@ major_collection(Process* p, int need, Eterm* objv, int nobj, Uint *recl)
         new_sz = next_heap_size(p, HEAP_SIZE(p), 1);
     }
     FLAGS(p) &= ~(F_HEAP_GROW|F_NEED_FULLSWEEP);
-    n_htop = n_heap = (Eterm *) ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP,
+    n_htop = n_heap = (Eterm *) ERTS_HEAP_ALLOC(HEAP_ALC(p),
 						sizeof(Eterm)*new_sz);
 
     /*
@@ -1399,7 +1399,7 @@ major_collection(Process* p, int need, Eterm* objv, int nobj, Uint *recl)
     }
 
     if (OLD_HEAP(p) != NULL) {       
-	ERTS_HEAP_FREE(ERTS_ALC_T_OLD_HEAP,
+	ERTS_HEAP_FREE(OLD_HEAP_ALC(p),
 		       OLD_HEAP(p),
 		       (OLD_HEND(p) - OLD_HEAP(p)) * sizeof(Eterm));
 	OLD_HEAP(p) = OLD_HTOP(p) = OLD_HEND(p) = NULL;
@@ -1419,7 +1419,7 @@ major_collection(Process* p, int need, Eterm* objv, int nobj, Uint *recl)
     }
 #endif
 
-    ERTS_HEAP_FREE(ERTS_ALC_T_HEAP,
+    ERTS_HEAP_FREE(HEAP_ALC(p),
 		   (void *) HEAP_START(p),
 		   (HEAP_END(p) - HEAP_START(p)) * sizeof(Eterm));
     HEAP_START(p) = n_heap;
@@ -2081,7 +2081,7 @@ grow_new_heap(Process *p, Uint new_sz, Eterm* objv, int nobj)
     Sint offs;
 
     ASSERT(HEAP_SIZE(p) < new_sz);
-    new_heap = (Eterm *) ERTS_HEAP_REALLOC(ERTS_ALC_T_HEAP,
+    new_heap = (Eterm *) ERTS_HEAP_REALLOC(HEAP_ALC(p),
 					   (void *) HEAP_START(p),
 					   sizeof(Eterm)*(HEAP_SIZE(p)),
 					   sizeof(Eterm)*new_sz);
@@ -2132,7 +2132,7 @@ shrink_new_heap(Process *p, Uint new_sz, Eterm *objv, int nobj)
     ASSERT(new_sz < p->heap_sz);
     sys_memmove(p->heap + new_sz - stack_size, p->stop, stack_size *
                                                         sizeof(Eterm));
-    new_heap = (Eterm *) ERTS_HEAP_REALLOC(ERTS_ALC_T_HEAP,
+    new_heap = (Eterm *) ERTS_HEAP_REALLOC(HEAP_ALC(p),
 					   (void*)p->heap,
 					   sizeof(Eterm)*(HEAP_SIZE(p)),
 					   sizeof(Eterm)*new_sz);

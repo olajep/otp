@@ -23,8 +23,11 @@
 #include "sys.h"
 #include "erl_vm.h"
 #include "global.h"
-
 #include "bif.h"
+
+#include "slave_command.h"
+
+#include "epiphany.h"
 
 /*
  * Garbage collect a process.
@@ -37,7 +40,21 @@
 int
 erts_garbage_collect(Process* p, int need, Eterm* objv, int nobj)
 {
-    EPIPHANY_STUB_FUN();
+    int ret;
+    struct slave_syscall_gc *cmd = erts_alloc(ERTS_ALC_T_TMP, sizeof(*cmd));
+
+    cmd->need = need;
+    ASSERT(epiphany_in_dram(objv));
+    cmd->objv = objv;
+    cmd->nobj = nobj;
+    slave_state_swapout(p, &cmd->state);
+
+    erts_master_syscall(SLAVE_SYSCALL_GC, cmd);
+
+    slave_state_swapin(p, &cmd->state);
+    ret = cmd->ret;
+    erts_free(ERTS_ALC_T_TMP, cmd);
+    return ret;
 }
 
 /* /\* */
@@ -49,7 +66,6 @@ erts_garbage_collect(Process* p, int need, Eterm* objv, int nobj)
 /* { */
 /*     /\* STUB *\/ */
 /* } */
-
 
 /* void */
 /* erts_garbage_collect_literals(Process* p, Eterm* literals, */
@@ -64,7 +80,6 @@ erts_garbage_collect(Process* p, int need, Eterm* objv, int nobj)
 /* { */
 /*     /\* STUB *\/ */
 /* } */
-
 
 Eterm
 erts_gc_after_bif_call(Process* p, Eterm result, Eterm* regs, Uint arity)

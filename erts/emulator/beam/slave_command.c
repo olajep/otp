@@ -330,6 +330,10 @@ serve_syscalls(int i)
 	erts_slave_serve_bif(slaves + i, arg);
 	served = 1;
 	break;
+    case SLAVE_SYSCALL_GC:
+	erts_slave_serve_gc(slaves + i, arg);
+	served = 1;
+	break;
     default:
 	erl_exit(1, "Cannot serve unrecognized syscall %d from slave %d\n",
 		 (int)no, i);

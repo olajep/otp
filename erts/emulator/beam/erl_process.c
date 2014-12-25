@@ -11045,7 +11045,6 @@ static void
 delete_process(Process* p)
 {
     ErlMessage* mp;
-    ErtsAlcType_t heap_alc_type = ERTS_ALC_T_HEAP;
 
     VERBOSE(DEBUG_PROCESSES, ("Removing process: %T\n",p->common.id));
 
@@ -11080,20 +11079,14 @@ delete_process(Process* p)
     hipe_delete_process(&p->hipe);
 #endif
 
-#ifdef ERTS_SLAVE_EMU_ENABLED
-    /* ETODO: I probably need a touch-up when GC is implemented */
-    if (erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_SLAVE)
-	heap_alc_type = ERTS_ALC_T_SLAVE_HEAP;
-#endif
-
-    ERTS_HEAP_FREE(heap_alc_type, (void*) p->heap, p->heap_sz*sizeof(Eterm));
+    ERTS_HEAP_FREE(HEAP_ALC(p), (void*) p->heap, p->heap_sz*sizeof(Eterm));
     if (p->old_heap != NULL) {
 
 #ifdef DEBUG
 	sys_memset(p->old_heap, DEBUG_BAD_BYTE,
                    (p->old_hend-p->old_heap)*sizeof(Eterm));
 #endif
-	ERTS_HEAP_FREE(ERTS_ALC_T_OLD_HEAP,
+	ERTS_HEAP_FREE(OLD_HEAP_ALC(p),
 		       p->old_heap,
 		       (p->old_hend-p->old_heap)*sizeof(Eterm));
     }

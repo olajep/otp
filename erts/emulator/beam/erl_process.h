@@ -1355,11 +1355,21 @@ extern struct erts_system_profile_flags_t erts_system_profile_flags;
 #define ERTS_SCHEDULER_IS_DIRTY_IO(ESDP) 0
 #endif
 
-#ifdef ERTS_SLAVE_EMU_ENABLED
-#  define ERTS_SCHEDULER_IS_SLAVE_CMDER(EDSP) ((EDSP)->is_slave_commander)
-#else
+#ifndef ERTS_SLAVE_EMU_ENABLED
 #  define ERTS_SCHEDULER_IS_SLAVE_CMDER(EDSP) 0
+#  define HEAP_ALC(P)     ERTS_ALC_T_HEAP
+#  define OLD_HEAP_ALC(P) ERTS_ALC_T_OLD_HEAP
+#else
+#  define ERTS_SCHEDULER_IS_SLAVE_CMDER(EDSP) ((EDSP)->is_slave_commander)
+#  define HEAP_ALC(P)     ((erts_smp_atomic32_read_nob(&(P)->state)     \
+                            & ERTS_PSFLG_SLAVE)                         \
+                           ? ERTS_ALC_T_SLAVE_HEAP : ERTS_ALC_T_HEAP)
+#  define OLD_HEAP_ALC(P) ((erts_smp_atomic32_read_nob(&(P)->state)     \
+                            & ERTS_PSFLG_SLAVE)                         \
+                           ? ERTS_ALC_T_SLAVE_HEAP : ERTS_ALC_T_OLD_HEAP)
 #endif
+
+
 
 void erts_pre_init_process(void);
 void erts_late_init_process(void);

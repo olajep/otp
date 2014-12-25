@@ -18,26 +18,29 @@
  *
  */
 
-#ifndef SLAVE_BIF_H__
-#define SLAVE_BIF_H__
+#ifndef ERL_SLAVE_STATE_H__
+#define ERL_SLAVE_STATE_H__
 
-#include "erl_term.h"
 #include "erl_process.h"
-#include "erl_bif_table.h"
-#include "slave_command.h"
+#include "slave.h"
 
-struct slave_syscall_bif {
-    /* To master */
-    Uint bif_no;
-    Eterm args[3];
-    /* Bidirectional */
-    struct slave_state state;
-    /* To slave */
-    Eterm result;
+/* This is the "X macro" pattern */
+#define SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER \
+    X(Eterm*, heap);					 \
+    X(Eterm*, htop);					 \
+    X(Eterm*, hend);					 \
+    X(Eterm*, stop);					 \
+    X(Uint, heap_sz);					 \
+    X(Uint, freason);					 \
+    X(Sint, fcalls)
+
+struct slave_state {
+#define X(T, N) T N
+    SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#undef X
 } SLAVE_SHARED_DATA;
 
-#ifndef ERTS_SLAVE
-void erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg);
-#endif
+void slave_state_swapin(Process *p, struct slave_state *state);
+void slave_state_swapout(Process *p, struct slave_state *state);
 
-#endif /* SLAVE_BIF_H__ */
+#endif /* !ERL_SLAVE_STATE_H__ */

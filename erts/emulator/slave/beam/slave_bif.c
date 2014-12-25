@@ -52,20 +52,16 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     cmd->bif_no = bif_no;
     for (i = 0; i < arity; i++) cmd->args[i] = args[i];
 
-#define X(F) cmd->F = p->F
-    SLAVE_BIF_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
-#undef X
+    slave_state_swapout(p, &cmd->state);
 
     erts_master_syscall(SLAVE_SYSCALL_BIF, cmd);
 
-    ASSERT(epiphany_in_dram(cmd->heap));
-    ASSERT(epiphany_in_dram(cmd->htop));
-    ASSERT(epiphany_in_dram(cmd->hend));
-    ASSERT(epiphany_in_dram(cmd->stop));
+    ASSERT(epiphany_in_dram(cmd->state.heap));
+    ASSERT(epiphany_in_dram(cmd->state.htop));
+    ASSERT(epiphany_in_dram(cmd->state.hend));
+    ASSERT(epiphany_in_dram(cmd->state.stop));
 
-#define X(F) p->F = cmd->F
-    SLAVE_BIF_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
-#undef X
+    slave_state_swapin(p, &cmd->state);
 
     result = cmd->result;
 #if HARDDEBUG
