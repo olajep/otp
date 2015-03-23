@@ -40,6 +40,8 @@
 #  include "erl_win_sys.h"
 #elif defined (__OSE__)
 #  include "erl_ose_sys.h"
+#elif defined (__epiphany__)
+#  include "erl_epiphany_sys.h"
 #else 
 #  include "erl_unix_sys.h"
 #ifndef UNIX
