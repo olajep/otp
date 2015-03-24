@@ -974,12 +974,14 @@ dnl AC_CYGWIN is deprecated
 AC_EXEEXT
 AC_OBJEXT
 
-dnl This is the os flavour, should be unix, ose, vxworks or win32
+dnl This is the os flavour, should be unix, ose, vxworks, epiphany or win32
 case $host in
    win32)
       ERLANG_OSTYPE=win32 ;;
    *ose)
       ERLANG_OSTYPE=ose ;;
+   epiphany*)
+      ERLANG_OSTYPE=epiphany ;;
    *)
       ERLANG_OSTYPE=unix ;;
 esac

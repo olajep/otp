@@ -36,7 +36,9 @@
 #  include <sys/types.h>
 #  include <sys/param.h>
 #  include <limits.h>
-#  include <dirent.h>
+#  ifndef __epiphany__
+#    include <dirent.h>
+#  endif /* !__epiphany__ */
 #  include <sys/stat.h>
 #  include <fcntl.h>
 #  ifdef SYS_SELECT_H
@@ -161,6 +163,9 @@ erts_milli_sleep(long ms)
 	Sleep((DWORD) ms);
 #elif defined(__OSE__)
 	delay(ms);
+#elif defined(__epiphany__)
+    // ETODO: erts_milli_sleep
+    printf(stderr, "erts_milli_sleep NYI");
 #else
 	struct timeval tv;
 	tv.tv_sec = ms / 1000;

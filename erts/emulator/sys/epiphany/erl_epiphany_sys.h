@@ -21,15 +21,12 @@
  * depending on the type of OS.
  */
 
-#ifndef _ERL_UNIX_SYS_H
-#define _ERL_UNIX_SYS_H
+#ifndef _ERL_EPIPHANY_SYS_H
+#define _ERL_EPIPHANY_SYS_H
 
-#include <limits.h>
-#ifndef CHAR_BIT
-# error WTF, no CHAR_BI
-#endif
 #include <stdio.h>
 #include <math.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -351,7 +348,7 @@ extern int exit_async(void);
 
 #define ERTS_EXIT_AFTER_DUMP _exit
 
-#endif /* #ifndef _ERL_UNIX_SYS_H */
+#endif /* #ifndef _ERL_EPIPHANY_SYS_H */
 
 /* Local Variables: */  
 /* epiphany-buffer: t */
