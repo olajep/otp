@@ -746,6 +746,61 @@ $(ERL_TOP)/lib/%.beam:
 
 INIT_OBJS = $(OBJDIR)/erl_main.o	$(PRELOAD_OBJ)
 
+ifeq ($(COPROC),slave)
+EMU_OBJS = \
+	$(OBJDIR)/beam_emu.o		$(OBJDIR)/beam_opcodes.o \
+	$(OBJDIR)/beam_debug.o		$(OBJDIR)/beam_bp.o \
+	$(OBJDIR)/beam_catches.o \
+	$(OBJDIR)/code_ix.o \
+	$(OBJDIR)/beam_ranges.o
+
+# 	$(OBJDIR)/beam_load.o		$(OBJDIR)/beam_bif_load.o \
+
+RUN_OBS =
+
+# RUN_OBJS = \
+# 	$(OBJDIR)/erl_pbifs.o		$(OBJDIR)/benchmark.o \
+# 	$(OBJDIR)/erl_alloc.o 		$(OBJDIR)/erl_mtrace_stub.o \
+# 	$(OBJDIR)/erl_alloc_util.o	$(OBJDIR)/erl_goodfit_alloc.o \
+# 	$(OBJDIR)/erl_bestfit_alloc.o	$(OBJDIR)/erl_afit_alloc.o \
+# 	$(OBJDIR)/erl_instrument.o	$(OBJDIR)/erl_init.o \
+# 	$(OBJDIR)/erl_atom_table.o	$(OBJDIR)/erl_bif_table.o \
+# 	$(OBJDIR)/erl_bif_guard.o \
+# 	$(OBJDIR)/erl_bif_op.o \
+# 	$(OBJDIR)/erl_bif_lists.o \
+# 	$(OBJDIR)/erl_bif_wrap.o \
+# 	$(OBJDIR)/copy.o \
+# 	$(OBJDIR)/utils.o		$(OBJDIR)/bif.o \
+# 	$(OBJDIR)/erl_printf_term.o\
+# 	$(OBJDIR)/erl_debug.o		$(OBJDIR)/erl_md5.o \
+# 	$(OBJDIR)/erl_message.o		$(OBJDIR)/erl_process_stub.o \
+# 	$(OBJDIR)/erl_process_dict.o	$(OBJDIR)/erl_process_lock.o \
+# 	$(OBJDIR)/erl_port_task.o	$(OBJDIR)/erl_arith.o \
+# 	$(OBJDIR)/time.o \
+# 	$(OBJDIR)/external.o		$(OBJDIR)/dist.o \
+# 	$(OBJDIR)/binary.o		$(OBJDIR)/erl_db.o \
+# 	$(OBJDIR)/erl_db_util.o		$(OBJDIR)/erl_db_hash.o \
+# 	$(OBJDIR)/erl_db_tree.o		$(OBJDIR)/erl_thr_progress.o \
+# 	$(OBJDIR)/big.o			$(OBJDIR)/hash.o \
+# 	$(OBJDIR)/index.o		$(OBJDIR)/atom.o \
+# 	$(OBJDIR)/module.o		$(OBJDIR)/export.o \
+# 	$(OBJDIR)/register.o		$(OBJDIR)/break.o \
+# 	$(OBJDIR)/erl_async.o		$(OBJDIR)/erl_lock_check.o \
+# 	$(OBJDIR)/erl_gc.o 		$(OBJDIR)/erl_lock_count.o \
+# 	$(OBJDIR)/erl_posix_str.o \
+# 	$(OBJDIR)/erl_bits.o 		$(OBJDIR)/erl_math.o \
+# 	$(OBJDIR)/erl_fun.o             $(OBJDIR)/erl_bif_port.o \
+# 	$(OBJDIR)/erl_term.o 		$(OBJDIR)/erl_node_tables.o \
+# 	$(OBJDIR)/erl_monitors.o	$(OBJDIR)/erl_process_dump.o \
+# 	$(OBJDIR)/erl_bif_timer.o	$(OBJDIR)/erl_cpu_topology.o \
+# 	$(OBJDIR)/erl_drv_thread.o      $(OBJDIR)/erl_bif_chksum.o \
+# 	$(OBJDIR)/erl_bif_re.o		$(OBJDIR)/erl_unicode.o \
+# 	$(OBJDIR)/packet_parser.o	$(OBJDIR)/safe_hash.o \
+# 	$(OBJDIR)/erl_zlib.o		$(OBJDIR)/erl_nif.o \
+# 	$(OBJDIR)/erl_bif_binary.o      $(OBJDIR)/erl_ao_firstfit_alloc.o \
+# 	$(OBJDIR)/erl_thr_queue.o	$(OBJDIR)/erl_sched_spec_pre_alloc.o \
+# 	$(OBJDIR)/erl_ptab.o		$(OBJDIR)/erl_map.o
+else
 EMU_OBJS = \
 	$(OBJDIR)/beam_emu.o		$(OBJDIR)/beam_opcodes.o \
 	$(OBJDIR)/beam_load.o		$(OBJDIR)/beam_bif_load.o \
@@ -796,6 +851,7 @@ RUN_OBJS = \
 	$(OBJDIR)/erl_bif_binary.o      $(OBJDIR)/erl_ao_firstfit_alloc.o \
 	$(OBJDIR)/erl_thr_queue.o	$(OBJDIR)/erl_sched_spec_pre_alloc.o \
 	$(OBJDIR)/erl_ptab.o		$(OBJDIR)/erl_map.o
+endif
 
 ifeq ($(TARGET),win32)
 DRV_OBJS = \
@@ -845,19 +901,20 @@ ifeq ($(findstring epiphany,$(TARGET)),epiphany)
 
 OS_OBJS = \
 	$(OBJDIR)/driver_tab.o \
-	$(OBJDIR)/gzio.o \
 	$(OBJDIR)/elib_memmove.o \
 	$(OBJDIR)/sys.o \
-#	$(OBJDIR)/unix_efile.o \
+#	$(OBJDIR)/gzio.o \
+#	$(OBJDIR)/unix_efile.o
 
-#	OS_OBJS += $(OBJDIR)/sys_float.o \
+	OS_OBJS += $(OBJDIR)/sys_float.o \
 #                   $(OBJDIR)/sys_time.o
-DRV_OBJS = \
-	$(OBJDIR)/efile_drv.o \
-	$(OBJDIR)/zlib_drv.o \
-	$(OBJDIR)/ram_file_drv.o \
-#	$(OBJDIR)/ttsl_drv.o \
-#	$(OBJDIR)/inet_drv.o
+DRV_OBJS =
+# DRV_OBJS = \
+# 	$(OBJDIR)/efile_drv.o \
+# 	$(OBJDIR)/zlib_drv.o \
+# 	$(OBJDIR)/ram_file_drv.o \
+# #	$(OBJDIR)/ttsl_drv.o \
+# #	$(OBJDIR)/inet_drv.o
 
 else
 OS_OBJS = \
@@ -903,6 +960,8 @@ $(STATIC_NIF_LIBS) $(STATIC_DRIVER_LIBS):
 	echo "=== Leaving lib after making static libs"
 endif
 
+ifeq ($(COPROC),slave)
+else
 ifeq ($(ERTS_ENABLE_KERNEL_POLL),yes)
 OS_OBJS += 	$(OBJDIR)/erl_poll.kp.o \
 		$(OBJDIR)/erl_check_io.kp.o \
@@ -918,6 +977,7 @@ OS_OBJS +=	$(OBJDIR)/erl_mseg.o \
 		$(OBJDIR)/erl_$(ERLANG_OSTYPE)_sys_ddll.o \
 		$(OBJDIR)/erl_mtrace_sys_wrap.o \
 		$(OBJDIR)/erl_sys_common_misc.o
+endif
 
 HIPE_ARCH64_OBJS=$(OBJDIR)/hipe_bif64.o
 
