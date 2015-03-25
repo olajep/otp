@@ -37,6 +37,7 @@ tile-tilera-linux-gnu
 powerpc-unknown-linux-gnu
 i386-elf-ose
 powerpc-unknown-ose
+epiphany-unknown-elf
 
 # Mac OS X
 a.out.dSYM/

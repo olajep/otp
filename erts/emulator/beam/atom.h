@@ -56,62 +56,19 @@ typedef struct atom {
 extern IndexTable erts_atom_table;
 
 ERTS_GLB_INLINE Atom* atom_tab(Uint i);
-ERTS_GLB_INLINE int erts_is_atom_utf8_bytes(byte *text, size_t len, Eterm term);
 ERTS_GLB_INLINE int erts_is_atom_str(const char *str, Eterm term, int is_latin1);
 
 #if ERTS_GLB_INLINE_INCL_FUNC_DEF
 ERTS_GLB_INLINE Atom*
 atom_tab(Uint i)
 {
-    return (Atom *) erts_index_lookup(&erts_atom_table, i);
-}
-
-ERTS_GLB_INLINE int erts_is_atom_utf8_bytes(byte *text, size_t len, Eterm term)
-{
-    Atom *a;
-    if (!is_atom(term))
-	return 0;
-    a = atom_tab(atom_val(term));
-    return (len == (size_t) a->len
-	    && sys_memcmp((void *) a->name, (void *) text, len) == 0);
+    EPIPHANY_STUB(atom_tab);
 }
 
 ERTS_GLB_INLINE int erts_is_atom_str(const char *str, Eterm term, int is_latin1)
 {
-    Atom *a;
-    int i, len;
-    const byte* aname;
-    const byte* s = (const byte*) str;
-
-    if (!is_atom(term))
-	return 0;
-    a = atom_tab(atom_val(term));
-    len = a->len;
-    aname = a->name;
-    if (is_latin1) {
-	for (i = 0; i < len; s++) {
-	    if (aname[i] < 0x80) {
-		if (aname[i] != *s || *s == '\0')
-		    return 0;
-		i++;
-	    }
-	    else {
-		if (aname[i]   != (0xC0 | (*s >> 6)) || 
-		    aname[i+1] != (0x80 | (*s & 0x3F))) {
-		    return 0;
-		}
-		i += 2;
-	    }
-	}
-    }
-    else {
-	for (i = 0; i < len; i++, s++)
-	    if (aname[i] != *s || *s == '\0')
-		return 0;
-    }
-    return *s == '\0';
+    EPIPHANY_STUB(erts_is_atom_str);
 }
-
 #endif
 
 typedef enum {

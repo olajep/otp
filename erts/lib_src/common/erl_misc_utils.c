@@ -164,8 +164,7 @@ erts_milli_sleep(long ms)
 #elif defined(__OSE__)
 	delay(ms);
 #elif defined(__epiphany__)
-    // ETODO: erts_milli_sleep
-    printf(stderr, "erts_milli_sleep NYI");
+        EPIPHANY_STUB(erts_milli_sleep);
 #else
 	struct timeval tv;
 	tv.tv_sec = ms / 1000;

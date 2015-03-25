@@ -348,6 +348,12 @@ extern int exit_async(void);
 
 #define ERTS_EXIT_AFTER_DUMP _exit
 
+#define EPIPHANY_STUB(NAME)                     \
+    do {                                        \
+        fprintf(stderr, #NAME " is a stub!");   \
+        abort();                                \
+    } while(0)
+
 #endif /* #ifndef _ERL_EPIPHANY_SYS_H */
 
 /* Local Variables: */  
