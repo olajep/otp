@@ -5176,19 +5176,20 @@ get_map_elements_fail:
      beam_exception_trace[0]   = (BeamInstr) OpCode(return_trace); /* UGLY */
      beam_return_time_trace[0] = (BeamInstr) OpCode(i_return_time_trace);
 
-     /*
-      * Enter all BIFs into the export table.
-      */
-     for (i = 0; i < BIF_SIZE; i++) {
-	 ep = erts_export_put(bif_table[i].module,
-			      bif_table[i].name,
-			      bif_table[i].arity);
-	 bif_export[i] = ep;
-	 ep->code[3] = (BeamInstr) OpCode(apply_bif);
-	 ep->code[4] = (BeamInstr) bif_table[i].f;
-	 /* XXX: set func info for bifs */
-	 ep->fake_op_func_info_for_hipe[0] = (BeamInstr) BeamOp(op_i_func_info_IaaI);
-     }
+     // ESTUB: erl_bif_table, export
+     /* /\* */
+     /*  * Enter all BIFs into the export table. */
+     /*  *\/ */
+     /* for (i = 0; i < BIF_SIZE; i++) { */
+     /*     ep = erts_export_put(bif_table[i].module, */
+     /*    		      bif_table[i].name, */
+     /*    		      bif_table[i].arity); */
+     /*     bif_export[i] = ep; */
+     /*     ep->code[3] = (BeamInstr) OpCode(apply_bif); */
+     /*     ep->code[4] = (BeamInstr) bif_table[i].f; */
+     /*     /\* XXX: set func info for bifs *\/ */
+     /*     ep->fake_op_func_info_for_hipe[0] = (BeamInstr) BeamOp(op_i_func_info_IaaI); */
+     /* } */
 
      return;
  }
@@ -5224,8 +5225,8 @@ translate_gc_bif(void* gcf)
 	return bit_size_1;
     } else if (gcf == erts_gc_byte_size_1) {
 	return byte_size_1;
-    } else if (gcf == erts_gc_map_size_1) {
-	return map_size_1;
+    /* } else if (gcf == erts_gc_map_size_1) { */
+    /*     return map_size_1; */
     } else if (gcf == erts_gc_abs_1) {
 	return abs_1;
     } else if (gcf == erts_gc_float_1) {
@@ -5234,10 +5235,10 @@ translate_gc_bif(void* gcf)
 	return round_1;
     } else if (gcf == erts_gc_trunc_1) {
 	return round_1;
-    } else if (gcf == erts_gc_binary_part_2) {
-	return binary_part_2;
-    } else if (gcf == erts_gc_binary_part_3) {
-	return binary_part_3;
+    /* } else if (gcf == erts_gc_binary_part_2) { */
+    /*     return binary_part_2; */
+    /* } else if (gcf == erts_gc_binary_part_3) { */
+    /*     return binary_part_3; */
     } else {
 	erl_exit(1, "bad gc bif");
     }
@@ -5379,94 +5380,26 @@ handle_error(Process* c_p, BeamInstr* pc, Eterm* reg, BifFunction bf)
  */
 static BeamInstr*
 next_catch(Process* c_p, Eterm *reg) {
+    // ESTUB: Tracing omitted
     int active_catches = c_p->catches > 0;
-    int have_return_to_trace = 0;
-    Eterm *ptr, *prev, *return_to_trace_ptr = NULL;
-
-    BeamInstr i_return_trace      = beam_return_trace[0];
-    BeamInstr i_return_to_trace   = beam_return_to_trace[0];
-    BeamInstr i_return_time_trace = beam_return_time_trace[0];
-
+    Eterm *ptr, *prev = NULL;
     ptr = prev = c_p->stop;
+
     ASSERT(is_CP(*ptr));
     ASSERT(ptr <= STACK_START(c_p));
     if (ptr == STACK_START(c_p)) return NULL;
-    if ((is_not_CP(*ptr) || (*cp_val(*ptr) != i_return_trace &&
-			     *cp_val(*ptr) != i_return_to_trace &&
-			     *cp_val(*ptr) != i_return_time_trace ))
-	&& c_p->cp) {
-	/* Can not follow cp here - code may be unloaded */
-	BeamInstr *cpp = c_p->cp;
-	if (cpp == beam_exception_trace) {
-	    erts_trace_exception(c_p, cp_val(ptr[0]),
-				 reg[1], reg[2], ptr+1);
-	    /* Skip return_trace parameters */
-	    ptr += 2;
-	} else if (cpp == beam_return_trace) {
-	    /* Skip return_trace parameters */
-	    ptr += 2;
-	} else if (cpp == beam_return_time_trace) {
-	    /* Skip return_trace parameters */
-	    ptr += 1;
-	} else if (cpp == beam_return_to_trace) {
-	    have_return_to_trace = !0; /* Record next cp */
-	}
-    }
     while (ptr < STACK_START(c_p)) {
 	if (is_catch(*ptr)) {
 	    if (active_catches) goto found_catch;
 	    ptr++;
 	}
-	else if (is_CP(*ptr)) {
-	    prev = ptr;
-	    if (*cp_val(*prev) == i_return_trace) {
-		/* Skip stack frame variables */
-		while (++ptr, ptr < STACK_START(c_p) && is_not_CP(*ptr)) {
-		    if (is_catch(*ptr) && active_catches) goto found_catch;
-		}
-		if (cp_val(*prev) == beam_exception_trace) {
-		    erts_trace_exception(c_p, cp_val(ptr[0]),
-					 reg[1], reg[2], ptr+1);
-		}
-		/* Skip return_trace parameters */
-		ptr += 2;
-	    } else if (*cp_val(*prev) == i_return_to_trace) {
-		/* Skip stack frame variables */
-		while (++ptr, ptr < STACK_START(c_p) && is_not_CP(*ptr)) {
-		    if (is_catch(*ptr) && active_catches) goto found_catch;
-		}
-		have_return_to_trace = !0; /* Record next cp */
-		return_to_trace_ptr = NULL;
-	    } else if (*cp_val(*prev) == i_return_time_trace) {
-		/* Skip stack frame variables */
-		while (++ptr, ptr < STACK_START(c_p) && is_not_CP(*ptr)) {
-		    if (is_catch(*ptr) && active_catches) goto found_catch;
-		}
-		/* Skip return_trace parameters */
-		ptr += 1;
-	    } else {
-		if (have_return_to_trace) {
-		    /* Record this cp as possible return_to trace cp */
-		    have_return_to_trace = 0;
-		    return_to_trace_ptr = ptr;
-		} else return_to_trace_ptr = NULL;
-		ptr++;
-	    }
-	} else ptr++;
+	else ptr++;
     }
     return NULL;
     
  found_catch:
     ASSERT(ptr < STACK_START(c_p));
     c_p->stop = prev;
-    if (IS_TRACED_FL(c_p, F_TRACE_RETURN_TO) && return_to_trace_ptr) {
-	/* The stackframe closest to the catch contained an
-	 * return_to_trace entry, so since the execution now
-	 * continues after the catch, a return_to trace message 
-	 * would be appropriate.
-	 */
-	erts_trace_return_to(c_p, cp_val(*return_to_trace_ptr));
-    }
     return catch_pc(*ptr);
 }
 
@@ -5476,25 +5409,7 @@ next_catch(Process* c_p, Eterm *reg) {
 static void
 terminate_proc(Process* c_p, Eterm Value)
 {
-    /* Add a stacktrace if this is an error. */
-    if (GET_EXC_CLASS(c_p->freason) == EXTAG_ERROR) {
-        Value = add_stacktrace(c_p, Value, c_p->ftrace);
-    }
-    /* EXF_LOG is a primary exception flag */
-    if (c_p->freason & EXF_LOG) {
-	erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
-	erts_dsprintf(dsbufp, "Error in process %T ", c_p->common.id);
-	if (erts_is_alive)
-	    erts_dsprintf(dsbufp, "on node %T ", erts_this_node->sysname);
-	erts_dsprintf(dsbufp,"with exit value: %0.*T\n", display_items, Value);
-	erts_send_error_to_logger(c_p->group_leader, dsbufp);
-    }
-    /*
-     * If we use a shared heap, the process will be garbage-collected.
-     * Must zero c_p->arity to indicate that there are no live registers.
-     */
-    c_p->arity = 0;
-    erts_do_exit_process(c_p, Value);
+    EPIPHANY_STUB(terminate_proc);
 }
 
 /*
@@ -5582,157 +5497,14 @@ expand_error_value(Process* c_p, Uint freason, Eterm Value) {
 static void
 save_stacktrace(Process* c_p, BeamInstr* pc, Eterm* reg, BifFunction bf,
 		Eterm args) {
-    struct StackTrace* s;
-    int sz;
-    int depth = erts_backtrace_depth;    /* max depth (never negative) */
-    if (depth > 0) {
-	/* There will always be a current function */
-	depth --;
-    }
-
-    /* Create a container for the exception data */
-    sz = (offsetof(struct StackTrace, trace) + sizeof(BeamInstr *)*depth
-          + sizeof(Eterm) - 1) / sizeof(Eterm);
-    s = (struct StackTrace *) HAlloc(c_p, 1 + sz);
-    /* The following fields are inside the bignum */
-    s->header = make_pos_bignum_header(sz);
-    s->freason = c_p->freason;
-    s->depth = 0;
-
-    /*
-     * If the failure was in a BIF other than 'error', 'exit' or
-     * 'throw', find the bif-table index and save the argument
-     * registers by consing up an arglist.
-     */
-    if (bf != NULL && bf != error_1 && bf != error_2 &&
-	bf != exit_1 && bf != throw_1) {
-        int i;
-	int a = 0;
-	for (i = 0; i < BIF_SIZE; i++) {
-	    if (bf == bif_table[i].f || bf == bif_table[i].traced) {
-		Export *ep = bif_export[i];
-		s->current = ep->code;
-	        a = bif_table[i].arity;
-		break;
-	    }
-	}
-	if (i >= BIF_SIZE) {
-	    /* 
-	     * The Bif does not really exist (no BIF entry).  It is a
-	     * TRAP and traps are called through apply_bif, which also
-	     * sets c_p->current (luckily).
-	     * OR it is a NIF called by call_nif where current is also set.
-	     */
-	    ASSERT(c_p->current);
-	    s->current = c_p->current;
-	    a = s->current[2];
-	}
-	/* Save first stack entry */
-	ASSERT(pc);
-	if (depth > 0) {
-	    s->trace[s->depth++] = pc;
-	    depth--;
-	}
-	/* Save second stack entry if CP is valid and different from pc */
-	if (depth > 0 && c_p->cp != 0 && c_p->cp != pc) {
-	    s->trace[s->depth++] = c_p->cp - 1;
-	    depth--;
-	}
-	s->pc = NULL;
-	args = make_arglist(c_p, reg, a); /* Overwrite CAR(c_p->ftrace) */
-    } else {
-	s->current = c_p->current;
-        /* 
-	 * For a function_clause error, the arguments are in the beam
-	 * registers, c_p->cp is valid, and c_p->current is set.
-	 */
-	if ( (GET_EXC_INDEX(s->freason)) ==
-	     (GET_EXC_INDEX(EXC_FUNCTION_CLAUSE)) ) {
-	    int a;
-	    ASSERT(s->current);
-	    a = s->current[2];
-	    args = make_arglist(c_p, reg, a); /* Overwrite CAR(c_p->ftrace) */
-	    /* Save first stack entry */
-	    ASSERT(c_p->cp);
-	    if (depth > 0) {
-		s->trace[s->depth++] = c_p->cp - 1;
-		depth--;
-	    }
-	    s->pc = NULL; /* Ignore pc */
-	} else {
-	    if (depth > 0 && c_p->cp != 0 && c_p->cp != pc) {
-		s->trace[s->depth++] = c_p->cp - 1;
-		depth--;
-	    }
-	    s->pc = pc;
-	}
-    }
-
-    /* Package args and stack trace */
-    {
-	Eterm *hp;
-	hp = HAlloc(c_p, 2);
-	c_p->ftrace = CONS(hp, args, make_big((Eterm *) s));
-    }
-
-    /* Save the actual stack trace */
-    erts_save_stacktrace(c_p, s, depth);
+    EPIPHANY_STUB(save_stacktrace);
 }
 
-void
-erts_save_stacktrace(Process* p, struct StackTrace* s, int depth)
-{
-    if (depth > 0) {
-	Eterm *ptr;
-	BeamInstr *prev = s->depth ? s->trace[s->depth-1] : NULL;
-	BeamInstr i_return_trace = beam_return_trace[0];
-	BeamInstr i_return_to_trace = beam_return_to_trace[0];
-
-	/*
-	 * Traverse the stack backwards and add all unique continuation
-	 * pointers to the buffer, up to the maximum stack trace size.
-	 * 
-	 * Skip trace stack frames.
-	 */
-	ptr = p->stop;
-	if (ptr < STACK_START(p) &&
-	    (is_not_CP(*ptr)|| (*cp_val(*ptr) != i_return_trace &&
-				*cp_val(*ptr) != i_return_to_trace)) &&
-	    p->cp) {
-	    /* Cannot follow cp here - code may be unloaded */
-	    BeamInstr *cpp = p->cp;
-	    if (cpp == beam_exception_trace || cpp == beam_return_trace) {
-		/* Skip return_trace parameters */
-		ptr += 2;
-	    } else if (cpp == beam_return_to_trace) {
-		/* Skip return_to_trace parameters */
-		ptr += 1;
-	    }
-	}
-	while (ptr < STACK_START(p) && depth > 0) {
-	    if (is_CP(*ptr)) {
-		if (*cp_val(*ptr) == i_return_trace) {
-		    /* Skip stack frame variables */
-		    do ++ptr; while (is_not_CP(*ptr));
-		    /* Skip return_trace parameters */
-		    ptr += 2;
-		} else if (*cp_val(*ptr) == i_return_to_trace) {
-		    /* Skip stack frame variables */
-		    do ++ptr; while (is_not_CP(*ptr));
-		} else {
-		    BeamInstr *cp = cp_val(*ptr);
-		    if (cp != prev) {
-			/* Record non-duplicates only */
-			prev = cp;
-			s->trace[s->depth++] = cp - 1;
-			depth--;
-		    }
-		    ptr++;
-		}
-	    } else ptr++;
-	}
-    }
-}
+/* void */
+/* erts_save_stacktrace(Process* p, struct StackTrace* s, int depth) */
+/* { */
+/*     EPIPHANY_STUB(erts_save_stacktrace); */
+/* } */
 
 /*
  * Getting the relevant fields from the term pointed to by ftrace
@@ -5789,132 +5561,13 @@ make_arglist(Process* c_p, Eterm* reg, int a) {
  */
 Eterm
 build_stacktrace(Process* c_p, Eterm exc) {
-    struct StackTrace* s;
-    Eterm  args;
-    int    depth;
-    FunctionInfo fi;
-    FunctionInfo* stk;
-    FunctionInfo* stkp;
-    Eterm res = NIL;
-    Uint heap_size;
-    Eterm* hp;
-    Eterm mfa;
-    int i;
-
-    if (! (s = get_trace_from_exc(exc))) {
-        return NIL;
-    }
-#ifdef HIPE
-    if (s->freason & EXF_NATIVE) {
-	return hipe_build_stacktrace(c_p, s);
-    }
-#endif
-    if (is_raised_exc(exc)) {
-	return get_args_from_exc(exc);
-    }
-
-    /*
-     * Find the current function. If the saved s->pc is null, then the
-     * saved s->current should already contain the proper value.
-     */
-    if (s->pc != NULL) {
-	erts_lookup_function_info(&fi, s->pc, 1);
-    } else if (GET_EXC_INDEX(s->freason) ==
-	       GET_EXC_INDEX(EXC_FUNCTION_CLAUSE)) {
-	erts_lookup_function_info(&fi, s->current, 1);
-    } else {
-	erts_set_current_function(&fi, s->current);
-    }
-
-    /*
-     * If fi.current is still NULL, default to the initial function
-     * (e.g. spawn_link(erlang, abs, [1])).
-     */
-    if (fi.current == NULL) {
-	erts_set_current_function(&fi, c_p->initial);
-	args = am_true; /* Just in case */
-    } else {
-	args = get_args_from_exc(exc);
-    }
-
-    /*
-     * Look up all saved continuation pointers and calculate
-     * needed heap space.
-     */
-    depth = s->depth;
-    stk = stkp = (FunctionInfo *) erts_alloc(ERTS_ALC_T_TMP,
-				      depth*sizeof(FunctionInfo));
-    heap_size = fi.needed + 2;
-    for (i = 0; i < depth; i++) {
-	erts_lookup_function_info(stkp, s->trace[i], 1);
-	if (stkp->current) {
-	    heap_size += stkp->needed + 2;
-	    stkp++;
-	}
-    }
-
-    /*
-     * Allocate heap space and build the stacktrace.
-     */
-    hp = HAlloc(c_p, heap_size);
-    while (stkp > stk) {
-	stkp--;
-	hp = erts_build_mfa_item(stkp, hp, am_true, &mfa);
-	res = CONS(hp, mfa, res);
-	hp += 2;
-    }
-    hp = erts_build_mfa_item(&fi, hp, args, &mfa);
-    res = CONS(hp, mfa, res);
-
-    erts_free(ERTS_ALC_T_TMP, (void *) stk);
-    return res;
+    EPIPHANY_STUB(build_stacktrace);
 }
 
 static BeamInstr*
 call_error_handler(Process* p, BeamInstr* fi, Eterm* reg, Eterm func)
 {
-    Eterm* hp;
-    Export* ep;
-    int arity;
-    Eterm args;
-    Uint sz;
-    int i;
-
-    /*
-     * Search for the error_handler module.
-     */
-    ep = erts_find_function(erts_proc_get_error_handler(p), func, 3,
-			    erts_active_code_ix());
-    if (ep == NULL) {		/* No error handler */
-	p->current = fi;
-	p->freason = EXC_UNDEF;
-	return 0;
-    }
-
-    /*
-     * Create a list with all arguments in the x registers.
-     */
-
-    arity = fi[2];
-    sz = 2 * arity;
-    if (HeapWordsLeft(p) < sz) {
-	erts_garbage_collect(p, sz, reg, arity);
-    }
-    hp = HEAP_TOP(p);
-    HEAP_TOP(p) += sz;
-    args = NIL;
-    for (i = arity-1; i >= 0; i--) {
-	args = CONS(hp, reg[i], args);
-	hp += 2;
-    }
-
-    /*
-     * Set up registers for call to error_handler:<func>/3.
-     */
-    reg[0] = fi[0];
-    reg[1] = fi[1];
-    reg[2] = args;
-    return ep->addressv[erts_active_code_ix()];
+    EPIPHANY_STUB(call_error_handler);
 }
 
 static Export*
@@ -6107,96 +5760,7 @@ fixed_apply(Process* p, Eterm* reg, Uint arity)
 int
 erts_hibernate(Process* c_p, Eterm module, Eterm function, Eterm args, Eterm* reg)
 {
-    int arity;
-    Eterm tmp;
-
-    if (is_not_atom(module) || is_not_atom(function)) {
-	/*
-	 * No need to test args here -- done below.
-	 */
-    error:
-	c_p->freason = BADARG;
-
-    error2:
-	reg[0] = module;
-	reg[1] = function;
-	reg[2] = args;
-	return 0;
-    }
-
-    arity = 0;
-    tmp = args;
-    while (is_list(tmp)) {
-	if (arity < MAX_REG) {
-	    tmp = CDR(list_val(tmp));
-	    arity++;
-	} else {
-	    c_p->freason = SYSTEM_LIMIT;
-	    goto error2;
-	}
-    }
-    if (is_not_nil(tmp)) {	/* Must be well-formed list */
-	goto error;
-    }
-
-    /*
-     * At this point, arguments are known to be good.
-     */
-
-    if (c_p->arg_reg != c_p->def_arg_reg) {
-	/* Save some memory */
-	erts_free(ERTS_ALC_T_ARG_REG, c_p->arg_reg);
-	c_p->arg_reg = c_p->def_arg_reg;
-	c_p->max_arg_reg = sizeof(c_p->def_arg_reg)/sizeof(c_p->def_arg_reg[0]);
-    }
-
-#ifdef USE_VM_PROBES
-    if (DTRACE_ENABLED(process_hibernate)) {
-        DTRACE_CHARBUF(process_name, DTRACE_TERM_BUF_SIZE);
-        DTRACE_CHARBUF(mfa, DTRACE_TERM_BUF_SIZE);
-        dtrace_fun_decode(c_p, module, function, arity,
-                          process_name, mfa);
-        DTRACE2(process_hibernate, process_name, mfa);
-    }
-#endif
-    /*
-     * Arrange for the process to be resumed at the given MFA with
-     * the stack cleared.
-     */
-    c_p->arity = 3;
-    c_p->arg_reg[0] = module;
-    c_p->arg_reg[1] = function;
-    c_p->arg_reg[2] = args;
-    c_p->stop = STACK_START(c_p);
-    c_p->catches = 0;
-    c_p->i = beam_apply;
-    c_p->cp = (BeamInstr *) beam_apply+1;
-
-    /*
-     * If there are no waiting messages, garbage collect and
-     * shrink the heap. 
-     */
-    erts_smp_proc_lock(c_p, ERTS_PROC_LOCK_MSGQ|ERTS_PROC_LOCK_STATUS);
-    ERTS_SMP_MSGQ_MV_INQ2PRIVQ(c_p);
-    if (!c_p->msg.len) {
-	erts_smp_proc_unlock(c_p, ERTS_PROC_LOCK_MSGQ|ERTS_PROC_LOCK_STATUS);
-	c_p->fvalue = NIL;
-	PROCESS_MAIN_CHK_LOCKS(c_p);
-	erts_garbage_collect_hibernate(c_p);
-	ERTS_VERIFY_UNUSED_TEMP_ALLOC(c_p);
-	PROCESS_MAIN_CHK_LOCKS(c_p);
-	erts_smp_proc_lock(c_p, ERTS_PROC_LOCK_MSGQ|ERTS_PROC_LOCK_STATUS);
-#ifdef ERTS_SMP
-	ERTS_SMP_MSGQ_MV_INQ2PRIVQ(c_p);
-	if (!c_p->msg.len)
-#endif
-	    erts_smp_atomic32_read_band_relb(&c_p->state, ~ERTS_PSFLG_ACTIVE);
-	ASSERT(!ERTS_PROC_IS_EXITING(c_p));
-    }
-    erts_smp_proc_unlock(c_p, ERTS_PROC_LOCK_MSGQ|ERTS_PROC_LOCK_STATUS);
-    c_p->current = bif_export[BIF_hibernate_3]->code;
-    c_p->flags |= F_HIBERNATE_SCHED; /* Needed also when woken! */
-    return 1;
+    EPIPHANY_STUB(erts_hibernate);
 }
 
 static BeamInstr*
@@ -6275,6 +5839,7 @@ call_fun(Process* p,		/* Current process. */
 		p->fvalue = TUPLE2(hp, fun, args);
 		return NULL;
 	    } else {
+                EPIPHANY_STUB(call_fun);
 		Export* ep;
 		Module* modp;
 		Eterm module;

@@ -262,9 +262,9 @@ endif
 ifneq ($(filter tile-%,$(TARGET)), )
 # -O2 generally produces faster for tile-cc, because the code is smaller.
 # Since tile-cc looks like gcc, we need to override the normal gcc -O3 setting.
-OPT_LEVEL = -O2
+OPT_LEVEL = -Og
 else
-OPT_LEVEL = -O3
+OPT_LEVEL = -Og
 endif
 
 ifeq ($(GCC),yes)
@@ -757,18 +757,22 @@ EMU_OBJS = \
 # 	$(OBJDIR)/beam_load.o		$(OBJDIR)/beam_bif_load.o \
 
 RUN_OBJS = \
-	$(OBJDIR)/erl_gc_stub.o 	$(OBJDIR)/erl_bif_guard.o \
+	$(OBJDIR)/erl_gc_stub.o		$(OBJDIR)/erl_bif_guard.o \
+	$(OBJDIR)/erl_bif_op.o \
 	$(OBJDIR)/big.o			$(OBJDIR)/utils.o \
-	$(OBJDIR)/erl_alloc.o		$(OBJDIR)/copy.o \
-	$(OBJDIR)/erl_term.o		$(OBJDIR)/erl_bits_stub.o
-
+	$(OBJDIR)/erl_alloc.o		$(OBJDIR)/erl_alloc_util.o \
+	$(OBJDIR)/erl_goodfit_alloc.o	$(OBJDIR)/erl_bestfit_alloc.o \
+	$(OBJDIR)/erl_afit_alloc.o	$(OBJDIR)/erl_ao_firstfit_alloc.o \
+	$(OBJDIR)/copy.o		$(OBJDIR)/erl_term.o \
+	$(OBJDIR)/erl_bits_stub.o	$(OBJDIR)/erl_process_stub.o \
+	$(OBJDIR)/erl_init.o		$(OBJDIR)/erl_printf_term.o \
+	$(OBJDIR)/erl_arith.o
 
 
 # RUN_OBJS = \
 # 	$(OBJDIR)/erl_pbifs.o		$(OBJDIR)/benchmark.o \
-# 	$(OBJDIR)/erl_alloc.o 		$(OBJDIR)/erl_mtrace_stub.o \
-# 	$(OBJDIR)/erl_alloc_util.o	$(OBJDIR)/erl_goodfit_alloc.o \
-# 	$(OBJDIR)/erl_bestfit_alloc.o	$(OBJDIR)/erl_afit_alloc.o \
+# 	$(OBJDIR)/erl_alloc.o		$(OBJDIR)/erl_mtrace_stub.o \
+# 	$(OBJDIR)/erl_alloc_util.o
 # 	$(OBJDIR)/erl_instrument.o	$(OBJDIR)/erl_init.o \
 # 	$(OBJDIR)/erl_atom_table.o	$(OBJDIR)/erl_bif_table.o \
 # 	$(OBJDIR)/erl_bif_guard.o \

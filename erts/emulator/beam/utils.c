@@ -853,13 +853,7 @@ send_info_to_logger(Eterm gleader, char *buf, int len)
 static ERTS_INLINE int
 send_warning_to_logger(Eterm gleader, char *buf, int len) 
 {
-    Eterm tag;
-    switch (erts_error_logger_warnings) {
-    case am_info:	tag = am_info_msg;	break;
-    case am_warning:	tag = am_warning_msg;	break;
-    default:		tag = am_error;		break;
-    }
-    return do_send_to_logger(tag, gleader, buf, len);
+    EPIPHANY_STUB(send_warning_to_logger);
 }
 
 static ERTS_INLINE int
@@ -2423,33 +2417,6 @@ sys_alloc_stat(SysAllocStat *sasp)
    sasp->mmap_max       = mmap_max;
 
 }
-
-char *
-erts_read_env(char *key)
-{
-    size_t value_len = 256;
-    char *value = erts_alloc(ERTS_ALC_T_TMP, value_len);
-    int res;
-    while (1) {
-	res = erts_sys_getenv_raw(key, value, &value_len);
-	if (res <= 0)
-	    break;
-	value = erts_realloc(ERTS_ALC_T_TMP, value, value_len);
-    }
-    if (res != 0) {
-	erts_free(ERTS_ALC_T_TMP, value);
-	return NULL;
-    }
-    return value;
-}
-
-void
-erts_free_read_env(void *value)
-{
-    if (value)
-	erts_free(ERTS_ALC_T_TMP, value);
-}
-
 
 typedef struct {
     size_t sz;

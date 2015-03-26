@@ -418,6 +418,15 @@ type	PRT_REP_EXIT	STANDARD	SYSTEM		port_report_exit
 
 +endif
 
++if epiphany
+
+type	SYS_READ_BUF	TEMPORARY	SYSTEM		sys_read_buf
+type	FD_ENTRY_BUF	STANDARD	SYSTEM		fd_entry_buf
+type	ENVIRONMENT	TEMPORARY	SYSTEM		environment
+type	FD_TAB		LONG_LIVED	SYSTEM		fd_tab
+
++endif
+
 +if ose
 
 type	SYS_READ_BUF	TEMPORARY	SYSTEM		sys_read_buf

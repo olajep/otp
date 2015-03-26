@@ -1157,65 +1157,6 @@ static RETSIGTYPE onchld(int signum)
 #endif
 }
 
-static int set_driver_data(ErlDrvPort port_num,
-			   int ifd,
-			   int ofd,
-			   int packet_bytes,
-			   int read_write,
-			   int exit_status,
-			   int pid)
-{
-    Port *prt;
-    ErtsSysReportExit *report_exit;
-
-    if (!exit_status)
-	report_exit = NULL;
-    else {
-	report_exit = erts_alloc(ERTS_ALC_T_PRT_REP_EXIT,
-				 sizeof(ErtsSysReportExit));
-	report_exit->next = report_exit_list;
-	report_exit->port = erts_drvport2id(port_num);
-	report_exit->pid = pid;
-	report_exit->ifd = read_write & DO_READ ? ifd : -1;
-	report_exit->ofd = read_write & DO_WRITE ? ofd : -1;
-#if CHLDWTHR && !defined(ERTS_SMP)
-	report_exit->status = 0;
-#endif
-	report_exit_list = report_exit;
-    }
-
-    prt = erts_drvport2port(port_num);
-    if (prt != ERTS_INVALID_ERL_DRV_PORT)
-	prt->os_pid = pid;
-
-    if (read_write & DO_READ) {
-	driver_data[ifd].packet_bytes = packet_bytes;
-	driver_data[ifd].port_num = port_num;
-	driver_data[ifd].report_exit = report_exit;
-	driver_data[ifd].pid = pid;
-	driver_data[ifd].alive = 1;
-	driver_data[ifd].status = 0;
-	if (read_write & DO_WRITE) {
-	    driver_data[ifd].ofd = ofd;
-	    if (ifd != ofd)
-		driver_data[ofd] = driver_data[ifd];  /* structure copy */
-	} else {		/* DO_READ only */
-	    driver_data[ifd].ofd = -1;
-	}
-	(void) driver_select(port_num, ifd, (ERL_DRV_READ|ERL_DRV_USE), 1);
-	return(ifd);
-    } else {			/* DO_WRITE only */
-	driver_data[ofd].packet_bytes = packet_bytes;
-	driver_data[ofd].port_num = port_num;
-	driver_data[ofd].report_exit = report_exit;
-	driver_data[ofd].ofd = ofd;
-	driver_data[ofd].pid = pid;
-	driver_data[ofd].alive = 1;
-	driver_data[ofd].status = 0;
-	return(ofd);
-    }
-}
-
 static int spawn_init()
 {
    int i;
@@ -2386,91 +2327,6 @@ void sys_get_pid(char *buffer, size_t buffer_size){
     erts_snprintf(buffer, buffer_size, "%lu",(unsigned long) p);
 }
 
-int
-erts_sys_putenv_raw(char *key, char *value) {
-    return erts_sys_putenv(key, value);
-}
-int
-erts_sys_putenv(char *key, char *value)
-{
-    int res;
-    char *env;
-    Uint need = strlen(key) + strlen(value) + 2;
-
-#ifdef HAVE_COPYING_PUTENV
-    env = erts_alloc(ERTS_ALC_T_TMP, need);
-#else
-    env = erts_alloc(ERTS_ALC_T_PUTENV_STR, need);
-    erts_smp_atomic_add_nob(&sys_misc_mem_sz, need);
-#endif
-    strcpy(env,key);
-    strcat(env,"=");
-    strcat(env,value);
-    erts_smp_rwmtx_rwlock(&environ_rwmtx);
-    res = putenv(env);
-    erts_smp_rwmtx_rwunlock(&environ_rwmtx);
-#ifdef HAVE_COPYING_PUTENV
-    erts_free(ERTS_ALC_T_TMP, env);
-#endif
-    return res;
-}
-
-int
-erts_sys_getenv__(char *key, char *value, size_t *size)
-{
-    int res;
-    char *orig_value = getenv(key);
-    if (!orig_value)
-	res = -1;
-    else {
-	size_t len = sys_strlen(orig_value);
-	if (len >= *size) {
-	    *size = len + 1;
-	    res = 1;
-	}
-	else {
-	    *size = len;
-	    sys_memcpy((void *) value, (void *) orig_value, len+1);
-	    res = 0;
-	}
-    }
-    return res;
-}
-
-int
-erts_sys_getenv_raw(char *key, char *value, size_t *size) {
-    return erts_sys_getenv(key, value, size);
-}
-
-/*
- * erts_sys_getenv
- * returns:
- *  -1, if environment key is not set with a value
- *   0, if environment key is set and value fits into buffer size
- *   1, if environment key is set but does not fit into buffer size
- *      size is set with the needed buffer size value
- */
-
-int
-erts_sys_getenv(char *key, char *value, size_t *size)
-{
-    int res;
-    erts_smp_rwmtx_rlock(&environ_rwmtx);
-    res = erts_sys_getenv__(key, value, size);
-    erts_smp_rwmtx_runlock(&environ_rwmtx);
-    return res;
-}
-
-int
-erts_sys_unsetenv(char *key)
-{
-    int res;
-    erts_smp_rwmtx_rwlock(&environ_rwmtx);
-    res = unsetenv(key);
-    erts_smp_rwmtx_rwunlock(&environ_rwmtx);
-    return res;
-}
-
 void
 sys_init_io(void)
 {
@@ -2658,47 +2514,6 @@ erl_debug(char* fmt, ...)
 }
 
 #endif /* DEBUG */
-
-static ERTS_INLINE void
-report_exit_status(ErtsSysReportExit *rep, int status)
-{
-    Port *pp;
-#ifdef ERTS_SMP
-    CHLD_STAT_UNLOCK;
-    pp = erts_thr_id2port_sflgs(rep->port,
-				ERTS_PORT_SFLGS_INVALID_DRIVER_LOOKUP);
-    CHLD_STAT_LOCK;
-#else
-    pp = erts_id2port_sflgs(rep->port,
-			    NULL,
-			    0,
-			    ERTS_PORT_SFLGS_INVALID_DRIVER_LOOKUP);
-#endif
-    if (pp) {
-	if (rep->ifd >= 0) {
-	    driver_data[rep->ifd].alive = 0;
-	    driver_data[rep->ifd].status = status;
-	    (void) driver_select(ERTS_Port2ErlDrvPort(pp),
-				 rep->ifd,
-				 (ERL_DRV_READ|ERL_DRV_USE),
-				 1);
-	}
-	if (rep->ofd >= 0) {
-	    driver_data[rep->ofd].alive = 0;
-	    driver_data[rep->ofd].status = status;
-	    (void) driver_select(ERTS_Port2ErlDrvPort(pp),
-				 rep->ofd,
-				 (ERL_DRV_WRITE|ERL_DRV_USE),
-				 1);
-	}
-#ifdef ERTS_SMP
-	erts_thr_port_release(pp);
-#else
-	erts_port_release(pp);
-#endif
-    }
-    erts_free(ERTS_ALC_T_PRT_REP_EXIT, rep);
-}
 
 #if !CHLDWTHR  /* ---------------------------------------------------------- */
 
