@@ -757,16 +757,20 @@ EMU_OBJS = \
 # 	$(OBJDIR)/beam_load.o		$(OBJDIR)/beam_bif_load.o \
 
 RUN_OBJS = \
-	$(OBJDIR)/erl_gc_stub.o		$(OBJDIR)/erl_bif_guard.o \
-	$(OBJDIR)/erl_bif_op.o \
+	$(OBJDIR)/erl_gc_stub.o \
+	$(OBJDIR)/erl_arith.o		$(OBJDIR)/erl_bif_guard.o \
+	$(OBJDIR)/erl_bif_op.o		$(OBJDIR)/bif.o \
+	$(OBJDIR)/bif_stubs.o \
 	$(OBJDIR)/big.o			$(OBJDIR)/utils.o \
 	$(OBJDIR)/erl_alloc.o		$(OBJDIR)/erl_alloc_util.o \
 	$(OBJDIR)/erl_goodfit_alloc.o	$(OBJDIR)/erl_bestfit_alloc.o \
 	$(OBJDIR)/erl_afit_alloc.o	$(OBJDIR)/erl_ao_firstfit_alloc.o \
 	$(OBJDIR)/copy.o		$(OBJDIR)/erl_term.o \
 	$(OBJDIR)/erl_bits_stub.o	$(OBJDIR)/erl_process_stub.o \
-	$(OBJDIR)/erl_init.o		$(OBJDIR)/erl_printf_term.o \
-	$(OBJDIR)/erl_arith.o
+	$(OBJDIR)/erl_message_stub.o \
+	$(OBJDIR)/erl_init.o		$(OBJDIR)/erl_printf_term.o
+
+
 
 
 # RUN_OBJS = \

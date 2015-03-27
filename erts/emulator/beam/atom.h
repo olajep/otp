@@ -56,6 +56,7 @@ typedef struct atom {
 extern IndexTable erts_atom_table;
 
 ERTS_GLB_INLINE Atom* atom_tab(Uint i);
+ERTS_GLB_INLINE int erts_is_atom_utf8_bytes(byte *text, size_t len, Eterm term);
 ERTS_GLB_INLINE int erts_is_atom_str(const char *str, Eterm term, int is_latin1);
 
 #if ERTS_GLB_INLINE_INCL_FUNC_DEF
@@ -63,6 +64,11 @@ ERTS_GLB_INLINE Atom*
 atom_tab(Uint i)
 {
     EPIPHANY_STUB(atom_tab);
+}
+
+ERTS_GLB_INLINE int erts_is_atom_utf8_bytes(byte *text, size_t len, Eterm term)
+{
+    EPIPHANY_STUB(erts_is_atom_utf8_bytes);
 }
 
 ERTS_GLB_INLINE int erts_is_atom_str(const char *str, Eterm term, int is_latin1)

@@ -24,6 +24,8 @@
 #include "erl_vm.h"
 #include "global.h"
 
+#include "bif.h"
+
 /*
  * Garbage collect a process.
  *
@@ -62,3 +64,31 @@ erts_garbage_collect(Process* p, int need, Eterm* objv, int nobj)
 /* { */
 /*     /\* STUB *\/ */
 /* } */
+
+
+Eterm
+erts_gc_after_bif_call(Process* p, Eterm result, Eterm* regs, Uint arity)
+{
+    int cost;
+
+    if (is_non_value(result)) {
+	if (p->freason == TRAP) {
+	  #if HIPE
+	    if (regs == NULL) {
+		regs = ERTS_PROC_GET_SCHDATA(p)->x_reg_array;
+	    }
+	  #endif
+	    cost = erts_garbage_collect(p, 0, regs, p->arity);
+	} else {
+	    cost = erts_garbage_collect(p, 0, regs, arity);
+	}
+    } else {
+	Eterm val[1];
+
+	val[0] = result;
+	cost = erts_garbage_collect(p, 0, val, 1);
+	result = val[0];
+    }
+    BUMP_REDS(p, cost);
+    return result;
+}

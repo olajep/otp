@@ -348,11 +348,10 @@ extern int exit_async(void);
 
 #define ERTS_EXIT_AFTER_DUMP _exit
 
-#define EPIPHANY_STUB(NAME)                     \
-    do {                                        \
-        fprintf(stderr, #NAME " is a stub!");   \
-        abort();                                \
-    } while(0)
+void sys_epiphany_stub(const char* name) __attribute__ ((__noreturn__));
+
+#define EPIPHANY_STUB(NAME) sys_epiphany_stub(#NAME)
+
 
 #endif /* #ifndef _ERL_EPIPHANY_SYS_H */
 

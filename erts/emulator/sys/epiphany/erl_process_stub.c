@@ -451,3 +451,12 @@ do {									\
 
 #define ERTS_ATOMIC_FOREACH_RUNQ(RQVAR, DO) \
   ERTS_ATOMIC_FOREACH_RUNQ_X(RQVAR, DO, )
+
+Process *schedule(Process *p, int calls)
+{
+    if (p) {
+        p->reds += calls;
+        return p;
+    }
+    EPIPHANY_STUB(schedule);
+}
