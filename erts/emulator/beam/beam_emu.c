@@ -3430,28 +3430,11 @@ get_map_elements_fail:
  OpCase(return_trace):
     EPIPHANY_STUB(OpCase(return_trace));
 
- OpCase(i_generic_breakpoint): {
-     BeamInstr real_I;
-     ASSERT(I[-5] == (BeamInstr) BeamOp(op_i_func_info_IaaI));
-     SWAPOUT;
-     reg[0] = r(0);
-     real_I = erts_generic_breakpoint(c_p, I, reg);
-     r(0) = reg[0];
-     SWAPIN;
-     ASSERT(VALID_INSTR(real_I));
-     Goto(real_I);
- }
+ OpCase(i_generic_breakpoint):
+    EPIPHANY_STUB(OpCase(i_generic_breakpoint));
 
- OpCase(i_return_time_trace): {
-     BeamInstr *pc = (BeamInstr *) (UWord) E[0];
-     SWAPOUT;
-     erts_trace_time_return(c_p, pc);
-     SWAPIN;
-     c_p->cp = NULL;
-     SET_I((BeamInstr *) cp_val(E[1]));
-     E += 2;
-     Goto(*I);
- }
+ OpCase(i_return_time_trace):
+    EPIPHANY_STUB(OpCase(i_return_time_trace));
 
  OpCase(i_return_to_trace):
     EPIPHANY_STUB(OpCase(i_return_to_trace));
@@ -4260,9 +4243,11 @@ apply(Process* p, Eterm module, Eterm function, Eterm args, Eterm* reg)
 
     if ((ep = erts_active_export_entry(module, function, arity)) == NULL) {
 	if ((ep = apply_setup_error_handler(p, module, function, arity, reg)) == NULL) goto error;
-    } else if (ERTS_PROC_GET_SAVED_CALLS_BUF(p)) {
-	save_calls(p, ep);
     }
+    // ESTUB: No tracing
+    /* else if (ERTS_PROC_GET_SAVED_CALLS_BUF(p)) { */
+    /*     save_calls(p, ep); */
+    /* } */
 
 #ifdef USE_VM_CALL_PROBES
     if (DTRACE_ENABLED(global_function_entry)) {
@@ -4315,9 +4300,11 @@ fixed_apply(Process* p, Eterm* reg, Uint arity)
     if ((ep = erts_active_export_entry(module, function, arity)) == NULL) {
 	if ((ep = apply_setup_error_handler(p, module, function, arity, reg)) == NULL)
 	    goto error;
-    } else if (ERTS_PROC_GET_SAVED_CALLS_BUF(p)) {
-	save_calls(p, ep);
     }
+    // ESTUB: No tracing
+    /* else if (ERTS_PROC_GET_SAVED_CALLS_BUF(p)) { */
+    /*     save_calls(p, ep); */
+    /* } */
 
 #ifdef USE_VM_CALL_PROBES
     if (DTRACE_ENABLED(global_function_entry)) {

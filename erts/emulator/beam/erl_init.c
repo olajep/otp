@@ -320,7 +320,7 @@ erl_init(int ncpu,
 /* 			 ); */
     /* erts_init_cpu_topology(); /\* Must be after init_scheduling *\/ */
     /* erts_init_gc(); /\* Must be after init_scheduling *\/ */
-    erts_alloc_late_init();
+    // erts_alloc_late_init();
 
     // ESTUB: erl_gc
     // H_MIN_SIZE      = erts_next_heap_size(H_MIN_SIZE, 0);
@@ -328,7 +328,7 @@ erl_init(int ncpu,
 
     // erts_init_trace();
     // erts_init_bits();
-    erts_code_ix_init();
+    // erts_code_ix_init();
     // erts_init_fun_table(); // ESTUB: erl_fun
     // init_atom_table();
     // init_export_table(); // ESTUB: export
@@ -340,7 +340,7 @@ erl_init(int ncpu,
     init_emulator();
     // erts_ptab_init(); /* Must be after init_emulator() */
     // erts_init_binary(); /* Must be after init_emulator() */
-    erts_bp_init();
+    // erts_bp_init();
     // init_db(); /* Must be after init_emulator */
     // erts_bif_timer_init();
     // erts_init_node_tables();
@@ -491,7 +491,7 @@ early_init(int *argc, char **argv) /*
 				   * early!
 				   */
 {
-    ErtsAllocInitOpts alloc_opts = ERTS_ALLOC_INIT_DEF_OPTS_INITER;
+    // ErtsAllocInitOpts alloc_opts = ERTS_ALLOC_INIT_DEF_OPTS_INITER;
     int ncpu;
     int ncpuonln;
     int ncpuavail;
@@ -604,9 +604,10 @@ early_init(int *argc, char **argv) /*
 #endif
     // erts_early_init_scheduling(no_schedulers);
 
-    alloc_opts.ncpu = ncpu;
-    erts_alloc_init(argc, argv, &alloc_opts); /* Handles (and removes)
-						 -M flags. */
+    // alloc_opts.ncpu = ncpu;
+    // erts_alloc_init(argc, argv, &alloc_opts); /* Handles (and removes)
+    // 					 -M flags. */
+
     /* Require allocators */
 #ifdef ERTS_SMP
     /*
@@ -786,8 +787,8 @@ erl_start(int argc, char **argv)
 	     legacy_port_tab);
 
     load_preloaded();
-    erts_end_staging_code_ix();
-    erts_commit_staging_code_ix();
+    // erts_end_staging_code_ix();
+    // erts_commit_staging_code_ix();
 
     erts_initialized = 1;
 

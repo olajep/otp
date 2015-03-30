@@ -124,8 +124,8 @@ typedef struct {
     void *extra;
 } ErtsAllocatorFunctions_t;
 
-extern ErtsAllocatorFunctions_t erts_allctrs[ERTS_ALC_A_MAX+1];
-extern ErtsAllocatorInfo_t erts_allctrs_info[ERTS_ALC_A_MAX+1];
+/* extern ErtsAllocatorFunctions_t erts_allctrs[ERTS_ALC_A_MAX+1]; */
+/* extern ErtsAllocatorInfo_t erts_allctrs_info[ERTS_ALC_A_MAX+1]; */
 
 typedef struct {
     int enabled;
@@ -220,10 +220,7 @@ ERTS_ALC_INLINE
 void *erts_alloc(ErtsAlcType_t type, Uint size)
 {
     void *res;
-    res = (*erts_allctrs[ERTS_ALC_T2A(type)].alloc)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	size);
+    res = malloc(size);
     if (!res)
 	erts_alloc_n_enomem(ERTS_ALC_T2N(type), size);
     return res;
@@ -233,44 +230,30 @@ ERTS_ALC_INLINE
 void *erts_realloc(ErtsAlcType_t type, void *ptr, Uint size)
 {
     void *res;
-    res = (*erts_allctrs[ERTS_ALC_T2A(type)].realloc)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	ptr,
-	size);
+    res = realloc(ptr, size);
     if (!res)
 	erts_realloc_n_enomem(ERTS_ALC_T2N(type), ptr, size);
     return res;
 }
 
 ERTS_ALC_INLINE
-void erts_free(ErtsAlcType_t type, void *ptr)
+void erts_free(ErtsAlcType_t __attribute__((unused)) type, void *ptr)
 {
-    (*erts_allctrs[ERTS_ALC_T2A(type)].free)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	ptr);
+    free(ptr);
 }
 
 
 ERTS_ALC_INLINE
-void *erts_alloc_fnf(ErtsAlcType_t type, Uint size)
+void *erts_alloc_fnf(ErtsAlcType_t __attribute__((unused)) type, Uint size)
 {
-    return (*erts_allctrs[ERTS_ALC_T2A(type)].alloc)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	size);
+    return malloc(size);
 }
 
 
 ERTS_ALC_INLINE
-void *erts_realloc_fnf(ErtsAlcType_t type, void *ptr, Uint size)
+void *erts_realloc_fnf(ErtsAlcType_t __attribute__((unused)) type, void *ptr, Uint size)
 {
-    return (*erts_allctrs[ERTS_ALC_T2A(type)].realloc)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	ptr,
-	size);
+    return realloc(ptr, size);
 }
 
 ERTS_ALC_INLINE

@@ -293,8 +293,9 @@ print_term(fmtfn_t fn, void* arg, Eterm obj, long *dcount,
 	case REF_DEF:
 	case EXTERNAL_REF_DEF:
 	    PRINT_STRING(res, fn, arg, "#Ref<");
-	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
-			(ErlPfUWord) ref_channel_no(wobj));
+            // ESTUB:
+	    /* PRINT_UWORD(res, fn, arg, 'u', 0, 1, */
+	    /*     	(ErlPfUWord) ref_channel_no(wobj)); */
 	    ref_num = ref_numbers(wobj);
 	    for (i = ref_no_of_numbers(wobj)-1; i >= 0; i--) {
 		PRINT_CHAR(res, fn, arg, '.');
@@ -305,8 +306,9 @@ print_term(fmtfn_t fn, void* arg, Eterm obj, long *dcount,
 	case PID_DEF:
 	case EXTERNAL_PID_DEF:
 	    PRINT_CHAR(res, fn, arg, '<');
-	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
-			(ErlPfUWord) pid_channel_no(wobj));
+            // ESTUB
+	    /* PRINT_UWORD(res, fn, arg, 'u', 0, 1, */
+	    /*     	(ErlPfUWord) pid_channel_no(wobj)); */
 	    PRINT_CHAR(res, fn, arg, '.');
 	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
 			(ErlPfUWord) pid_number(wobj));
@@ -318,11 +320,12 @@ print_term(fmtfn_t fn, void* arg, Eterm obj, long *dcount,
 	case PORT_DEF:
 	case EXTERNAL_PORT_DEF:
 	    PRINT_STRING(res, fn, arg, "#Port<");
-	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
-			(ErlPfUWord) port_channel_no(wobj));
+            // ESTUB
+            /* PRINT_UWORD(res, fn, arg, 'u', 0, 1, */
+	    /*     	(ErlPfUWord) port_channel_no(wobj)); */
 	    PRINT_CHAR(res, fn, arg, '.');
-	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
-			(ErlPfUWord) port_number(wobj));
+	    /* PRINT_UWORD(res, fn, arg, 'u', 0, 1, */
+	    /*     	(ErlPfUWord) port_number(wobj)); */
 	    PRINT_CHAR(res, fn, arg, '>');
 	    break;
 	case LIST_DEF:

@@ -118,6 +118,11 @@
 #endif
 
 /*
+ * sysconf is not available
+ */
+#define NO_SYSCONF
+
+/*
  * Min number of async threads
  */
 #define  ERTS_MIN_NO_OF_ASYNC_THREADS 0

@@ -124,16 +124,18 @@ int erts_has_code_write_permission(void);
 
 #if ERTS_GLB_INLINE_INCL_FUNC_DEF
 
-extern erts_smp_atomic32_t the_active_code_index;
-extern erts_smp_atomic32_t the_staging_code_index;
+// extern erts_smp_atomic32_t the_active_code_index;
+// extern erts_smp_atomic32_t the_staging_code_index;
 
 ERTS_GLB_INLINE ErtsCodeIndex erts_active_code_ix(void)
 {
-    return erts_smp_atomic32_read_nob(&the_active_code_index);
+    // ESTUB: Code loading
+    return 0;
 }
 ERTS_GLB_INLINE ErtsCodeIndex erts_staging_code_ix(void)
 {
-    return erts_smp_atomic32_read_nob(&the_staging_code_index);
+    // ESTUB: Code loading
+    return 1;
 }
 
 #endif /* ERTS_GLB_INLINE_INCL_FUNC_DEF */

@@ -26,6 +26,7 @@
 int
 main(int argc, char **argv)
 {
+    fprintf(stderr, "Hi from Epiphany!\n");
     erl_start(argc, argv);
     return 0;
 }

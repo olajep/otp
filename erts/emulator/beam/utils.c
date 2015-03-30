@@ -704,65 +704,6 @@ erts_bld_atom_2uint_3tup_list(Uint **hpp, Uint *szp, Sint length,
 ** and binaries, and produces better hash values. 
 */
 
-/* some prime numbers just above 2 ^ 28 */
-
-#define FUNNY_NUMBER1  268440163
-#define FUNNY_NUMBER2  268439161
-#define FUNNY_NUMBER3  268435459
-#define FUNNY_NUMBER4  268436141
-#define FUNNY_NUMBER5  268438633
-#define FUNNY_NUMBER6  268437017
-#define FUNNY_NUMBER7  268438039
-#define FUNNY_NUMBER8  268437511
-#define FUNNY_NUMBER9  268439627
-#define FUNNY_NUMBER10 268440479
-#define FUNNY_NUMBER11 268440577
-#define FUNNY_NUMBER12 268440581
-#define FUNNY_NUMBER13 268440593
-#define FUNNY_NUMBER14 268440611
-
-static Uint32
-hash_binary_bytes(Eterm bin, Uint sz, Uint32 hash)
-{
-    byte* ptr;
-    Uint bitoffs;
-    Uint bitsize;
-
-    ERTS_GET_BINARY_BYTES(bin, ptr, bitoffs, bitsize);
-    if (bitoffs == 0) {
-	while (sz--) {
-	    hash = hash*FUNNY_NUMBER1 + *ptr++;
-	}
-	if (bitsize > 0) {
-	    byte b = *ptr;
-
-	    b >>= 8 - bitsize;
-	    hash = (hash*FUNNY_NUMBER1 + b) * FUNNY_NUMBER12 + bitsize;
-	}
-    } else {
-	Uint previous = *ptr++;
-	Uint b;
-	Uint lshift = bitoffs;
-	Uint rshift = 8 - lshift;
-	    
-	while (sz--) {
-	    b = (previous << lshift) & 0xFF;
-	    previous = *ptr++;
-	    b |= previous >> rshift;
-	    hash = hash*FUNNY_NUMBER1 + b;
-	}
-	if (bitsize > 0) {
-	    b = (previous << lshift) & 0xFF;
-	    previous = *ptr++;
-	    b |= previous >> rshift;
-	    
-	    b >>= 8 - bitsize;
-	    hash = (hash*FUNNY_NUMBER1 + b) * FUNNY_NUMBER12 + bitsize;
-	}
-    }
-    return hash;
-}
-
 Uint32 make_hash(Eterm term_arg)
 {
     EPIPHANY_STUB(make_hash);
@@ -1362,29 +1303,6 @@ not_equal:
     DESTROY_WSTACK(stack);
     return 0;
 }
-
-
-/* 
- * Lexically compare two strings of bytes (string s1 length l1 and s2 l2).
- *
- *	s1 < s2	return -1
- *	s1 = s2	return  0
- *	s1 > s2 return +1
- */
-static int cmpbytes(byte *s1, int l1, byte *s2, int l2)
-{
-    int i;
-    i = 0;
-    while((i < l1) && (i < l2)) {
-	if (s1[i] < s2[i]) return(-1);
-	if (s1[i] > s2[i]) return(1);
-	i++;
-    }
-    if (l1 < l2) return(-1);
-    if (l1 > l2) return(1);
-    return(0);
-}
-
 
 /*
  * Compare objects.

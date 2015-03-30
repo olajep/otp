@@ -498,87 +498,7 @@ do_send(Process *p, Eterm to, Eterm msg, int suspend, Eterm *refp) {
 
 BIF_RETTYPE send_3(BIF_ALIST_3)
 {
-    Eterm ref;
-    Process *p = BIF_P;
-    Eterm to = BIF_ARG_1;
-    Eterm msg = BIF_ARG_2;
-    Eterm opts = BIF_ARG_3;
-
-    int connect = !0;
-    int suspend = !0;
-    Eterm l = opts;
-    Sint result;
-    
-    while (is_list(l)) {
-	if (CAR(list_val(l)) == am_noconnect) {
-	    connect = 0;
-	} else if (CAR(list_val(l)) == am_nosuspend) {
-	    suspend = 0;
-	} else {
-	    BIF_ERROR(p, BADARG);
-	}
-	l = CDR(list_val(l));
-    }
-    if(!is_nil(l)) {
-	BIF_ERROR(p, BADARG);
-    }
-
-#ifdef DEBUG
-    ref = NIL;
-#endif
-
-    result = do_send(p, to, msg, suspend, &ref);
-    if (result > 0) {
-	ERTS_VBUMP_REDS(p, result);
-	if (ERTS_IS_PROC_OUT_OF_REDS(p))
-	    goto yield_return;
-	BIF_RET(am_ok);
-    }
-
-    switch (result) {
-    case 0:
-	/* May need to yield even though we do not bump reds here... */
-	if (ERTS_IS_PROC_OUT_OF_REDS(p))
-	    goto yield_return;
-	BIF_RET(am_ok); 
-	break;
-    case SEND_TRAP:
-	if (connect) {
-	    BIF_TRAP3(dsend3_trap, p, to, msg, opts); 
-	} else {
-	    BIF_RET(am_noconnect);
-	}
-	break;
-    case SEND_YIELD:
-	if (suspend) {
-	    ERTS_BIF_YIELD3(bif_export[BIF_send_3], p, to, msg, opts);
-	} else {
-	    BIF_RET(am_nosuspend);
-	}
-	break;
-    case SEND_YIELD_RETURN:
-	if (!suspend)
-	    BIF_RET(am_nosuspend);
-    yield_return:
-	ERTS_BIF_YIELD_RETURN(p, am_ok);
-    case SEND_AWAIT_RESULT:
-	ASSERT(is_internal_ref(ref));
-	BIF_TRAP3(await_port_send_result_trap, p, ref, am_nosuspend, am_ok);
-    case SEND_BADARG:
-	BIF_ERROR(p, BADARG); 
-	break;
-    case SEND_USER_ERROR:
-	BIF_ERROR(p, EXC_ERROR); 
-	break;
-    case SEND_INTERNAL_ERROR:
-	BIF_ERROR(p, EXC_INTERNAL_ERROR);
-	break;
-    default:
-	ASSERT(! "Illegal send result"); 
-	break;
-    }
-    ASSERT(! "Can not arrive here");
-    BIF_ERROR(p, BADARG);
+    EPIPHANY_STUB(send_3);
 }
 
 BIF_RETTYPE send_2(BIF_ALIST_2)
@@ -588,56 +508,7 @@ BIF_RETTYPE send_2(BIF_ALIST_2)
 
 Eterm erl_send(Process *p, Eterm to, Eterm msg)
 {
-    Eterm ref;
-    Sint result;
-
-#ifdef DEBUG
-    ref = NIL;
-#endif
-
-    result = do_send(p, to, msg, !0, &ref);
-    
-    if (result > 0) {
-	ERTS_VBUMP_REDS(p, result);
-	if (ERTS_IS_PROC_OUT_OF_REDS(p))
-	    goto yield_return;
-	BIF_RET(msg);
-    }
-
-    switch (result) {
-    case 0:
-	/* May need to yield even though we do not bump reds here... */
-	if (ERTS_IS_PROC_OUT_OF_REDS(p))
-	    goto yield_return;
-	BIF_RET(msg); 
-	break;
-    case SEND_TRAP:
-	BIF_TRAP2(dsend2_trap, p, to, msg); 
-	break;
-    case SEND_YIELD:
-	ERTS_BIF_YIELD2(bif_export[BIF_send_2], p, to, msg);
-	break;
-    case SEND_YIELD_RETURN:
-    yield_return:
-	ERTS_BIF_YIELD_RETURN(p, msg);
-    case SEND_AWAIT_RESULT:
-	ASSERT(is_internal_ref(ref));
-	BIF_TRAP3(await_port_send_result_trap, p, ref, msg, msg);
-    case SEND_BADARG:
-	BIF_ERROR(p, BADARG); 
-	break;
-    case SEND_USER_ERROR:
-	BIF_ERROR(p, EXC_ERROR); 
-	break;
-    case SEND_INTERNAL_ERROR:
-	BIF_ERROR(p, EXC_INTERNAL_ERROR);
-	break;
-    default:
-	ASSERT(! "Illegal send result"); 
-	break;
-    }
-    ASSERT(! "Can not arrive here");
-    BIF_ERROR(p, BADARG);
+    EPIPHANY_STUB(erl_send);
 }
 
 /**********************************************************************/
@@ -1062,41 +933,6 @@ BIF_RETTYPE delete_element_2(BIF_ALIST_3)
     ++ptr;
     while (c2--) { *++hp = *++ptr; }
 
-    BIF_RET(res);
-}
-
-/**********************************************************************/
-
-/* convert an atom to a list of ascii integer */
-
-BIF_RETTYPE atom_to_list_1(BIF_ALIST_1)
-{
-    Atom* ap;
-    Uint num_chars, num_built, num_eaten;
-    byte* err_pos;
-    Eterm res;
-#ifdef DEBUG
-    int ares;
-#endif
-
-    if (is_not_atom(BIF_ARG_1))
-	BIF_ERROR(BIF_P, BADARG);
-     
-    /* read data from atom table */
-    ap = atom_tab(atom_val(BIF_ARG_1));
-    if (ap->len == 0)
-	BIF_RET(NIL);	/* the empty atom */
-
-#ifdef DEBUG
-    ares =
-#endif
-	erts_analyze_utf8(ap->name, ap->len, &err_pos, &num_chars, NULL);
-    ASSERT(ares == ERTS_UTF8_OK);
-    
-    res = erts_utf8_to_list(BIF_P, num_chars, ap->name, ap->len, ap->len,
-			    &num_built, &num_eaten, NIL);
-    ASSERT(num_built == num_chars);
-    ASSERT(num_eaten == ap->len);
     BIF_RET(res);
 }
 

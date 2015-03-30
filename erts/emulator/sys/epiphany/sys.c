@@ -253,117 +253,10 @@ static int replace_intr = 0;
 /* assume yes initially, ttsl_init will clear it */
 int using_oldshell = 1; 
 
-#ifdef ERTS_ENABLE_KERNEL_POLL
-
-int erts_use_kernel_poll = 0;
-
-struct {
-    int (*select)(ErlDrvPort, ErlDrvEvent, int, int);
-    int (*event)(ErlDrvPort, ErlDrvEvent, ErlDrvEventData);
-    void (*check_io_as_interrupt)(void);
-    void (*check_io_interrupt)(int);
-    void (*check_io_interrupt_tmd)(int, erts_short_time_t);
-    void (*check_io)(int);
-    Uint (*size)(void);
-    Eterm (*info)(void *);
-    int (*check_io_debug)(ErtsCheckIoDebugInfo *);
-} io_func = {0};
-
-
-int
-driver_select(ErlDrvPort port, ErlDrvEvent event, int mode, int on)
-{
-    return (*io_func.select)(port, event, mode, on);
-}
-
-int
-driver_event(ErlDrvPort port, ErlDrvEvent event, ErlDrvEventData event_data)
-{
-    return (*io_func.event)(port, event, event_data);
-}
-
-Eterm erts_check_io_info(void *p)
-{
-    return (*io_func.info)(p);
-}
-
-int
-erts_check_io_debug(ErtsCheckIoDebugInfo *ip)
-{
-    return (*io_func.check_io_debug)(ip);
-}
-
-
-static void
-init_check_io(void)
-{
-    if (erts_use_kernel_poll) {
-	io_func.select			= driver_select_kp;
-	io_func.event			= driver_event_kp;
-#ifdef ERTS_POLL_NEED_ASYNC_INTERRUPT_SUPPORT
-	io_func.check_io_as_interrupt	= erts_check_io_async_sig_interrupt_kp;
-#endif
-	io_func.check_io_interrupt	= erts_check_io_interrupt_kp;
-	io_func.check_io_interrupt_tmd	= erts_check_io_interrupt_timed_kp;
-	io_func.check_io		= erts_check_io_kp;
-	io_func.size			= erts_check_io_size_kp;
-	io_func.info			= erts_check_io_info_kp;
-	io_func.check_io_debug		= erts_check_io_debug_kp;
-	erts_init_check_io_kp();
-	max_files = erts_check_io_max_files_kp();
-    }
-    else {
-	io_func.select			= driver_select_nkp;
-	io_func.event			= driver_event_nkp;
-#ifdef ERTS_POLL_NEED_ASYNC_INTERRUPT_SUPPORT
-	io_func.check_io_as_interrupt	= erts_check_io_async_sig_interrupt_nkp;
-#endif
-	io_func.check_io_interrupt	= erts_check_io_interrupt_nkp;
-	io_func.check_io_interrupt_tmd	= erts_check_io_interrupt_timed_nkp;
-	io_func.check_io		= erts_check_io_nkp;
-	io_func.size			= erts_check_io_size_nkp;
-	io_func.info			= erts_check_io_info_nkp;
-	io_func.check_io_debug		= erts_check_io_debug_nkp;
-	erts_init_check_io_nkp();
-	max_files = erts_check_io_max_files_nkp();
-    }
-}
-
-#ifdef ERTS_POLL_NEED_ASYNC_INTERRUPT_SUPPORT
-#define ERTS_CHK_IO_AS_INTR()	(*io_func.check_io_as_interrupt)()
-#else
-#define ERTS_CHK_IO_AS_INTR()	(*io_func.check_io_interrupt)(1)
-#endif
-#define ERTS_CHK_IO_INTR	(*io_func.check_io_interrupt)
-#define ERTS_CHK_IO_INTR_TMD	(*io_func.check_io_interrupt_tmd)
-#define ERTS_CHK_IO		(*io_func.check_io)
-#define ERTS_CHK_IO_SZ		(*io_func.size)
-
-#else /* !ERTS_ENABLE_KERNEL_POLL */
-
-static void
-init_check_io(void)
-{
-    erts_init_check_io();
-    max_files = erts_check_io_max_files();
-}
-
-#ifdef ERTS_POLL_NEED_ASYNC_INTERRUPT_SUPPORT
-#define ERTS_CHK_IO_AS_INTR()	erts_check_io_async_sig_interrupt()
-#else
-#define ERTS_CHK_IO_AS_INTR()	erts_check_io_interrupt(1)
-#endif
-#define ERTS_CHK_IO_INTR	erts_check_io_interrupt
-#define ERTS_CHK_IO_INTR_TMD	erts_check_io_interrupt_timed
-#define ERTS_CHK_IO		erts_check_io
-#define ERTS_CHK_IO_SZ		erts_check_io_size
-
-#endif
-
 void
 erts_sys_schedule_interrupt(int set)
 {
-    ERTS_CHK_IO_INTR(set);
+    EPIPHANY_STUB(erts_sys_schedule_interrupt);
 }
 
 #ifdef ERTS_SMP
@@ -377,9 +270,8 @@ erts_sys_schedule_interrupt_timed(int set, erts_short_time_t msec)
 Uint
 erts_sys_misc_mem_sz(void)
 {
-    Uint res = ERTS_CHK_IO_SZ();
-    res += erts_smp_atomic_read_mb(&sys_misc_mem_sz);
-    return res;
+    // ESTUB
+    return 0;
 }
 
 /*
@@ -612,38 +504,6 @@ erl_sys_init(void)
 
 /* signal handling */
 
-#ifdef SIG_SIGSET		/* Old SysV */
-RETSIGTYPE (*sys_sigset(sig, func))()
-int sig;
-RETSIGTYPE (*func)();
-{
-    return(sigset(sig, func));
-}
-void sys_sigblock(int sig)
-{
-    sighold(sig);
-}
-void sys_sigrelease(int sig)
-{
-    sigrelse(sig);
-}
-#else /* !SIG_SIGSET */
-#ifdef SIG_SIGNAL		/* Old BSD */
-RETSIGTYPE (*sys_sigset(sig, func))(int, int)
-int sig;
-RETSIGTYPE (*func)();
-{
-    return(signal(sig, func));
-}
-sys_sigblock(int sig)
-{
-    sigblock(sig);
-}
-sys_sigrelease(int sig)
-{
-    sigsetmask(sigblock(0) & ~sigmask(sig));
-}
-#else /* !SIG_SIGNAL */	/* The True Way - POSIX!:-) */
 RETSIGTYPE (*sys_sigset(int sig, RETSIGTYPE (*func)(int)))(int)
 {
     EPIPHANY_STUB(sys_sigset);
@@ -656,23 +516,13 @@ RETSIGTYPE (*sys_sigset(int sig, RETSIGTYPE (*func)(int)))(int)
 
 void sys_sigblock(int sig)
 {
-    sigset_t mask;
-
-    sigemptyset(&mask);
-    sigaddset(&mask, sig);
-    sigprocmask(SIG_BLOCK, &mask, (sigset_t *)NULL);
+    EPIPHANY_STUB(sys_sigblock);
 }
 
 void sys_sigrelease(int sig)
 {
-    sigset_t mask;
-
-    sigemptyset(&mask);
-    sigaddset(&mask, sig);
-    sigprocmask(SIG_UNBLOCK, &mask, (sigset_t *)NULL);
+    EPIPHANY_STUB(sys_sigrelease);
 }
-#endif /* !SIG_SIGNAL */
-#endif /* !SIG_SIGSET */
 
 #if (0) /* not used? -- gordon */
 static void (*break_func)();
@@ -693,13 +543,6 @@ static ERTS_INLINE int
 prepare_crash_dump(int secs)
 {
 #define NUFBUF (3)
-    int i;
-    char env[21]; /* enough to hold any 64-bit integer */
-    size_t envsz;
-    DeclareTmpHeapNoproc(heap,NUFBUF);
-    Port *heart_port;
-    Eterm *hp = heap;
-    Eterm list = NIL;
     int has_heart = 0;
 
     UseTmpHeapNoproc(NUFBUF);
@@ -707,48 +550,8 @@ prepare_crash_dump(int secs)
     if (ERTS_PREPARED_CRASH_DUMP)
 	return 0; /* We have already been called */
 
-    heart_port = erts_get_heart_port();
-
-    /* Positive secs means an alarm must be set
-     * 0 or negative means no alarm
-     *
-     * Set alarm before we try to write to a port
-     * we don't want to hang on a port write with
-     * no alarm.
-     *
-     */
-
-    if (secs >= 0) {
-	alarm((unsigned int)secs);
-    }
-
-    /* close all viable sockets via emergency close callbacks.
-     * Specifically we want to close epmd sockets.
-     */
-
-    erts_emergency_close_ports();
-
-    if (heart_port) {
-	has_heart = 1;
-	list = CONS(hp, make_small(8), list); hp += 2;
-	/* send to heart port, CMD = 8, i.e. prepare crash dump =o */
-	erts_port_output(NULL, ERTS_PORT_SIG_FLG_FORCE_IMM_CALL, heart_port,
-			 heart_port->common.id, list, NULL);
-    }
-
     /* Make sure we have a fd for our crashdump file. */
     close(crashdump_companion_cube_fd);
-
-    envsz = sizeof(env);
-    i = erts_sys_getenv__("ERL_CRASH_DUMP_NICE", env, &envsz);
-    if (i >= 0) {
-	int nice_val;
-	nice_val = i != 0 ? 0 : atoi(env);
-	if (nice_val > 39) {
-	    nice_val = 39;
-	}
-	erts_silence_warn_unused_result(nice(nice_val));
-    }
 
     UnUseTmpHeapNoproc(NUFBUF);
 #undef NUFBUF
@@ -774,7 +577,8 @@ break_requested(void)
       erl_exit(ERTS_INTR_EXIT, "");
 
   ERTS_SET_BREAK_REQUESTED;
-  ERTS_CHK_IO_AS_INTR(); /* Make sure we don't sleep in poll */
+  // ESTUB
+  // ERTS_CHK_IO_AS_INTR(); /* Make sure we don't sleep in poll */
 }
 
 /* set up signal handlers for break and quit */
@@ -1007,32 +811,7 @@ static reset_qnx_spawn()
 
 void erts_do_break_handling(void)
 {
-    /*
-     * Most functions that do_break() calls are intentionally not thread safe;
-     * therefore, make sure that all threads but this one are blocked before
-     * proceeding!
-     */
-    erts_smp_thr_progress_block();
-
-    /* during break we revert to initial settings */
-    /* this is done differently for oldshell */
-    if (using_oldshell && !replace_intr) {
-      SET_BLOCKING(1);
-    }
-    
-    /* call the break handling function, reset the flag */
-    do_break();
-
-    ERTS_UNSET_BREAK_REQUESTED;
-
-    fflush(stdout);
-    
-    /* after break we go back to saved settings */
-    if (using_oldshell && !replace_intr) {
-      SET_NONBLOCKING(1);
-    }
-
-    erts_smp_thr_progress_unblock();
+    EPIPHANY_STUB(erts_do_break_handling);
 }
 
 /* Fills in the systems representation of the jam/beam process identifier.
@@ -1243,7 +1022,7 @@ erl_debug(char* fmt, ...)
 
 #ifdef ERTS_SMP
 
-void
+static void
 erts_check_children(void)
 {
     EPIPHANY_STUB(erts_check_children);
@@ -1320,13 +1099,8 @@ child_waiter(void *unused)
 void
 erl_sys_schedule(int runnable)
 {
-#ifdef ERTS_SMP
-    ERTS_CHK_IO(!runnable);
-#else
-    ERTS_CHK_IO(runnable ? 0 : !check_children());
-#endif
+    // ETODO poll IO
     ERTS_SMP_LC_ASSERT(!erts_thr_progress_is_blocking());
-    (void) check_children();
 }
 
 
@@ -1455,27 +1229,11 @@ init_smp_sig_notify(void)
 			NULL,
 			&thr_opts);
 }
-#ifdef __DARWIN__
 
-int erts_darwin_main_thread_pipe[2];
-int erts_darwin_main_thread_result_pipe[2];
-
-static void initialize_darwin_main_thread_pipes(void) 
-{
-    if (pipe(erts_darwin_main_thread_pipe) < 0 || 
-	pipe(erts_darwin_main_thread_result_pipe) < 0) {
-	erl_exit(1,"Fatal error initializing Darwin main thread stealing");
-    }
-}
-
-#endif
 void
 erts_sys_main_thread(void)
 {
     erts_thread_disable_fpe();
-#ifdef __DARWIN__
-    initialize_darwin_main_thread_pipes();
-#endif
     /* Become signal receiver thread... */
 #ifdef ERTS_ENABLE_LOCK_CHECK
     erts_lc_set_thread_name("signal_receiver");
@@ -1484,27 +1242,7 @@ erts_sys_main_thread(void)
     smp_sig_notify(0); /* Notify initialized */
     while (1) {
 	/* Wait for a signal to arrive... */
-#ifdef __DARWIN__
-	/*
-	 * The wx driver needs to be able to steal the main thread for Cocoa to
-	 * work properly.
-	 */
-	fd_set readfds;
-	int res;
 
-	FD_ZERO(&readfds);
-	FD_SET(erts_darwin_main_thread_pipe[0], &readfds);
-	res = select(erts_darwin_main_thread_pipe[0] + 1, &readfds, NULL, NULL, NULL);
-	if (res > 0 && FD_ISSET(erts_darwin_main_thread_pipe[0],&readfds)) {
-	    void* (*func)(void*);
-	    void* arg;
-	    void *resp;
-	    read(erts_darwin_main_thread_pipe[0],&func,sizeof(void* (*)(void*)));
-	    read(erts_darwin_main_thread_pipe[0],&arg, sizeof(void*));
-	    resp = (*func)(arg);
-	    write(erts_darwin_main_thread_result_pipe[1],&resp,sizeof(void *));
-	}
-#else
 #ifdef DEBUG
 	int res =
 #else
@@ -1513,7 +1251,6 @@ erts_sys_main_thread(void)
 	    select(0, NULL, NULL, NULL, NULL);
 	ASSERT(res < 0);
 	ASSERT(errno == EINTR);
-#endif
     }
 }
 
@@ -1601,7 +1338,7 @@ erl_sys_args(int* argc, char** argv)
     }
 #endif
 
-    init_check_io();
+    // ETODO: init io
 
 #ifdef ERTS_SMP
     init_smp_sig_notify();
@@ -1615,6 +1352,12 @@ erl_sys_args(int* argc, char** argv)
     }
     *argc = j;
 
+}
+
+// We provide sysconf if it's not available
+long __attribute__((weak)) sysconf(int __attribute__((unused)) name)
+{
+    return -1;
 }
 
 void sys_epiphany_stub(const char* name)
