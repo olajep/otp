@@ -1135,11 +1135,20 @@ $(BINDIR)/$(EMULATOR_EXECUTABLE): $(INIT_OBJS) $(OBJS) $(DEPLIBS) $(LCF)
 	$(STATIC_DRIVER_LIBS) $(LIBS), $(BEAM_LMCONF))
 
 else
+ifeq ($(findstring epiphany,$(TARGET)),epiphany)
+## XXX ETODO: Hardcoded to P16 to avoid relocation issue
+$(BINDIR)/$(EMULATOR_EXECUTABLE): $(INIT_OBJS) $(OBJS) $(DEPLIBS)
+	$(ld_verbose)$(PURIFY) $(LD) -o $(BINDIR)/$(EMULATOR_EXECUTABLE) \
+	$(HIPEBEAMLDFLAGS) $(LDFLAGS) $(DEXPORT) $(INIT_OBJS) $(OBJS) \
+	$(STATIC_NIF_LIBS) $(STATIC_DRIVER_LIBS) $(LIBS) \
+	-Wl,-O2 -T sys/epiphany/p16_legacy_hack2.ldf
+else
 $(BINDIR)/$(EMULATOR_EXECUTABLE): $(INIT_OBJS) $(OBJS) $(DEPLIBS)
 	$(ld_verbose)$(PURIFY) $(LD) -o $(BINDIR)/$(EMULATOR_EXECUTABLE) \
 	$(HIPEBEAMLDFLAGS) $(LDFLAGS) $(DEXPORT) $(INIT_OBJS) $(OBJS) \
 	$(STATIC_NIF_LIBS) $(STATIC_DRIVER_LIBS) $(LIBS)
 
+endif
 endif
 endif
 
