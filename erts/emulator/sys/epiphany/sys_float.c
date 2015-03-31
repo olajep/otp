@@ -31,6 +31,7 @@
 void
 erts_sys_init_float(void)
 {
+    fprintf(stderr, "in erts_sys_init_float\n");
 # ifdef SIGFPE
     sys_sigset(SIGFPE, SIG_IGN); /* Ignore so we can test for NaN and Inf */
 # endif
@@ -667,6 +668,7 @@ static void fpe_sig_handler(int sig)
 
 static void erts_thread_catch_fp_exceptions(void)
 {
+    fprintf(stderr, "in erts_thread_catch_fp_exceptions\n");
     sys_sigset(SIGFPE, fpe_sig_handler);
     unmask_fpe();
 }

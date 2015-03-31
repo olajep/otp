@@ -1048,8 +1048,10 @@ void process_main(void)
         * process is running. I.e. there is no race for init_done.
         */
 	init_done = 1;
+        fprintf(stderr, "Initialising BEAM\n");
 	goto init_emulator;
     }
+    fprintf(stderr, "Running BEAM\n");
 
     c_p = NULL;
     reds_used = 0;

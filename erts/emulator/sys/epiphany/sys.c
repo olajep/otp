@@ -506,7 +506,8 @@ erl_sys_init(void)
 
 RETSIGTYPE (*sys_sigset(int sig, RETSIGTYPE (*func)(int)))(int)
 {
-    EPIPHANY_STUB(sys_sigset);
+    fprintf(stderr, "Warning: signal(%d, 0x%lx);\n", sig, (unsigned long)func);
+    return signal(sig, func);
 }
 
 #ifdef USE_THREADS
@@ -674,6 +675,7 @@ static RETSIGTYPE do_quit(int signum)
 
 /* Disable break */
 void erts_set_ignore_break(void) {
+    fprintf(stderr, "in erts_set_ignore_break\n");
     sys_sigset(SIGINT,  SIG_IGN);
     sys_sigset(SIGQUIT, SIG_IGN);
     sys_sigset(SIGTSTP, SIG_IGN);
@@ -687,6 +689,7 @@ void erts_replace_intr(void) {
 
 void init_break_handler(void)
 {
+    fprintf(stderr, "in init_break_handler\n");
    sys_sigset(SIGINT, request_break);
 #ifndef ETHR_UNUSABLE_SIGUSRX
    sys_sigset(SIGUSR1, user_signal1);
@@ -823,6 +826,91 @@ void sys_get_pid(char *buffer, size_t buffer_size){
     pid_t p = getpid();
     /* Assume the pid is scalar and can rest in an unsigned long... */
     erts_snprintf(buffer, buffer_size, "%lu",(unsigned long) p);
+}
+
+int
+erts_sys_putenv_raw(char *key, char *value) {
+    return erts_sys_putenv(key, value);
+}
+int
+erts_sys_putenv(char *key, char *value)
+{
+    int res;
+    char *env;
+    Uint need = strlen(key) + strlen(value) + 2;
+
+#ifdef HAVE_COPYING_PUTENV
+    env = erts_alloc(ERTS_ALC_T_TMP, need);
+#else
+    env = erts_alloc(ERTS_ALC_T_PUTENV_STR, need);
+    erts_smp_atomic_add_nob(&sys_misc_mem_sz, need);
+#endif
+    strcpy(env,key);
+    strcat(env,"=");
+    strcat(env,value);
+    erts_smp_rwmtx_rwlock(&environ_rwmtx);
+    res = putenv(env);
+    erts_smp_rwmtx_rwunlock(&environ_rwmtx);
+#ifdef HAVE_COPYING_PUTENV
+    erts_free(ERTS_ALC_T_TMP, env);
+#endif
+    return res;
+}
+
+int
+erts_sys_getenv__(char *key, char *value, size_t *size)
+{
+    int res;
+    char *orig_value = getenv(key);
+    if (!orig_value)
+	res = -1;
+    else {
+	size_t len = sys_strlen(orig_value);
+	if (len >= *size) {
+	    *size = len + 1;
+	    res = 1;
+	}
+	else {
+	    *size = len;
+	    sys_memcpy((void *) value, (void *) orig_value, len+1);
+	    res = 0;
+	}
+    }
+    return res;
+}
+
+int
+erts_sys_getenv_raw(char *key, char *value, size_t *size) {
+    return erts_sys_getenv(key, value, size);
+}
+
+/*
+ * erts_sys_getenv
+ * returns:
+ *  -1, if environment key is not set with a value
+ *   0, if environment key is set and value fits into buffer size
+ *   1, if environment key is set but does not fit into buffer size
+ *      size is set with the needed buffer size value
+ */
+
+int
+erts_sys_getenv(char *key, char *value, size_t *size)
+{
+    int res;
+    erts_smp_rwmtx_rlock(&environ_rwmtx);
+    res = erts_sys_getenv__(key, value, size);
+    erts_smp_rwmtx_runlock(&environ_rwmtx);
+    return res;
+}
+
+int
+erts_sys_unsetenv(char *key)
+{
+    int res;
+    erts_smp_rwmtx_rwlock(&environ_rwmtx);
+    res = unsetenv(key);
+    erts_smp_rwmtx_rwunlock(&environ_rwmtx);
+    return res;
 }
 
 void
@@ -1362,6 +1450,6 @@ long __attribute__((weak)) sysconf(int __attribute__((unused)) name)
 
 void sys_epiphany_stub(const char* name)
 {
-    fprintf(stderr, "%s is a stub!", name);
+    fprintf(stderr, "%s is a stub!\n", name);
     abort();
 }

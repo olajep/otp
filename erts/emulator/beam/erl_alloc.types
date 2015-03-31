@@ -424,6 +424,7 @@ type	SYS_READ_BUF	TEMPORARY	SYSTEM		sys_read_buf
 type	FD_ENTRY_BUF	STANDARD	SYSTEM		fd_entry_buf
 type	ENVIRONMENT	TEMPORARY	SYSTEM		environment
 type	FD_TAB		LONG_LIVED	SYSTEM		fd_tab
+type	PUTENV_STR	SYSTEM		SYSTEM		putenv_string
 
 +endif
 
