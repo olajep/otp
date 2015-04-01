@@ -1,0 +1,3 @@
+#! /bin/sh
+
+e-objdump -t /home/magnus/otp/erts/emulator/../../bin/epiphany-unknown-elf/beam | grep -e '.bss	' -e '.data	' -e '.text	' | grep -E ' [^ .]+$' | sed 's/^\([^ ]*\)[^_]* \([^ ]*\)$/#define SLAVE_SYM\2 0x\1/g' > slave_syms.h

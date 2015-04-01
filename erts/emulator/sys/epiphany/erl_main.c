@@ -82,11 +82,11 @@ int sys_epiphany_printf(char *format, va_list args) {
     int count;
     e_coords_from_coreid(id, &row, &col);
     ASSERT (goflag == 1);
-    e_mutex_lock(32, 8, &global_mutex);
-    count = internal_printf("[%d,%d] ", row-32, col-8);
+    e_mutex_lock(0, 0, &global_mutex);
+    count = internal_printf("[%d,%d] ", row, col);
     count += internal_vprintf(format, args);
     fflush(stdout);
-    e_mutex_unlock(32, 8, &global_mutex);
+    e_mutex_unlock(0, 0, &global_mutex);
     return count;
 }
 
@@ -105,16 +105,16 @@ int
 main(int argc, char **argv)
 {
     if (is_leader()) {
-        e_mutex_init(32, 8, &global_mutex, NULL);
+        e_mutex_init(0, 0, &global_mutex, NULL);
         erts_printf_stdout_func = sys_epiphany_printf;
         erts_printf_stderr_func = sys_epiphany_printf;
         goflag = 1;
-        erts_fprintf(stdout, "I'll just pump forever\n");
-        while(1) pump_output();
+        erts_fprintf(stdout, "I'm the leader\n");
     } else {
         while (goflag == 0);
     }
     erts_fprintf(stdout, "Hi from Epiphany!\n");
-    erl_start(argc, argv);
+    //erl_start(argc, argv);
+    erts_fprintf(stdout, "Terminating normally\n");
     return 0;
 }
