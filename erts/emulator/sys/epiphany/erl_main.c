@@ -114,7 +114,7 @@ main(int argc, char **argv)
         while (goflag == 0);
     }
     erts_fprintf(stdout, "Hi from Epiphany!\n");
-    //erl_start(argc, argv);
+    erl_start(argc, argv);
     erts_fprintf(stdout, "Terminating normally\n");
     return 0;
 }

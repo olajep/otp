@@ -18,4 +18,4 @@ slave_syms.h: ~/otp/bin/epiphany-unknown-elf/beam
 	~/otp/erts/emulator/utils/make_slave_syms
 
 clean:
-	rm -f pump $(PUMP_OBJS)
+	rm -f pump $(PUMP_OBJS) slave_syms.h

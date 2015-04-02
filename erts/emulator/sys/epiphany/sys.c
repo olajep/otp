@@ -226,8 +226,6 @@ static struct fd_data {
 static void* child_waiter(void *);
 #endif
 
-static int crashdump_companion_cube_fd = -1;
-
 /********************* General functions ****************************/
 
 /* This is used by both the drivers and general I/O, must be set early */
@@ -249,7 +247,6 @@ volatile int erts_break_requested = 0;
 #endif
 /* set early so the break handler has access to initial mode */
 // static struct termios initial_tty_mode; // DELETE ME
-static int replace_intr = 0;
 /* assume yes initially, ttsl_init will clear it */
 int using_oldshell = 1; 
 
@@ -425,33 +422,6 @@ erts_sys_pre_init(void)
 #endif
 #endif /* USE_THREADS */
     erts_smp_atomic_init_nob(&sys_misc_mem_sz, 0);
-
-    {
-      /*
-       * Unfortunately we depend on fd 0,1,2 in the old shell code.
-       * So if for some reason we do not have those open when we start
-       * we have to open them here. Not doing this can cause the emulator
-       * to deadlock when reaping the fd_driver ports :(
-       */
-      int fd;
-      /* Make sure fd 0 is open */
-      if ((fd = open("/dev/null", O_RDONLY)) != 0)
-	close(fd);
-      /* Make sure fds 1 and 2 are open */
-      while (fd < 3) {
-	fd = open("/dev/null", O_WRONLY);
-      }
-      close(fd);
-    }
-
-    /* We need a file descriptor to close in the crashdump creation.
-     * We close this one to be sure we can get a fd for our real file ...
-     * so, we create one here ... a stone to carry all the way home.
-     */
-
-    crashdump_companion_cube_fd = open("/dev/null", O_RDONLY);
-
-    /* don't lose it, there will be cake */
 }
 
 void
@@ -550,9 +520,6 @@ prepare_crash_dump(int secs)
 
     if (ERTS_PREPARED_CRASH_DUMP)
 	return 0; /* We have already been called */
-
-    /* Make sure we have a fd for our crashdump file. */
-    close(crashdump_companion_cube_fd);
 
     UnUseTmpHeapNoproc(NUFBUF);
 #undef NUFBUF
