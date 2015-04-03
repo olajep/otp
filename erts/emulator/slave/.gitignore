@@ -1,0 +1,8 @@
+/src_copied/*.c
+/include
+
+/Makefile
+/configure
+/config.log
+/config.status
+/config.h.in

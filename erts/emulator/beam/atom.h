@@ -63,18 +63,55 @@ ERTS_GLB_INLINE int erts_is_atom_str(const char *str, Eterm term, int is_latin1)
 ERTS_GLB_INLINE Atom*
 atom_tab(Uint i)
 {
-    EPIPHANY_STUB(atom_tab);
+    return (Atom *) erts_index_lookup(&erts_atom_table, i);
 }
 
 ERTS_GLB_INLINE int erts_is_atom_utf8_bytes(byte *text, size_t len, Eterm term)
 {
-    EPIPHANY_STUB(erts_is_atom_utf8_bytes);
+    Atom *a;
+    if (!is_atom(term))
+	return 0;
+    a = atom_tab(atom_val(term));
+    return (len == (size_t) a->len
+	    && sys_memcmp((void *) a->name, (void *) text, len) == 0);
 }
 
 ERTS_GLB_INLINE int erts_is_atom_str(const char *str, Eterm term, int is_latin1)
 {
-    EPIPHANY_STUB(erts_is_atom_str);
+    Atom *a;
+    int i, len;
+    const byte* aname;
+    const byte* s = (const byte*) str;
+
+    if (!is_atom(term))
+	return 0;
+    a = atom_tab(atom_val(term));
+    len = a->len;
+    aname = a->name;
+    if (is_latin1) {
+	for (i = 0; i < len; s++) {
+	    if (aname[i] < 0x80) {
+		if (aname[i] != *s || *s == '\0')
+		    return 0;
+		i++;
+	    }
+	    else {
+		if (aname[i]   != (0xC0 | (*s >> 6)) || 
+		    aname[i+1] != (0x80 | (*s & 0x3F))) {
+		    return 0;
+		}
+		i += 2;
+	    }
+	}
+    }
+    else {
+	for (i = 0; i < len; i++, s++)
+	    if (aname[i] != *s || *s == '\0')
+		return 0;
+    }
+    return *s == '\0';
 }
+
 #endif
 
 typedef enum {

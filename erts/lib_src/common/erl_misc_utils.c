@@ -36,9 +36,9 @@
 #  include <sys/types.h>
 #  include <sys/param.h>
 #  include <limits.h>
-#  ifndef __epiphany__
+#  ifdef HAVE_DIRENT_H
 #    include <dirent.h>
-#  endif /* !__epiphany__ */
+#  endif /* HAVE_DIRENT_H */
 #  include <sys/stat.h>
 #  include <fcntl.h>
 #  ifdef SYS_SELECT_H

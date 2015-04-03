@@ -1766,7 +1766,28 @@ erts_psd_get(Process *p, int ix)
 ERTS_GLB_INLINE void *
 erts_psd_set(Process *p, ErtsProcLocks plocks, int ix, void *data)
 {
-    EPIPHANY_STUB(erts_psd_set);
+#if defined(ERTS_SMP) && defined(ERTS_ENABLE_LOCK_CHECK)
+    ErtsProcLocks locks = erts_proc_lc_my_proc_locks(p);
+    if (ERTS_LC_PSD_ANY_LOCK == erts_psd_required_locks[ix].set_locks)
+	ERTS_SMP_LC_ASSERT(locks || erts_thr_progress_is_blocking());
+    else {
+	locks &= erts_psd_required_locks[ix].set_locks;
+	ERTS_SMP_LC_ASSERT(erts_psd_required_locks[ix].set_locks == locks
+			   || erts_thr_progress_is_blocking());
+    }
+#endif
+    ASSERT(0 <= ix && ix < ERTS_PSD_SIZE);
+    if (p->psd) {
+	void *old = p->psd->data[ix];
+	p->psd->data[ix] = data;
+	return old;
+    }
+    else {
+	if (!data)
+	    return NULL;
+	else
+	    return erts_psd_set_init(p, plocks, ix, data);
+    }
 }
 
 #endif

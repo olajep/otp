@@ -427,40 +427,6 @@ erts_sys_pre_init(void)
 void
 erl_sys_init(void)
 {
-#if !DISABLE_VFORK
- {
-    int res;
-    char bindir[MAXPATHLEN];
-    size_t bindirsz = sizeof(bindir);
-    Uint csp_path_sz;
-
-    res = erts_sys_getenv_raw("BINDIR", bindir, &bindirsz);
-    if (res != 0) {
-	if (res < 0)
-	    erl_exit(-1,
-		     "Environment variable BINDIR is not set\n");
-	if (res > 0)
-	    erl_exit(-1,
-		     "Value of environment variable BINDIR is too large\n");
-    }
-    if (bindir[0] != DIR_SEPARATOR_CHAR)
-	erl_exit(-1,
-		 "Environment variable BINDIR does not contain an"
-		 " absolute path\n");
-    csp_path_sz = (strlen(bindir)
-		   + 1 /* DIR_SEPARATOR_CHAR */
-		   + sizeof(CHILD_SETUP_PROG_NAME)
-		   + 1);
-    child_setup_prog = erts_alloc(ERTS_ALC_T_CS_PROG_PATH, csp_path_sz);
-    erts_smp_atomic_add_nob(&sys_misc_mem_sz, csp_path_sz);
-    erts_snprintf(child_setup_prog, csp_path_sz,
-            "%s%c%s",
-            bindir,
-            DIR_SEPARATOR_CHAR,
-            CHILD_SETUP_PROG_NAME);
- }
-#endif
-
 #ifdef USE_SETLINEBUF
     setlinebuf(stdout);
 #else

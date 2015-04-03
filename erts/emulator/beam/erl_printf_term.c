@@ -141,7 +141,79 @@ is_printable_string(Eterm list, Eterm* base)
 /* print a atom doing what quoting is necessary */
 static int print_atom_name(fmtfn_t fn, void* arg, Eterm atom, long *dcount)
 {
-    EPIPHANY_STUB(print_atom_name);
+    int n, i;
+    int res;
+    int need_quote;
+    int pos;
+    byte *s;
+    byte *cpos;
+    int c;
+
+    res = 0;
+    i = atom_val(atom);
+
+    if ((i < 0) || (i >= atom_table_size()) ||  (atom_tab(i) == NULL)) {
+	PRINT_STRING(res, fn, arg, "<bad atom index: ");
+	PRINT_SWORD(res, fn, arg, 'd', 0, 1, (ErlPfSWord) i);
+	PRINT_CHAR(res, fn, arg, '>');
+	return res;
+    }
+
+    s = atom_tab(i)->name;
+    n = atom_tab(i)->len;
+
+    *dcount -= atom_tab(i)->len;
+
+    if (n == 0) {
+	PRINT_STRING(res, fn, arg, "''");
+	return res;
+    }
+
+
+    need_quote = 0;
+    cpos = s;
+    pos = n - 1;
+
+    c = *cpos++;
+    if (!IS_LOWER(c))
+	need_quote++;
+    else {
+	while (pos--) {
+	    c = *cpos++;
+	    if (!IS_ALNUM(c) && (c != '_')) {
+		need_quote++;
+		break;
+	    }
+	}
+    }
+    cpos = s;
+    pos = n;
+    if (need_quote)
+	PRINT_CHAR(res, fn, arg, '\'');
+    while(pos--) {
+	c = *cpos++;
+	switch(c) {
+	case '\'': PRINT_STRING(res, fn, arg, "\\'"); break;
+	case '\\': PRINT_STRING(res, fn, arg, "\\\\"); break;
+	case '\n': PRINT_STRING(res, fn, arg, "\\n"); break;
+	case '\f': PRINT_STRING(res, fn, arg, "\\f"); break;
+	case '\t': PRINT_STRING(res, fn, arg, "\\t"); break;
+	case '\r': PRINT_STRING(res, fn, arg, "\\r"); break;
+	case '\b': PRINT_STRING(res, fn, arg, "\\b"); break;
+	case '\v': PRINT_STRING(res, fn, arg, "\\v"); break;
+	default:
+	    if (IS_CNTRL(c)) {
+		PRINT_CHAR(res, fn, arg, '\\');
+		PRINT_UWORD(res, fn, arg, 'o', 1, 3, (ErlPfUWord) c);
+	    }
+	    else
+		PRINT_CHAR(res, fn, arg, (char) c);
+	    break;
+	}
+    }
+    if (need_quote)
+	PRINT_CHAR(res, fn, arg, '\'');
+    return res;
 }
 
 
@@ -293,9 +365,8 @@ print_term(fmtfn_t fn, void* arg, Eterm obj, long *dcount,
 	case REF_DEF:
 	case EXTERNAL_REF_DEF:
 	    PRINT_STRING(res, fn, arg, "#Ref<");
-            // ESTUB:
-	    /* PRINT_UWORD(res, fn, arg, 'u', 0, 1, */
-	    /*     	(ErlPfUWord) ref_channel_no(wobj)); */
+	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
+			(ErlPfUWord) ref_channel_no(wobj));
 	    ref_num = ref_numbers(wobj);
 	    for (i = ref_no_of_numbers(wobj)-1; i >= 0; i--) {
 		PRINT_CHAR(res, fn, arg, '.');
@@ -306,9 +377,8 @@ print_term(fmtfn_t fn, void* arg, Eterm obj, long *dcount,
 	case PID_DEF:
 	case EXTERNAL_PID_DEF:
 	    PRINT_CHAR(res, fn, arg, '<');
-            // ESTUB
-	    /* PRINT_UWORD(res, fn, arg, 'u', 0, 1, */
-	    /*     	(ErlPfUWord) pid_channel_no(wobj)); */
+	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
+			(ErlPfUWord) pid_channel_no(wobj));
 	    PRINT_CHAR(res, fn, arg, '.');
 	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
 			(ErlPfUWord) pid_number(wobj));
@@ -320,12 +390,11 @@ print_term(fmtfn_t fn, void* arg, Eterm obj, long *dcount,
 	case PORT_DEF:
 	case EXTERNAL_PORT_DEF:
 	    PRINT_STRING(res, fn, arg, "#Port<");
-            // ESTUB
-            /* PRINT_UWORD(res, fn, arg, 'u', 0, 1, */
-	    /*     	(ErlPfUWord) port_channel_no(wobj)); */
+	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
+			(ErlPfUWord) port_channel_no(wobj));
 	    PRINT_CHAR(res, fn, arg, '.');
-	    /* PRINT_UWORD(res, fn, arg, 'u', 0, 1, */
-	    /*     	(ErlPfUWord) port_number(wobj)); */
+	    PRINT_UWORD(res, fn, arg, 'u', 0, 1,
+			(ErlPfUWord) port_number(wobj));
 	    PRINT_CHAR(res, fn, arg, '>');
 	    break;
 	case LIST_DEF:

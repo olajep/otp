@@ -349,12 +349,90 @@ Eterm copy_struct(Eterm obj, Uint sz, Eterm** hpp, ErlOffHeap* off_heap)
 		break;
 	    case REFC_BINARY_SUBTAG:
 		{
-                    EPIPHANY_STUB(copy_struct);
+		    ProcBin* pb;
+
+		    pb = (ProcBin *) objp;
+		    if (pb->flags) {
+			erts_emasculate_writable_binary(pb);
+		    }
+		    i = thing_arityval(*objp) + 1;
+		    hbot -= i;
+		    tp = hbot;
+		    while (i--)  {
+			*tp++ = *objp++;
+		    }
+		    *argp = make_binary_rel(hbot, dst_base);
+		    pb = (ProcBin*) hbot;
+		    erts_refc_inc(&pb->val->refc, 2);
+		    pb->next = off_heap->first;
+		    pb->flags = 0;
+		    off_heap->first = (struct erl_off_heap_header*) pb;
+		    OH_OVERHEAD(off_heap, pb->size / sizeof(Eterm));
 		}
 		break;
 	    case SUB_BINARY_SUBTAG:
 		{
-                    EPIPHANY_STUB(copy_struct);
+		    ErlSubBin* sb = (ErlSubBin *) objp;
+		    Eterm real_bin = sb->orig;
+		    Uint bit_offset = sb->bitoffs;
+		    Uint bit_size = sb -> bitsize;
+		    Uint offset = sb->offs;
+		    size_t size = sb->size;
+		    Uint extra_bytes;
+		    Uint real_size;
+		    if ((bit_size + bit_offset) > 8) {
+			extra_bytes = 2;
+		    } else if ((bit_size + bit_offset) > 0) {
+			extra_bytes = 1;
+		    } else {
+			extra_bytes = 0;
+		    } 
+		    real_size = size+extra_bytes;
+		    objp = binary_val_rel(real_bin,src_base);
+		    if (thing_subtag(*objp) == HEAP_BINARY_SUBTAG) {
+			ErlHeapBin* from = (ErlHeapBin *) objp;
+			ErlHeapBin* to;
+			i = heap_bin_size(real_size);
+			hbot -= i;
+			to = (ErlHeapBin *) hbot;
+			to->thing_word = header_heap_bin(real_size);
+			to->size = real_size;
+			sys_memcpy(to->data, ((byte *)from->data)+offset, real_size);
+		    } else {
+			ProcBin* from = (ProcBin *) objp;
+			ProcBin* to;
+			
+			ASSERT(thing_subtag(*objp) == REFC_BINARY_SUBTAG);
+			if (from->flags) {
+			    erts_emasculate_writable_binary(from);
+			}
+			hbot -= PROC_BIN_SIZE;
+			to = (ProcBin *) hbot;
+			to->thing_word = HEADER_PROC_BIN;
+			to->size = real_size;
+			to->val = from->val;
+			erts_refc_inc(&to->val->refc, 2);
+			to->bytes = from->bytes + offset;
+			to->next = off_heap->first;
+			to->flags = 0;
+			off_heap->first = (struct erl_off_heap_header*) to;
+			OH_OVERHEAD(off_heap, to->size / sizeof(Eterm));
+		    }
+		    *argp = make_binary_rel(hbot, dst_base);
+		    if (extra_bytes != 0) {
+			ErlSubBin* res;
+			hbot -= ERL_SUB_BIN_SIZE;
+			res = (ErlSubBin *) hbot;
+			res->thing_word = HEADER_SUB_BIN;
+			res->size = size;
+			res->bitsize = bit_size;
+			res->bitoffs = bit_offset;
+			res->offs = 0;
+			res->is_writable = 0;
+			res->orig = *argp;
+			*argp = make_binary_rel(hbot, dst_base);
+		    }
+		    break;
 		}
 		break;
 	    case FUN_SUBTAG:
