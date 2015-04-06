@@ -14,7 +14,7 @@ pump: $(PUMP_OBJS)
 %.o: %.c slave_syms.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-slave_syms.h: ~/otp/bin/epiphany-unknown-elf/beam
+slave_syms.h: ~/otp/bin/epiphany-unknown-elf/slave
 	~/otp/erts/emulator/utils/make_slave_syms
 
 clean:

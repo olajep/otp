@@ -4905,6 +4905,131 @@ LDFLAGS="$LDFLAGS $sanitizers"
 ])
 
 dnl ----------------------------------------------------------------------
+dnl Configure slave emulator
+dnl ----------------------------------------------------------------------
+
+AC_ARG_ENABLE(slave-emulator,
+AS_HELP_STRING([--enable-slave-emulator],
+               [run erlang processes on general-purpose co-processors like the Adapteva Epiphany]),
+enable_slave_emulator="$enableval",
+enable_slave_emulator=auto)
+
+dnl We call AC_CONFIG_SUBDIRS, even though the generated shell code is never
+dnl executed, because we want the side effects, i.e. that --help=recursive will
+dnl include options for the slave emulator.
+if false; then
+   AC_CONFIG_SUBDIRS([emulator/slave])
+fi
+
+if test X$enable_slave_emulator != Xno; then
+   AC_PROG_SED
+   AC_PROG_GREP
+   AC_PROG_EGREP
+
+   if test -n $EPIPHANY_HOME; then
+      CFLAGS="$CFLAGS -I $EPIPHANY_HOME/tools/host/include"
+      LDFLAGS="$LDFLAGS -L $EPIPHANY_HOME/tools/host/lib"
+   fi
+
+   AC_SEARCH_LIBS([e_init], [e-hal])
+   if test "X$ac_cv_search_e_init" = Xno; then
+      if test X$enable_slave_emulator != Xauto; then
+         AC_MSG_ERROR([could not find the Epiphany Hardware Abstraction Layer (eHAL)])
+      else
+         AC_MSG_WARN([slave emulator disabled because the Epiphany Hardware Abstraction Layer (eHAL) could not be found])
+         enable_slave_emulator=no
+      fi
+   fi
+fi
+
+if test X$enable_slave_emulator != Xno; then
+   AC_SEARCH_LIBS([e_load], [e-loader])
+   if test "X$ac_cv_search_e_load" = Xno; then
+      if test X$enable_slave_emulator != Xauto; then
+         AC_MSG_ERROR([could not find the Epiphany Hardware Abstraction Layer (eHAL) loader])
+      else
+         AC_MSG_WARN([slave emulator disabled because the Epiphany Hardware Abstraction Layer (eHAL) loader could not be found])
+         enable_slave_emulator=no
+      fi
+   fi
+fi
+
+if test X$enable_slave_emulator != Xno; then
+   if test X$enable_slave_emulator = Xyes -o X$enable_slave_emulator = Xauto; then
+      slave_host=epiphany-elf
+   else
+      slave_host=$enable_slave_emulator
+   fi
+
+   # Recurse into the emulator/slave directory
+   dnl We do this manually (most of the code below is borrowed from
+   dnl _AC_OUTPUT_SUBDIRS) so that we can override the --host argument.
+   if test "$no_recursion" != yes; then
+      ac_sub_configure_args="--prefix=$prefix $ac_configure_args --host=$slave_host"
+
+      # Always prepend --prefix to ensure using the same prefix
+      # in subdir configurations.
+      ac_arg="--prefix=$prefix"
+      case $ac_arg in
+      *\'*) ac_arg=`AS_ECHO(["$ac_arg"]) | sed "s/'/'\\\\\\\\''/g"` ;;
+      esac
+      ac_sub_configure_args="'$ac_arg' $ac_sub_configure_args"
+
+      # Pass --silent
+      if test "$silent" = yes; then
+         ac_sub_configure_args="--silent $ac_sub_configure_args"
+      fi
+
+      # Always prepend --disable-option-checking to silence warnings, since
+      # different subdirs can have different --enable and --with options.
+      ac_sub_configure_args="--disable-option-checking $ac_sub_configure_args"
+
+      ac_popdir=`pwd`
+      ac_dir=emulator/slave
+
+      ac_msg="=== configuring in $ac_dir (`pwd`/$ac_dir)"
+      _AS_ECHO_LOG([$ac_msg])
+      _AS_ECHO([$ac_msg])
+      AS_MKDIR_P(["$ac_dir"])
+      _AC_SRCDIRS(["$ac_dir"])
+
+      cd "$ac_dir"
+      ac_sub_configure=$ac_srcdir/configure
+
+      # The recursion is here.
+      # Make the cache file name correct relative to the subdirectory.
+      case $cache_file in
+      [[\\/]]* | ?:[[\\/]]* ) ac_sub_cache_file=$cache_file ;;
+      *) # Relative name.
+        ac_sub_cache_file=$ac_top_build_prefix$cache_file ;;
+      esac
+
+      AC_MSG_NOTICE([running $SHELL $ac_sub_configure $ac_sub_configure_args --cache-file=$ac_sub_cache_file --srcdir=$ac_srcdir])
+      # The eval makes quoting arguments work.
+      eval "\$SHELL \"\$ac_sub_configure\" $ac_sub_configure_args \
+           --cache-file=\"\$ac_sub_cache_file\" --srcdir=\"\$ac_srcdir\"" ||
+        if test X$enable_slave_emulator != Xauto; then
+           AC_MSG_ERROR([$ac_sub_configure failed for $ac_dir])
+        else
+           AC_MSG_WARN([disabling slave emulator because of configuration failure])
+           enable_slave_emulator=no
+        fi
+
+      cd "$ac_popdir"
+      ac_msg="=== proceeding to configure $srcdir"
+      _AS_ECHO_LOG([$ac_msg])
+      _AS_ECHO([$ac_msg])
+   fi
+fi
+
+ERTS_BUILD_SLAVE_EMU=no
+if test X$enable_slave_emulator != Xno; then
+   ERTS_BUILD_SLAVE_EMU=yes
+   AC_DEFINE(ERTS_SLAVE_EMU_ENABLED, 1, [Define if the slave emulator is available])
+fi
+AC_SUBST(ERTS_BUILD_SLAVE_EMU)
+
+dnl ----------------------------------------------------------------------
 dnl Output the result.
 dnl ----------------------------------------------------------------------
 

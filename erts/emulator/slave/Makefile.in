@@ -251,13 +251,12 @@ CREATE_DIRS += $(TTF_DIR)
 # create obj dir for emulator
 
 OBJDIR = obj/$(TTF_DIR)
-
 CREATE_DIRS += $(OBJDIR)
 
 BINDIR = $(ERL_TOP)/bin/$(TARGET)
+CREATE_DIRS += $(BINDIR)
 
 ERLANG_OSTYPE = @ERLANG_OSTYPE@
-
 ENABLE_ALLOC_TYPE_VARS += @ERLANG_OSTYPE@
 
 EMULATOR_EXECUTABLE = slave$(TF_MARKER)
@@ -487,18 +486,26 @@ $(OBJS): $(TTF_DIR)/GENERATED
 $(BINDIR)/$(EMULATOR_EXECUTABLE): $(INIT_OBJS) $(OBJS) $(DEPLIBS)
 	$(ld_verbose)$(PURIFY) $(LD) -o $(BINDIR)/$(EMULATOR_EXECUTABLE) \
 	$(HIPEBEAMLDFLAGS) $(LDFLAGS) $(INIT_OBJS) $(OBJS) $(LIBS) \
-	-Wl,-O2 -T sys/p16_legacy_hack2.ldf
+	-T sys/p16_legacy_hack2.ldf
 
 $(BINDIR)/$(EMULATOR_EXECUTABLE).srec: $(BINDIR)/$(EMULATOR_EXECUTABLE)
-	$(V_OBJCOPY) --srec-forceS3 --output-target srec \
-	$(BINDIR)/$(EMULATOR_EXECUTABLE) $(BINDIR)/$(EMULATOR_EXECUTABLE).srec
+	$(V_OBJCOPY) --srec-forceS3 --output-target srec $< $@
 
 # ----------------------------------------------------------------------
 # Dependencies
 #
-Makefile: Makefile.in
+Makefile: Makefile.in config.status
+	$(gen_verbose) ./config.status
+
+include/config.h: config.h.in
+	$(gen_verbose) ./config.status
+
+include/erl_int_sizes_config.h: ../../include/erl_int_sizes_config.h.in
+	$(gen_verbose) ./config.status
+
+config.status configure: configure.in
 	@echo
-	@echo "Makefile.in has been updated, please re-run configure!"
+	@echo "configure.in has been updated, please re-run autoreconf and configure"
 	@echo
 	@exit 1
 
@@ -534,37 +541,37 @@ DEP_CC=$(CC)
 DEP_FLAGS=-MM -MG $(CFLAGS) $(INCLUDES)
 SYS_SRC=$(ALL_SYS_SRC)
 
-# .PHONY: $(TARGET)/gen_git_version.mk
-# $(TARGET)/gen_git_version.mk:
-# # We touch beam/erl_bif.info.c if we regenerated the git version to force a
-# # rebuild.
-# 	$(gen_verbose)
-# 	$(V_at)if ../utils/gen_git_version $@; then touch beam/erl_bif_info.c; fi
+.PHONY: $(TARGET)/gen_git_version.mk
+$(TARGET)/gen_git_version.mk:
+# We touch beam/erl_bif.info.c if we regenerated the git version to force a
+# rebuild.
+	$(gen_verbose)
+	$(V_at)if ../utils/gen_git_version $@; then touch beam/erl_bif_info.c; fi
 
-# .PHONY: depend
-# ifdef VOID_EMULATOR
-# depend:
-# 	@echo $(VOID_EMULATOR)' - omitted target depend'
-# else
-# depend: $(TTF_DIR)/depend.mk
-# $(TTF_DIR)/depend.mk: $(TTF_DIR)/GENERATED $(PRELOAD_SRC) $(CP_BEAM_SRC)
-# 	$(gen_verbose)
-# 	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(BEAM_SRC) \
-# 		| $(SED_DEPEND) > $(TTF_DIR)/depend.mk
-# 	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(CP_BEAM_SRC) \
-# 		| $(SED_DEPEND) > $(TTF_DIR)/depend.mk
-# 	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(SYS_SRC) \
-# 		| $(SED_DEPEND) >> $(TTF_DIR)/depend.mk
-# 	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(TARGET_SRC) \
-# 		| $(SED_DEPEND) >> $(TTF_DIR)/depend.mk
-# 	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(ERTS_LIB_SRC) \
-# 		| $(SED_DEPEND) >> $(TTF_DIR)/depend.mk
-# endif
+.PHONY: depend
+ifdef VOID_EMULATOR
+depend:
+	@echo $(VOID_EMULATOR)' - omitted target depend'
+else
+depend: $(TTF_DIR)/depend.mk
+$(TTF_DIR)/depend.mk: $(TTF_DIR)/GENERATED $(PRELOAD_SRC)
+	$(gen_verbose)
+	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(BEAM_SRC) \
+		| $(SED_DEPEND) > $(TTF_DIR)/depend.mk
+	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(CP_BEAM_SRC) \
+		| $(SED_DEPEND) > $(TTF_DIR)/depend.mk
+	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(SYS_SRC) \
+		| $(SED_DEPEND) >> $(TTF_DIR)/depend.mk
+	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(TARGET_SRC) \
+		| $(SED_DEPEND) >> $(TTF_DIR)/depend.mk
+	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(ERTS_LIB_SRC) \
+		| $(SED_DEPEND) >> $(TTF_DIR)/depend.mk
+endif
 
-# ifneq ($(MAKECMDGOALS),clean)
-# ifneq ($(MAKECMDGOALS),generate)
-# ifndef VOID_EMULATOR
-# -include $(TTF_DIR)/depend.mk
-# endif
-# endif
-# endif
+ifneq ($(MAKECMDGOALS),clean)
+ifneq ($(MAKECMDGOALS),generate)
+ifndef VOID_EMULATOR
+-include $(TTF_DIR)/depend.mk
+endif
+endif
+endif

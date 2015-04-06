@@ -27,7 +27,7 @@ EXPECTED_AUTOCONF_VERSION=2.59
 if [ -z "$ONLY_ERTS" ]; then
     AUTOCONF_SUBDIRS="lib lib/* lib/test_server/src"
 fi
-AUTOCONF_SUBDIRS="$AUTOCONF_SUBDIRS erts ."
+AUTOCONF_SUBDIRS="$AUTOCONF_SUBDIRS erts/emulator/slave erts ."
 
 # `bootstrap_apps' should include application that are built, or
 # partly built in one of the bootstrap phases. Applications that

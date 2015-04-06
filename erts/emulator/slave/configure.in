@@ -27,6 +27,16 @@ if test "x$no_recursion" != "xyes" -a "x$OVERRIDE_CONFIG_CACHE" = "x"; then
     cache_file=/dev/null
 fi
 
+## Now, make sure that ERL_TOP is set and is the same as srcdir
+##
+if test -z "$ERL_TOP" || test ! -d $ERL_TOP ; then
+  AC_MSG_ERROR(You need to set the environment variable ERL_TOP!)
+fi
+if test ! "${ERL_TOP}/erts/emulator/slave" -ef "$srcdir"; then
+  AC_MSG_ERROR([You need to run configure with argument --srcdir=${ERL_TOP}/erts/emulator/slave])
+fi
+erl_top=${ERL_TOP}
+
 # echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 # echo X
 # echo "X srcdir  = $srcdir"
@@ -176,8 +186,16 @@ AC_CHECK_PROGS([OBJCOPY],
         ["$ac_tool_prefix"objcopy epiphany-unknown-elf-objcopy \
          epiphany-elf-objcopy e-objcopy objcopy],
         [none])
-if test "x$OBJDUMP" = xnone; then
+if test "X$OBJCOPY" = Xnone; then
         AC_MSG_ERROR([objcopy not found])
+fi
+
+AC_CHECK_PROGS([OBJDUMP],
+        ["$ac_tool_prefix"objdump epiphany-unknown-elf-objdump \
+         epiphany-elf-objdump e-objdump objdump],
+        [none])
+if test "X$OBJDUMP" = Xnone; then
+        AC_MSG_ERROR([objdump not found])
 fi
 
 AC_PROG_SED
@@ -1712,4 +1730,5 @@ dnl  Note that the output files are relative to $srcdir
 
 AC_OUTPUT(
   Makefile
+  info.mk
   )
