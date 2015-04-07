@@ -17,7 +17,8 @@
 # %CopyrightEnd%
 #
 
-TARGET=@TARGET@
+# The target of the parent makefile will leak in here unless we override it
+override TARGET=@TARGET@
 include ../../vsn.mk
 # -include $(TARGET)/gen_git_version.mk
 
@@ -150,8 +151,9 @@ space+=
 
 ifeq ($(FLAVOR),smp)
 FLAVOR_MARKER=.smp
-FLAVOR_FLAGS=-DERTS_SMP
-ENABLE_ALLOC_TYPE_VARS += smp nofrag
+# ETODO: Fix SMP build
+# FLAVOR_FLAGS=-DERTS_SMP
+# ENABLE_ALLOC_TYPE_VARS += smp nofrag
 else
 
 # If flavor isn't one of the above, it *is* plain flavor...

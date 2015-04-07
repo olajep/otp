@@ -1029,22 +1029,19 @@ $(OBJDIR)/hipe_arm.o:           hipe/hipe_arm.c
 ########################################
 
 ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
-$(BINDIR)/$(EMULATOR_EXECUTABLE): $(SLAVE_EXECUTABLE)
-$(SLAVE_EXECUTABLE): FORCE
+$(SLAVE_EXECUTABLE):
 	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) )
 
 $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
+# Note: the $(GREP) literals contain the tab (\t) character
 	$(gen_verbose)$(SLAVE_OBJDUMP) -t $< \
-		| $(GREP) -e .bss\t -e .data\t -e .text\t \
-		| $(EGREP) ' [^ .]+$' \
-		| $(SED) 's/^\([^ ]*\)[^_]* \([^ ]*\)$/#define SLAVE_SYM\2 0x\1/g' \
+		| $(GREP) -e '.bss	' -e '.data	' -e '.text	' \
+		| $(EGREP) ' [^ .]+$$' \
+		| $(SED) 's/^\([^ ]*\)[^_]* \([^ ]*\)$$/#define SLAVE_SYM\2 0x\1/g' \
 		> $@
 
 GENERATE += $(TTF_DIR)/slave_syms.h
 
-# FORCE is an empty phony target used to unconditionally execute certain rules
-.PHONY: FORCE
-FORCE:
 
 endif
 
@@ -1077,8 +1074,8 @@ endif
 # ----------------------------------------------------------------------
 # Dependencies
 #
-$(TARGET)/Makefile: Makefile.in ../config.status
-	$(gen_verbose) ../config.status
+$(TARGET)/Makefile: Makefile.in
+	$(gen_verbose) cd .. && ./config.status
 
 ../config.status: ../configure.in
 	@echo
