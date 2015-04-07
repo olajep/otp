@@ -38,6 +38,7 @@ powerpc-unknown-linux-gnu
 i386-elf-ose
 powerpc-unknown-ose
 epiphany-unknown-elf
+arm-unknown-linux-gnueabihf
 
 # Mac OS X
 a.out.dSYM/

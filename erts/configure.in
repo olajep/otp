@@ -4929,6 +4929,7 @@ if test X$enable_slave_emulator != Xno; then
    if test -n $EPIPHANY_HOME; then
       CFLAGS="$CFLAGS -I $EPIPHANY_HOME/tools/host/include"
       LDFLAGS="$LDFLAGS -L $EPIPHANY_HOME/tools/host/lib"
+      DED_LDFLAGS="$DED_LDFLAGS -L $EPIPHANY_HOME/tools/host/lib"
    fi
 
    AC_SEARCH_LIBS([e_init], [e-hal])
