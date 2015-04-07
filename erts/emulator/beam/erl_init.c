@@ -51,6 +51,10 @@
 #include "hipe_signal.h"	/* for hipe_signal_init() */
 #endif
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "erl_slave_io.h"
+#endif
+
 #ifdef HAVE_SYS_RESOURCE_H
 #  include <sys/resource.h>
 #endif
@@ -304,6 +308,9 @@ erl_init(int ncpu,
 {
     init_benchmarking();
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    erts_init_slave_io();
+#endif
     erts_init_monitors();
     erts_init_time();
     erts_init_sys_common_misc();
