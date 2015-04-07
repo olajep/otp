@@ -85,27 +85,30 @@ static int map_shm(void) {
     // We need the emem vector, which is not exposed by e_get_platform_info
     extern const e_platform_t e_platform;
     void *ret;
-    
+
     // The old way, for devices without the Epiphany kernel driver
     memfd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (memfd == 0) {
+    if (memfd == -1) {
         perror("open: /dev/mem");
         return -1;
     }
-    printf("Mapping 0x%x+0x%x to 0x%x\n",
-           (unsigned)e_platform.emem[0].phy_base, 
-           (unsigned)e_platform.emem[0].size,
-           (unsigned)e_platform.emem[0].ephy_base);
-    ret = mmap((void*)e_platform.emem[0].ephy_base, e_platform.emem[0].size,
+    unsigned phy_base  = (unsigned)e_platform.emem[0].phy_base;
+    unsigned size      = (unsigned)e_platform.emem[0].size;
+    unsigned ephy_base = (unsigned)e_platform.emem[0].ephy_base;
+
+    printf("Mapping 0x%x+0x%x to 0x%x\n", phy_base, size, ephy_base);
+    // We avoid using MAP_FIXED because we'd rather know if there is another
+    // mapping in the way than overwrite it.
+    ret = mmap((void*)ephy_base, size,
                PROT_READ|PROT_WRITE, MAP_SHARED,
-               memfd, e_platform.emem[0].phy_base);
+               memfd, phy_base);
     if (ret == MAP_FAILED) {
         perror("mmap");
         return -1;
     }
-    if (ret != (void*)e_platform.emem[0].ephy_base) {
+    if (ret != (void*)ephy_base) {
         fprintf(stderr, "mmap: wanted 0x%x, got 0x%x\n",
-                (unsigned)e_platform.emem[0].ephy_base, (unsigned)ret);
+                (unsigned)ephy_base, (unsigned)ret);
         return -1;
     }
     return 0;
@@ -142,30 +145,32 @@ void erts_init_slave_io(void) {
     char *binary;
     e_epiphany_t workgroup;
 
-    // We make things easy for ourselves by mapping in the shared memory area at
-    // *the same* address as it is observed by the Epiphany chip.
-    if (map_shm()) { erts_stop_slave_io(); return; }
-
     binary = getenv("SLAVE_BINARY");
     if (binary == NULL) {
-        erts_fprintf(stderr, "Not loading slave emulator: "
-                     "SLAVE_BINARY environment variable unset\n");
+        fprintf(stderr, "Not loading slave emulator: "
+                "SLAVE_BINARY environment variable unset\n");
         return;
     }
+
     if (e_init(NULL) != E_OK) { return; }
     slave_emu_online = 1;
 
+    printf("Reseting Epiphany\n");
     if (e_reset_system() != E_OK) {
         perror("Not loading slave emulator: e_reset_system");
         erts_stop_slave_io();
         return;
     }
-
+    printf("Opening %dx%d workgroup\n", ROWS, COLS);
     if (e_open(&workgroup, 0, 0, ROWS, COLS) != E_OK) {
         perror("Not loading slave emulator: e_open");
         erts_stop_slave_io();
         return;
     }
+
+    // We make things easy for ourselves by mapping in the shared memory area at
+    // *the same* address as it is observed by the Epiphany chip.
+    if (map_shm()) { erts_stop_slave_io(); return; }
 
     printf("Loading and starting program\n");
     if (e_load_group(binary, &workgroup, 0, 0, ROWS, COLS, E_TRUE) != E_OK) {
@@ -176,7 +181,7 @@ void erts_init_slave_io(void) {
 
     printf("Slave emulator online\n");
     if (start_pump_thread()) {
-        erts_fprintf(stderr, "Could not spin up pump thread, killing slaves\n");
+        fprintf(stderr, "Could not spin up pump thread, killing slaves\n");
         if (e_reset_system() != E_OK)
             perror("Could not stop slave: e_reset_system");
         erts_stop_slave_io();
@@ -190,14 +195,13 @@ void erts_stop_slave_io(void) {
 
     pump_thread_flag = 0;
     if (ethr_thr_join(pump_thread_tid, NULL)) {
-        erts_fprintf(stderr, "Could not join slave IO pump thread!\n");
+        fprintf(stderr, "Could not join slave IO pump thread!\n");
     }
 
-    // ETODO: We're testing mmaping anytime
-    /* if (memfd != 0) { */
-    /*     ret = close(memfd); */
-    /*     if (ret != 0) perror("free: memfd"); */
-    /* } */
+    if (memfd > 0) {
+        ret = close(memfd);
+        if (ret != 0) perror("free: memfd");
+    }
     
     ret = e_finalize();
     if (ret != E_OK) perror("e_finalize");

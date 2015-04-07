@@ -308,9 +308,6 @@ erl_init(int ncpu,
 {
     init_benchmarking();
 
-#ifdef ERTS_SLAVE_EMU_ENABLED
-    erts_init_slave_io();
-#endif
     erts_init_monitors();
     erts_init_time();
     erts_init_sys_common_misc();
@@ -1133,6 +1130,10 @@ early_init(int *argc, char **argv) /*
 
 	erts_thr_late_init(&elid);
     }
+#endif
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    erts_init_slave_io();
 #endif
 
 #ifdef ERTS_ENABLE_LOCK_CHECK

@@ -69,8 +69,10 @@ static int map_shm() {
            (unsigned)e_platform.emem[0].size,
            (unsigned)e_platform.emem[0].ephy_base);
     void *ret;
+    // We avoid using MAP_FIXED because we'd rather know if there is another
+    // mapping in the way than overwrite it.
     ret = mmap((void*)e_platform.emem[0].ephy_base, e_platform.emem[0].size,
-               PROT_READ|PROT_WRITE, MAP_SHARED | MAP_FIXED,
+               PROT_READ|PROT_WRITE, MAP_SHARED,
                memfd, e_platform.emem[0].phy_base);
     if (ret == MAP_FAILED) {
         perror("mmap");
