@@ -395,6 +395,8 @@ $(TTF_DIR)/GENERATED: $(GENERATE)
 	$(gen_verbose)echo $? >$(TTF_DIR)/GENERATED
 endif
 
+CFLAGS += -MMD -MP
+
 # ----------------------------------------------------------------------
 # Pattern rules
 #
@@ -511,38 +513,6 @@ config.status configure: configure.in
 	@echo
 	@exit 1
 
-#SED_REPL_WIN_DRIVE=s|\([ 	]\)\([A-Za-z]\):|\1/cygdrive/\2|g;s|^\([A-Za-z]\):|/cygdrive/\1|g
-SED_REPL_O=s|^\([^:]*:\)|$$(OBJDIR)/\1|g
-SED_REPL_TTF_DIR=s|$(TTF_DIR)/|$$(TTF_DIR)/|g
-SED_REPL_ERL_TOP=s|\([ 	]\)$(ERL_TOP)/|\1$$(ERL_TOP)/|g;s|^$(ERL_TOP)/|$$(ERL_TOP)/|g
-SED_REPL_POLL=s|$$(OBJDIR)/erl_poll.o|$$(OBJDIR)/erl_poll.kp.o $$(OBJDIR)/erl_poll.nkp.o|g
-SED_REPL_CHK_IO=s|$$(OBJDIR)/erl_check_io.o|$$(OBJDIR)/erl_check_io.kp.o $$(OBJDIR)/erl_check_io.nkp.o|g
-SED_REPL_TTF_COMP_FLAGS=s|\([^/]\)erl_compile_flags\.h|\1$$(TTF_DIR)/erl_compile_flags\.h|g
-
-SED_PREFIX=
-SED_SUFFIX=
-
-SED_DEPEND=sed '$(SED_PREFIX)$(SED_REPL_O);$(SED_REPL_TTF_DIR);$(SED_REPL_ERL_TOP)$(SED_SUFFIX);$(SED_REPL_TTF_COMP_FLAGS)'
-SED_DEPEND_ZLIB=sed '$(SED_PREFIX)$(SED_REPL_O_ZLIB)'
-
-ifdef HIPE_ENABLED
-HIPE_SRC=$(wildcard hipe/*.c)
-else
-HIPE_SRC=
-endif
-
-BEAM_SRC=$(wildcard beam/*.c)
-PARENT_BEAM_SRC=$(wildcard ../beam/*.c)
-CP_BEAM_SRC=$(PARENT_BEAM_SRC:../beam/%=src_copied/%)
-ALL_SYS_SRC=$(wildcard sys/*.c) $(wildcard ../sys/common/*.c)
-# We use $(shell ls) here instead of wildcard as $(wildcard ) resolved at
-# loadtime of the makefile and at that time these files are not generated yet.
-TARGET_SRC=$(shell ls $(TARGET)/*.c) $(shell ls $(TTF_DIR)/*.c)
-
-DEP_CC=$(CC)
-DEP_FLAGS=-MM -MG $(CFLAGS) $(INCLUDES)
-SYS_SRC=$(ALL_SYS_SRC)
-
 .PHONY: $(TARGET)/gen_git_version.mk
 $(TARGET)/gen_git_version.mk:
 # We touch beam/erl_bif.info.c if we regenerated the git version to force a
@@ -551,29 +521,12 @@ $(TARGET)/gen_git_version.mk:
 	$(V_at)if ../utils/gen_git_version $@; then touch beam/erl_bif_info.c; fi
 
 .PHONY: depend
-ifdef VOID_EMULATOR
 depend:
-	@echo $(VOID_EMULATOR)' - omitted target depend'
-else
-depend: $(TTF_DIR)/depend.mk
-$(TTF_DIR)/depend.mk: $(TTF_DIR)/GENERATED $(PRELOAD_SRC) $(CP_BEAM_SRC)
-	$(gen_verbose)
-	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(BEAM_SRC) \
-		| $(SED_DEPEND) > $(TTF_DIR)/depend.mk
-	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(CP_BEAM_SRC) \
-		| $(SED_DEPEND) > $(TTF_DIR)/depend.mk
-	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(SYS_SRC) \
-		| $(SED_DEPEND) >> $(TTF_DIR)/depend.mk
-	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(TARGET_SRC) \
-		| $(SED_DEPEND) >> $(TTF_DIR)/depend.mk
-	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(ERTS_LIB_SRC) \
-		| $(SED_DEPEND) >> $(TTF_DIR)/depend.mk
-endif
 
 ifneq ($(MAKECMDGOALS),clean)
 ifneq ($(MAKECMDGOALS),generate)
 ifndef VOID_EMULATOR
--include $(TTF_DIR)/depend.mk
+include $(wildcard $(OBJDIR)/*.d)
 endif
 endif
 endif

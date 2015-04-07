@@ -663,6 +663,10 @@ $(TARGET)/erlang_dtrace.h: beam/erlang_dtrace.d
 	$(V_at)sed -e '/^#define[ 	]*ERLANG_[A-Z0-9_]*(.*)/y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/' ./erlang_dtrace.tmp > $@
 	$(V_at)rm ./erlang_dtrace.tmp
 
+ifneq ($(TARGET),win32)
+CFLAGS += -MMD -MP
+endif
+
 # ----------------------------------------------------------------------
 # Pattern rules
 #
@@ -1133,6 +1137,15 @@ ALL_SYS_SRC=$(wildcard sys/$(ERLANG_OSTYPE)/*.c) $(wildcard sys/common/*.c)
 # loadtime of the makefile and at that time these files are not generated yet.
 TARGET_SRC=$(shell ls $(TARGET)/*.c) $(shell ls $(TTF_DIR)/*.c)
 
+.PHONY: $(TARGET)/gen_git_version.mk
+$(TARGET)/gen_git_version.mk:
+# We touch beam/erl_bif.info.c if we regenerated the git version to force a
+# rebuild.
+	$(gen_verbose)
+	$(V_at)if utils/gen_git_version $@; then touch beam/erl_bif_info.c; fi
+
+.PHONY: depend
+
 # I do not want the -MG flag on windows, it does not work properly for a 
 # windows build.
 
@@ -1150,28 +1163,6 @@ DEP_FLAGS=-MM  $(subst -O2,,$(CFLAGS)) $(INCLUDES) -I../etc/win32 -Idrivers/comm
 # On windows we have the erl_poll implementation in sys/win32 (no longer...)
 # SYS_SRC=$(subst sys/common/erl_poll.c,,$(ALL_SYS_SRC))
 
-else # !win32
-
-ifeq ($(findstring tile,$(TARGET)),tile)
-# tile-gcc doesn't like -MG
-MG_FLAG=
-else
-MG_FLAG=-MG
-endif
-
-DEP_CC=$(CC)
-DEP_FLAGS=-MM $(MG_FLAG) $(CFLAGS) $(INCLUDES) -Idrivers/common -Idrivers/$(ERLANG_OSTYPE)
-SYS_SRC=$(ALL_SYS_SRC)
-endif
-
-.PHONY: $(TARGET)/gen_git_version.mk
-$(TARGET)/gen_git_version.mk:
-# We touch beam/erl_bif.info.c if we regenerated the git version to force a
-# rebuild.
-	$(gen_verbose)
-	$(V_at)if utils/gen_git_version $@; then touch beam/erl_bif_info.c; fi
-
-.PHONY: depend
 ifdef VOID_EMULATOR
 depend:
 	@echo $(VOID_EMULATOR)' - omitted target depend'
@@ -1204,4 +1195,18 @@ ifndef VOID_EMULATOR
 -include $(TTF_DIR)/depend.mk
 endif
 endif
+endif
+
+else # !win32
+
+depend:
+
+ifneq ($(MAKECMDGOALS),clean)
+ifneq ($(MAKECMDGOALS),generate)
+ifndef VOID_EMULATOR
+include $(wildcard $(OBJDIR)/*.d)
+endif
+endif
+endif
+
 endif
