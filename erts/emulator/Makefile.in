@@ -1040,6 +1040,8 @@ $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 		| $(SED) 's/^\([^ ]*\)[^_]* \([^ ]*\)$/#define SLAVE_SYM\2 0x\1/g' \
 		> $@
 
+GENERATE += $(TTF_DIR)/slave_syms.h
+
 # FORCE is an empty phony target used to unconditionally execute certain rules
 .PHONY: FORCE
 FORCE:
@@ -1075,11 +1077,15 @@ endif
 # ----------------------------------------------------------------------
 # Dependencies
 #
-$(TARGET)/Makefile: Makefile.in
+$(TARGET)/Makefile: Makefile.in ../config.status
+	$(gen_verbose) ../config.status
+
+../config.status: ../configure.in
 	@echo
-	@echo "Makefile.in has been updated, please re-run configure!"
+	@echo "configure.in has been updated, please re-run autoreconf and configure"
 	@echo
 	@exit 1
+
 
 #SED_REPL_WIN_DRIVE=s|\([ 	]\)\([A-Za-z]\):|\1/cygdrive/\2|g;s|^\([A-Za-z]\):|/cygdrive/\1|g
 SED_REPL_O=s|^\([^:]*:\)|$$(OBJDIR)/\1|g

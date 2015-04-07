@@ -554,7 +554,7 @@ depend:
 	@echo $(VOID_EMULATOR)' - omitted target depend'
 else
 depend: $(TTF_DIR)/depend.mk
-$(TTF_DIR)/depend.mk: $(TTF_DIR)/GENERATED $(PRELOAD_SRC)
+$(TTF_DIR)/depend.mk: $(TTF_DIR)/GENERATED $(PRELOAD_SRC) $(CP_BEAM_SRC)
 	$(gen_verbose)
 	$(V_at)$(DEP_CC) $(DEP_FLAGS) $(BEAM_SRC) \
 		| $(SED_DEPEND) > $(TTF_DIR)/depend.mk

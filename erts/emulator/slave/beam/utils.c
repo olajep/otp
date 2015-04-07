@@ -21,7 +21,9 @@
 #  include "config.h"
 #endif
 
-#define ERTS_DO_INCL_GLB_INLINE_FUNC_DEF
+#ifndef ERTS_NO_INLINE
+#  define ERTS_DO_INCL_GLB_INLINE_FUNC_DEF
+#endif
 
 #include "sys.h"
 #include "erl_vm.h"

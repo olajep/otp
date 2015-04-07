@@ -82,7 +82,10 @@ typedef ERTS_SYS_FD_TYPE ErtsSysFdType;
 #    define ERTS_CAN_INLINE 1
 #  endif
 #else
-#  if defined(__GNUC__)
+#  if defined(ERTS_NO_INLINE)
+#    define ERTS_CAN_INLINE 0
+#    define ERTS_INLINE
+#  elif defined(__GNUC__)
 #    define ERTS_CAN_INLINE 1
 #    define ERTS_INLINE __inline__
 #  elif defined(__WIN32__)
