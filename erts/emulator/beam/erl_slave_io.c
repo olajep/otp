@@ -42,6 +42,7 @@
 #include "erl_slave_io.h"
 
 static int map_shm(void);
+static int spoof_mmap(void);
 static int start_pump_thread(void);
 static void *pump_thread_loop(void *);
 static int pump_output(void);
@@ -88,12 +89,12 @@ static int memfd = 0;
  * Returns 0 on success and -1 on failure.
  */
 static int map_shm(void) {
-    // We need the emem vector, which is not exposed by e_get_platform_info
-    extern const e_platform_t e_platform;
     void *ret;
-    unsigned phy_base  = (unsigned)e_platform.emem[0].phy_base;
-    unsigned size      = (unsigned)e_platform.emem[0].size;
-    unsigned ephy_base = (unsigned)e_platform.emem[0].ephy_base;
+    // ETODO: parse the HDF ourselves (we can't use the e_platform symbol or
+    // *very* bad things happens)
+    unsigned phy_base  = 0x3e000000;
+    unsigned size      = 0x02000000;
+    unsigned ephy_base = 0x8e000000;
 
     // The old way, for devices without the Epiphany kernel driver
     memfd = open("/dev/mem", O_RDWR | O_SYNC);
@@ -108,6 +109,29 @@ static int map_shm(void) {
     ret = mmap((void*)ephy_base, size,
                PROT_READ|PROT_WRITE, MAP_SHARED,
                memfd, phy_base);
+    if (ret == MAP_FAILED) {
+        perror("mmap");
+        return -1;
+    }
+    if (ret != (void*)ephy_base) {
+        fprintf(stderr, "mmap: wanted 0x%x, got 0x%x\n",
+                (unsigned)ephy_base, (unsigned)ret);
+        return -1;
+    }
+    return 0;
+}
+
+// We reserve the shared memory segment when we're not actually using the slave
+// emulator so issues with the mmap will be more apparent.
+static int spoof_mmap(void) {
+    void *ret;
+    unsigned size      = 0x02000000;
+    unsigned ephy_base = 0x8e000000;
+
+    printf("Reserving 0x%x+0x%x\n", ephy_base, size);
+    ret = mmap((void*)ephy_base, size,
+               PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS,
+               0, 0);
     if (ret == MAP_FAILED) {
         perror("mmap");
         return -1;
@@ -144,24 +168,23 @@ static void *pump_thread_loop(void *arg) {
 }
 
 static int slave_emu_online = 0;
+static e_epiphany_t workgroup;
 
 #define ROWS 1
 #define COLS 1
 void erts_init_slave_io(void) {
     char *binary;
-    e_epiphany_t workgroup;
-
-    binary = getenv("SLAVE_BINARY");
-    if (binary == NULL) {
-        fprintf(stderr, "Not loading slave emulator: "
-                "SLAVE_BINARY environment variable unset\n");
+    // We make things easy for ourselves by mapping in the shared memory area at
+    // *the same* address as it is observed by the Epiphany chip.
+    if (map_shm()) {
+        spoof_mmap();
         return;
     }
 
+    e_set_host_verbosity(H_D1);
     if (e_init(NULL) != E_OK) { return; }
     slave_emu_online = 1;
 
-    printf("Reseting Epiphany\n");
     if (e_reset_system() != E_OK) {
         perror("Not loading slave emulator: e_reset_system");
         erts_stop_slave_io();
@@ -174,9 +197,12 @@ void erts_init_slave_io(void) {
         return;
     }
 
-    // We make things easy for ourselves by mapping in the shared memory area at
-    // *the same* address as it is observed by the Epiphany chip.
-    if (map_shm()) { erts_stop_slave_io(); return; }
+    binary = getenv("SLAVE_BINARY");
+    if (binary == NULL) {
+        fprintf(stderr, "Not loading slave emulator: "
+                "SLAVE_BINARY environment variable unset\n");
+        return;
+    }
 
     printf("Loading and starting program\n");
     if (e_load_group(binary, &workgroup, 0, 0, ROWS, COLS, E_TRUE) != E_OK) {
