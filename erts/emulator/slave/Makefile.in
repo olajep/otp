@@ -499,7 +499,7 @@ $(BINDIR)/$(EMULATOR_EXECUTABLE).srec: $(BINDIR)/$(EMULATOR_EXECUTABLE)
 # Dependencies
 #
 Makefile: Makefile.in config.status
-	$(gen_verbose) ./config.status
+	$(gen_verbose) ./config.status --file=Makefile
 
 include/config.h: config.h.in
 	$(gen_verbose) ./config.status

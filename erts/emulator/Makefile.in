@@ -457,6 +457,9 @@ clean:
 	$(RM) -rf zlib/obj/$(TARGET)
 	$(RM) -rf bin/$(TARGET)
 	cd $(ERTS_LIB_DIR) && $(MAKE) clean
+ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
+	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) clean )
+endif
 
 .PHONY: docs
 docs:
@@ -597,18 +600,19 @@ GENERATE += $(TARGET)/erl_version.h
 # driver table
 $(TTF_DIR)/driver_tab.c: Makefile.in utils/make_driver_tab
 	$(gen_verbose)LANG=C $(PERL) utils/make_driver_tab -o $@ -nifs $(STATIC_NIF_LIBS) -drivers $(DRV_OBJS) $(STATIC_DRIVER_LIBS)
-GENERATE += $(TTF_DIR)/driver_tab.c
 
 ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
 $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 # Note: the $(GREP) literals contain the tab (\t) character
 	$(gen_verbose)$(SLAVE_OBJDUMP) -t $< \
 		| $(GREP) -e '.bss	' -e '.data	' -e '.text	' \
-		| $(EGREP) ' [^ .]+$$' \
+		| $(EGREP) '^[0-9a-f]{8} g.* [^ .]+$$' \
 		| $(SED) 's/^\([^ ]*\)[^_]* \([^ ]*\)$$/#define SLAVE_SYM\2 0x\1/g' \
 		> $@
 
-GENERATE += $(TTF_DIR)/slave_syms.h
+# We don't make GENERATE depend on slave_syms.h because it causes too many
+# unwanted rebuilds. Instead, we add it as a dependency to the objects we add
+# below.
 endif
 
 
@@ -951,8 +955,11 @@ EXTRA_BASE_OBJS += $(HIPE_OBJS)
 endif
 
 ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
-EXTRA_BASE_OBJS += \
+SLAVE_OBJS = \
 	$(OBJDIR)/erl_slave_io.o
+
+EXTRA_BASE_OBJS += $(SLAVE_OBJS)
+$(SLAVE_OBJS): $(TTF_DIR)/slave_syms.h
 endif
 
 BASE_OBJS = $(RUN_OBJS) $(EMU_OBJS) $(OS_OBJS) $(EXTRA_BASE_OBJS)
@@ -1089,7 +1096,9 @@ endif
 # Dependencies
 #
 $(TARGET)/Makefile: Makefile.in
-	$(gen_verbose) cd .. && ./config.status
+# We don't want to regenreate all the files because that will cause a full rebuild
+	$(gen_verbose) cd .. && ./config.status \
+		--file=emulator/$(TARGET)/Makefile:emulator/Makefile.in
 
 ../config.status: ../configure.in
 	@echo

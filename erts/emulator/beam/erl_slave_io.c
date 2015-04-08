@@ -29,8 +29,14 @@
 #include <assert.h>
 #include <sys/mman.h>
 #include <time.h>
+
+// These cause warnings with -Wstrict-prototypes
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-prototypes"
 #include <e-hal.h>
 #include <e-loader.h>
+#pragma GCC diagnostic pop
+
 #include "sys.h"
 #include "slave_syms.h"
 #include "erl_slave_io.h"
@@ -85,6 +91,9 @@ static int map_shm(void) {
     // We need the emem vector, which is not exposed by e_get_platform_info
     extern const e_platform_t e_platform;
     void *ret;
+    unsigned phy_base  = (unsigned)e_platform.emem[0].phy_base;
+    unsigned size      = (unsigned)e_platform.emem[0].size;
+    unsigned ephy_base = (unsigned)e_platform.emem[0].ephy_base;
 
     // The old way, for devices without the Epiphany kernel driver
     memfd = open("/dev/mem", O_RDWR | O_SYNC);
@@ -92,9 +101,6 @@ static int map_shm(void) {
         perror("open: /dev/mem");
         return -1;
     }
-    unsigned phy_base  = (unsigned)e_platform.emem[0].phy_base;
-    unsigned size      = (unsigned)e_platform.emem[0].size;
-    unsigned ephy_base = (unsigned)e_platform.emem[0].ephy_base;
 
     printf("Mapping 0x%x+0x%x to 0x%x\n", phy_base, size, ephy_base);
     // We avoid using MAP_FIXED because we'd rather know if there is another
