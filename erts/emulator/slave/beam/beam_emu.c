@@ -946,6 +946,8 @@ init_emulator(void)
 
 #endif /* USE_VM_PROBES */
 
+BeamInstr *demo_prog;
+
 /*
  * process_main() is called twice:
  * The first call performs some initialisation, including exporting
@@ -1025,12 +1027,7 @@ void process_main(void)
     int Go;
 #endif
 
-    Uint temp_bits; /* Temporary used by BsSkipBits2 & BsGetInteger2 */
-
     Eterm pt_arity;		/* Used by do_put_tuple */
-
-    Uint64 start_time = 0;          /* Monitor long schedule */
-    BeamInstr* start_time_i = NULL;
 
     ERL_BITS_DECLARE_STATEP; /* Has to be last declaration */
 
@@ -1072,17 +1069,11 @@ void process_main(void)
     ERTS_VERIFY_UNUSED_TEMP_ALLOC(c_p);
     c_p = schedule(c_p, reds_used);
     ERTS_VERIFY_UNUSED_TEMP_ALLOC(c_p);
-    start_time = 0;
 #ifdef DEBUG
     pid = c_p->common.id; /* Save for debugging purpouses */
 #endif
     ERTS_SMP_REQ_PROC_MAIN_LOCK(c_p);
     PROCESS_MAIN_CHK_LOCKS(c_p);
-
-    if (erts_system_monitor_long_schedule != 0) {
-	start_time = erts_timestamp_millis();
-	start_time_i = c_p->i;
-    }
 
     reg = ERTS_PROC_GET_SCHDATA(c_p)->x_reg_array;
     freg = ERTS_PROC_GET_SCHDATA(c_p)->f_reg_array;
@@ -3409,7 +3400,12 @@ get_map_elements_fail:
  OpCase(i_bs_restore2_xI):
     EPIPHANY_STUB(OpCase(i_bs_));
 
+#pragma GCC diagnostic push
+    // beam_cold.h uses the macros we stubbed out above. Since the macros do not
+    // use their arguments, we'll get a lot of "set but not used warnings"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #include "beam_cold.h"
+#pragma GCC diagnostic pop
 
 
  /*
@@ -3715,7 +3711,6 @@ get_map_elements_fail:
 
 
  OpCase(system_limit_j):
- system_limit:
     c_p->freason = SYSTEM_LIMIT;
     goto lb_Cl_error;
 
@@ -3739,6 +3734,16 @@ get_map_elements_fail:
     /*
      * One-time initialization of Beam emulator.
      */
+ OpCase(i_hello_world):
+    erts_printf("Hello world from BEAM!\n");
+    ASSERT(0);
+    r(0) = am_ok;
+    Next(0);
+
+ OpCase(i_write_x):
+    erts_printf("x0 = 0x%x\n", r(0));
+    EPIPHANY_STUB(i_write_x);
+    Next(0);
 
  init_emulator:
  {
@@ -3792,6 +3797,21 @@ get_map_elements_fail:
      /*     /\* XXX: set func info for bifs *\/ */
      /*     ep->fake_op_func_info_for_hipe[0] = (BeamInstr) BeamOp(op_i_func_info_IaaI); */
      /* } */
+
+     {
+         BeamInstr *ptr = demo_prog = calloc(100, sizeof(BeamInstr));
+
+         *(ptr++) = (BeamInstr)OpCode(i_hello_world);
+
+         *(ptr++) = (BeamInstr)am_erlang;
+         *(ptr++) = (BeamInstr)am_is_atom;
+         *(ptr++) = (BeamInstr)1;
+         *(ptr++) = (BeamInstr)OpCode(apply_bif);
+         *(ptr++) = (BeamInstr)is_atom_1;
+
+         *(ptr++) = (BeamInstr)OpCode(i_write_x);
+         *(ptr++) = (BeamInstr)OpCode(on_load);
+     }
 
      return;
  }

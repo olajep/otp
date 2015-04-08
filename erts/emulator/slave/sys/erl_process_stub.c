@@ -454,9 +454,12 @@ do {									\
 
 Process *schedule(Process *p, int calls)
 {
+    extern BeamInstr *demo_prog;
     if (p) {
         p->reds += calls;
         return p;
     }
-    EPIPHANY_STUB(schedule);
+    p = calloc(1, sizeof(Process));
+    p->i = demo_prog;
+    return p;
 }
