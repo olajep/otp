@@ -3737,13 +3737,23 @@ get_map_elements_fail:
  OpCase(i_hello_world):
     erts_printf("Hello world from BEAM!\n");
     ASSERT(0);
-    r(0) = am_ok;
+    erts_printf("No assertions, apparently...\n");
     Next(0);
 
- OpCase(i_write_x):
-    erts_printf("x0 = 0x%x\n", r(0));
-    EPIPHANY_STUB(i_write_x);
-    Next(0);
+ OpCase(i_write): {
+     Eterm value;
+     GetArg1(0, value);
+     switch (beam_reg_tag(Arg(0))) {
+     case R_REG_DEF: erts_printf("x0 = %T\n", value); break;
+     case X_REG_DEF: erts_printf("x%d = %T\n", x_reg_offset(Arg(0)), value); break;
+     case Y_REG_DEF: erts_printf("y%d = %T\n", y_reg_offset(Arg(0)), value); break;
+     }
+     Next(1);
+ }
+
+ OpCase(bad_op): {
+     erl_exit(1, "bad op %d\n", I-demo_prog);
+ }
 
  init_emulator:
  {
@@ -3799,18 +3809,43 @@ get_map_elements_fail:
      /* } */
 
      {
-         BeamInstr *ptr = demo_prog = calloc(100, sizeof(BeamInstr));
+	 BeamInstr *ptr = demo_prog = calloc(100, sizeof(BeamInstr));
 
-         *(ptr++) = (BeamInstr)OpCode(i_hello_world);
+	 *(ptr++) = (BeamInstr)OpCode(i_hello_world);
 
-         *(ptr++) = (BeamInstr)am_erlang;
-         *(ptr++) = (BeamInstr)am_is_atom;
-         *(ptr++) = (BeamInstr)1;
-         *(ptr++) = (BeamInstr)OpCode(apply_bif);
-         *(ptr++) = (BeamInstr)is_atom_1;
+	 *(ptr++) = (BeamInstr)OpCode(i_fetch_cc);
+	 *(ptr++) = (BeamInstr)make_small(3);
+	 *(ptr++) = (BeamInstr)make_small(5);
+	 *(ptr++) = (BeamInstr)OpCode(i_plus_jId);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op); // ??
+	 *(ptr++) = (BeamInstr)OpCode(bad_op); // ??
+	 *(ptr++) = (BeamInstr)make_rreg(); // x0 receives the result
 
-         *(ptr++) = (BeamInstr)OpCode(i_write_x);
-         *(ptr++) = (BeamInstr)OpCode(on_load);
+	 *(ptr++) = (BeamInstr)OpCode(i_write);
+	 *(ptr++) = (BeamInstr)make_rreg(); // x0 contains the result
+
+	 *(ptr++) = (BeamInstr)OpCode(move_cr);
+	 *(ptr++) = (BeamInstr)am_true;
+
+	 *(ptr++) = (BeamInstr)OpCode(bif1_body_bsd);
+	 *(ptr++) = (BeamInstr)is_atom_1;
+	 *(ptr++) = (BeamInstr)make_rreg(); // x0 contains the argument
+	 *(ptr++) = (BeamInstr)OpCode(bad_op); // I'm not sure what goes here,
+					       // though
+
+	 *(ptr++) = (BeamInstr)OpCode(i_write);
+	 *(ptr++) = (BeamInstr)make_rreg(); // x0 contains the result
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(bad_op);
      }
 
      return;
@@ -3913,6 +3948,7 @@ handle_error(Process* c_p, BeamInstr* pc, Eterm* reg, BifFunction bf)
     Eterm Value = c_p->fvalue;
     Eterm Args = am_true;
     c_p->i = pc;    /* In case we call erl_exit(). */
+    erts_printf("in handle_error\n");
 
     ASSERT(c_p->freason != TRAP); /* Should have been handled earlier. */
 

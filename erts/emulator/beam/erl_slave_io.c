@@ -63,6 +63,7 @@ static int pump_output(void) {
     char *captured_end = *out_end;
     ASSERT(outbuf <= captured_start && captured_start < outbuf + OUTBUF_SZ);
     ASSERT(outbuf <= captured_end && captured_end < outbuf + OUTBUF_SZ);
+    // ETODO: Do I need a read-read fence here?
 
     if (captured_start > captured_end) {
         written = write(STDOUT_FILENO, captured_start, OUTBUF_SZ - (outbuf - captured_start));
@@ -74,6 +75,7 @@ static int pump_output(void) {
     written = write(STDOUT_FILENO, captured_start, captured_end - captured_start);
     if (written == -1) goto write_error;
     pumped += written;
+    // ETODO: Do I need a read-write fence here?
     *out_start = captured_start + written;
     return pumped;
 

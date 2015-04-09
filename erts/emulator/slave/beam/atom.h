@@ -53,8 +53,6 @@ typedef struct atom {
     byte* name;      /* name of atom */
 } Atom;
 
-extern IndexTable erts_atom_table;
-
 ERTS_GLB_INLINE Atom* atom_tab(Uint i);
 ERTS_GLB_INLINE int erts_is_atom_utf8_bytes(byte *text, size_t len, Eterm term);
 ERTS_GLB_INLINE int erts_is_atom_str(const char *str, Eterm term, int is_latin1);
@@ -105,4 +103,3 @@ void dump_atoms(int, void *);
 int erts_atom_get(const char* name, int len, Eterm* ap, ErtsAtomEncoding enc);
 void erts_atom_get_text_space_sizes(Uint *reserved, Uint *used);
 #endif
-

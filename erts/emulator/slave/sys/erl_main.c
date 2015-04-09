@@ -23,10 +23,11 @@
 #include "sys.h"
 #include "erl_vm.h"
 #include "global.h"
+#include "erl_printf_format.h"
 #include <e-lib.h>
 
 volatile int goflag = 0;
-e_mutex_t global_mutex __attribute__((section(".data_bank3")));
+e_mutex_t global_mutex __attribute__((section(".data_bank0")));
 
 #define OUTBUF_SZ 1024
 char outbuf[OUTBUF_SZ];
@@ -41,6 +42,8 @@ int is_leader() {
 ssize_t internal_write(int __attribute__((unused)) fildes, const void *data,
                        const size_t initial_count) {
     size_t count = initial_count;
+    e_mutex_lock(0, 0, &global_mutex);
+
     while (count > 0) {
         char *captured_end = out_end;
         char *captured_start = out_start;
@@ -57,6 +60,8 @@ ssize_t internal_write(int __attribute__((unused)) fildes, const void *data,
             captured_end = outbuf;
         out_end = captured_end;
     }
+
+    e_mutex_unlock(0, 0, &global_mutex);
     return initial_count;
 }
 
@@ -82,11 +87,11 @@ int sys_epiphany_printf(char *format, va_list args) {
     int count;
     e_coords_from_coreid(id, &row, &col);
     ASSERT (goflag == 1);
-    e_mutex_lock(0, 0, &global_mutex);
     count = internal_printf("[%d,%d] ", row, col);
-    count += internal_vprintf(format, args);
+    // We mustn't hold the lock while calling complex functions like
+    // erts_printf_format, since they might rely on printing or stubbed code
+    count += erts_printf_format(internal_write, STDOUT_FILENO, format, args);
     fflush(stdout);
-    e_mutex_unlock(0, 0, &global_mutex);
     return count;
 }
 
@@ -109,11 +114,9 @@ main(int argc, char **argv)
         erts_printf_stdout_func = sys_epiphany_printf;
         erts_printf_stderr_func = sys_epiphany_printf;
         goflag = 1;
-        erts_fprintf(stdout, "I'm the leader\n");
     } else {
         while (goflag == 0);
     }
-    erts_fprintf(stdout, "Hi from Epiphany!\n");
     erl_start(argc, argv);
     erts_fprintf(stdout, "Terminating normally\n");
     return 0;

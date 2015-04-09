@@ -442,7 +442,6 @@ erl_sys_init(void)
 
 RETSIGTYPE (*sys_sigset(int sig, RETSIGTYPE (*func)(int)))(int)
 {
-    fprintf(stderr, "Warning: signal(%d, 0x%lx);\n", sig, (unsigned long)func);
     return signal(sig, func);
 }
 
@@ -608,7 +607,6 @@ static RETSIGTYPE do_quit(int signum)
 
 /* Disable break */
 void erts_set_ignore_break(void) {
-    fprintf(stderr, "in erts_set_ignore_break\n");
     sys_sigset(SIGINT,  SIG_IGN);
     sys_sigset(SIGQUIT, SIG_IGN);
     sys_sigset(SIGTSTP, SIG_IGN);
@@ -622,7 +620,6 @@ void erts_replace_intr(void) {
 
 void init_break_handler(void)
 {
-    fprintf(stderr, "in init_break_handler\n");
    sys_sigset(SIGINT, request_break);
 #ifndef ETHR_UNUSABLE_SIGUSRX
    sys_sigset(SIGUSR1, user_signal1);

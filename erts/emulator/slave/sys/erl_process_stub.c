@@ -461,5 +461,7 @@ Process *schedule(Process *p, int calls)
     }
     p = calloc(1, sizeof(Process));
     p->i = demo_prog;
+    p->max_arg_reg = 10;
+    p->arg_reg = calloc(p->max_arg_reg, sizeof(Eterm));
     return p;
 }

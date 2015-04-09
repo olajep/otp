@@ -31,7 +31,6 @@
 void
 erts_sys_init_float(void)
 {
-    fprintf(stderr, "in erts_sys_init_float\n");
 # ifdef SIGFPE
     sys_sigset(SIGFPE, SIG_IGN); /* Ignore so we can test for NaN and Inf */
 # endif
