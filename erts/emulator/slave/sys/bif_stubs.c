@@ -42,126 +42,126 @@
 Eterm __attribute__((weak))
 erts_gc_mixed_plus(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_mixed_plus);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_mixed_minus(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_mixed_minus);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_mixed_times(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_mixed_times);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_mixed_div(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_mixed_div);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_int_div(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_int_div);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_int_rem(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_int_rem);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_band(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_band);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_bor(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_bor);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_bxor(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_bxor);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_bnot(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_bnot);
+    EPIPHANY_STUB_FUN();
 }
 
 
 Eterm __attribute__((weak))
 erts_gc_length_1(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_length_1);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_size_1(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_size_1);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_bit_size_1(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_bit_size_1);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_byte_size_1(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_byte_size_1);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_map_size_1(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_map_size_1);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_abs_1(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_abs_1);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_float_1(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_float_1);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_round_1(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_round_1);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_trunc_1(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_trunc_1);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_binary_part_3(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_binary_part_3);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm __attribute__((weak))
 erts_gc_binary_part_2(Process* p, Eterm* reg, Uint live)
 {
-    EPIPHANY_STUB(erts_gc_binary_part_2);
+    EPIPHANY_STUB_FUN();
 }

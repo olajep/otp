@@ -253,7 +253,7 @@ int using_oldshell = 1;
 void
 erts_sys_schedule_interrupt(int set)
 {
-    EPIPHANY_STUB(erts_sys_schedule_interrupt);
+    EPIPHANY_STUB_FUN();
 }
 
 #ifdef ERTS_SMP
@@ -452,12 +452,12 @@ RETSIGTYPE (*sys_sigset(int sig, RETSIGTYPE (*func)(int)))(int)
 
 void sys_sigblock(int sig)
 {
-    EPIPHANY_STUB(sys_sigblock);
+    EPIPHANY_STUB_FUN();
 }
 
 void sys_sigrelease(int sig)
 {
-    EPIPHANY_STUB(sys_sigrelease);
+    EPIPHANY_STUB_FUN();
 }
 
 #if (0) /* not used? -- gordon */
@@ -744,7 +744,7 @@ static reset_qnx_spawn()
 
 void erts_do_break_handling(void)
 {
-    EPIPHANY_STUB(erts_do_break_handling);
+    EPIPHANY_STUB_FUN();
 }
 
 /* Fills in the systems representation of the jam/beam process identifier.
@@ -1043,7 +1043,7 @@ erl_debug(char* fmt, ...)
 static void
 erts_check_children(void)
 {
-    EPIPHANY_STUB(erts_check_children);
+    EPIPHANY_STUB_FUN();
 }
 
 #endif

@@ -141,7 +141,7 @@ is_printable_string(Eterm list, Eterm* base)
 /* print a atom doing what quoting is necessary */
 static int print_atom_name(fmtfn_t fn, void* arg, Eterm atom, long *dcount)
 {
-    EPIPHANY_STUB(print_atom_name);
+    EPIPHANY_STUB_FUN();
 }
 
 

@@ -34,5 +34,5 @@
 int
 erts_cmp_bits(byte* a_ptr, size_t a_offs, byte* b_ptr, size_t b_offs, size_t size) 
 {
-    EPIPHANY_STUB(erts_cmp_bits);
+    EPIPHANY_STUB_FUN();
 }

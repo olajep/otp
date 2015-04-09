@@ -708,7 +708,7 @@ erts_bld_atom_2uint_3tup_list(Uint **hpp, Uint *szp, Sint length,
 
 Uint32 make_hash(Eterm term_arg)
 {
-    EPIPHANY_STUB(make_hash);
+    EPIPHANY_STUB_FUN();
 }
 
 
@@ -774,17 +774,17 @@ block_hash(byte *k, unsigned length, Uint32 initval)
 Uint32
 make_hash2(Eterm term)
 {
-    EPIPHANY_STUB(make_hash2);
+    EPIPHANY_STUB_FUN();
 }
 
 Uint32 make_broken_hash(Eterm term)
 {
-    EPIPHANY_STUB(make_broken_hash);
+    EPIPHANY_STUB_FUN();
 }
 
 static int do_send_to_logger(Eterm tag, Eterm gleader, char *buf, int len)
 {
-    EPIPHANY_STUB(do_send_to_logger);
+    EPIPHANY_STUB_FUN();
 }
 
 static ERTS_INLINE int
@@ -796,7 +796,7 @@ send_info_to_logger(Eterm gleader, char *buf, int len)
 static ERTS_INLINE int
 send_warning_to_logger(Eterm gleader, char *buf, int len) 
 {
-    EPIPHANY_STUB(send_warning_to_logger);
+    EPIPHANY_STUB_FUN();
 }
 
 static ERTS_INLINE int
@@ -1323,7 +1323,7 @@ not_equal:
 
 static int cmp_atoms(Eterm a, Eterm b)
 {
-    EPIPHANY_STUB(cmp_atoms);
+    EPIPHANY_STUB_FUN();
 }
 
 #if !HALFWORD_HEAP
@@ -1944,7 +1944,7 @@ iolist_to_buf(const int yield_support,
 	      char* buf,
 	      ErlDrvSizeT alloced_len)
 {
-    EPIPHANY_STUB(iolist_to_buf);
+    EPIPHANY_STUB_FUN();
 }
 
 /*
@@ -2910,7 +2910,7 @@ void upp(byte *buf, size_t sz)
 
 void pat(Eterm atom)
 {
-    EPIPHANY_STUB(pat);
+    EPIPHANY_STUB_FUN();
 }
 
 

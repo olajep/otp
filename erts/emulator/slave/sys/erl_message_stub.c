@@ -45,29 +45,29 @@
 
 void init_message(void)
 {
-    EPIPHANY_STUB(init_message);
+    EPIPHANY_STUB_FUN();
 }
 
 void free_message(ErlMessage *m)
 {
-    EPIPHANY_STUB(free_message);
+    EPIPHANY_STUB_FUN();
 }
 
 ErlHeapFragment* new_message_buffer(Uint u)
 {
-    EPIPHANY_STUB(new_message_buffer);
+    EPIPHANY_STUB_FUN();
 }
 
 ErlHeapFragment* erts_resize_message_buffer(ErlHeapFragment *, Uint,
 					    Eterm *, Uint);
 void free_message_buffer(ErlHeapFragment *f)
 {
-    EPIPHANY_STUB(free_message_buffer);
+    EPIPHANY_STUB_FUN();
 }
 
 void erts_queue_dist_message(Process *p, ErtsProcLocks *l, ErtsDistExternal *d, Eterm t)
 {
-    EPIPHANY_STUB(erts_queue_dist_message);
+    EPIPHANY_STUB_FUN();
 }
 
 void erts_queue_message(Process *p, ErtsProcLocks *l, ErlHeapFragment *f, Eterm t, Eterm t2
@@ -76,22 +76,22 @@ void erts_queue_message(Process *p, ErtsProcLocks *l, ErlHeapFragment *f, Eterm 
 #endif
 )
 {
-    EPIPHANY_STUB(erts_queue_message);
+    EPIPHANY_STUB_FUN();
 }
 
 void erts_deliver_exit_message(Eterm t, Process* p, ErtsProcLocks *l, Eterm t2, Eterm t3)
 {
-    EPIPHANY_STUB(erts_deliver_exit_message);
+    EPIPHANY_STUB_FUN();
 }
 
 Sint erts_send_message(Process *p, Process *p2, ErtsProcLocks *l, Eterm t, unsigned u)
 {
-    EPIPHANY_STUB(erts_send_message);
+    EPIPHANY_STUB_FUN();
 }
 
 void erts_link_mbuf_to_proc(Process *proc, ErlHeapFragment *bp)
 {
-    EPIPHANY_STUB(erts_link_mbuf_to_proc);
+    EPIPHANY_STUB_FUN();
 }
 
 /*
@@ -100,27 +100,27 @@ void erts_link_mbuf_to_proc(Process *proc, ErlHeapFragment *bp)
  */
 void erts_move_msg_mbuf_to_heap(Eterm** hpp, ErlOffHeap* off_heap, ErlMessage *msg)
 {
-    EPIPHANY_STUB(erts_move_msg_mbuf_to_heap);
+    EPIPHANY_STUB_FUN();
 }
 
 Uint erts_msg_attached_data_size_aux(ErlMessage *msg)
 {
-    EPIPHANY_STUB(erts_msg_attached_data_size_aux);
+    EPIPHANY_STUB_FUN();
 }
 
 void erts_move_msg_attached_data_to_heap(Eterm **t, ErlOffHeap *o, ErlMessage *m)
 {
-    EPIPHANY_STUB(erts_move_msg_attached_data_to_heap);
+    EPIPHANY_STUB_FUN();
 }
 
 
 Eterm erts_msg_distext2heap(Process *p, ErtsProcLocks *l, ErlHeapFragment **f,
 			    Eterm *t, ErtsDistExternal *d)
 {
-    EPIPHANY_STUB(erts_msg_distext2heap);
+    EPIPHANY_STUB_FUN();
 }
 
 void erts_cleanup_offheap(ErlOffHeap *offheap)
 {
-    EPIPHANY_STUB(erts_cleanup_offheap);
+    EPIPHANY_STUB_FUN();
 }

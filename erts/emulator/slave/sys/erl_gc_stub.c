@@ -37,7 +37,7 @@
 int
 erts_garbage_collect(Process* p, int need, Eterm* objv, int nobj)
 {
-    EPIPHANY_STUB(erts_garbage_collect);
+    EPIPHANY_STUB_FUN();
 }
 
 /* /\* */

@@ -1766,7 +1766,7 @@ erts_psd_get(Process *p, int ix)
 ERTS_GLB_INLINE void *
 erts_psd_set(Process *p, ErtsProcLocks plocks, int ix, void *data)
 {
-    EPIPHANY_STUB(erts_psd_set);
+    EPIPHANY_STUB_FUN();
 }
 
 #endif

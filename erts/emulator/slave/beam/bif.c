@@ -54,7 +54,7 @@ Export* erts_format_cpu_topology_trap = NULL;
 
 BIF_RETTYPE spawn_3(BIF_ALIST_3)
 {
-    EPIPHANY_STUB(spawn_3);
+    EPIPHANY_STUB_FUN();
 }
 
 /**********************************************************************/
@@ -62,17 +62,17 @@ BIF_RETTYPE spawn_3(BIF_ALIST_3)
 /* create a link to the process */
 BIF_RETTYPE link_1(BIF_ALIST_1)
 {
-    EPIPHANY_STUB(link_1);
+    EPIPHANY_STUB_FUN();
 }
 
 BIF_RETTYPE demonitor_1(BIF_ALIST_1)
 {
-    EPIPHANY_STUB(demonitor_1);
+    EPIPHANY_STUB_FUN();
 }
 
 BIF_RETTYPE demonitor_2(BIF_ALIST_2)
 {
-    EPIPHANY_STUB(demonitor_2);
+    EPIPHANY_STUB_FUN();
 }
 
 /* Type must be atomic object! */
@@ -124,14 +124,14 @@ erts_queue_monitor_message(Process *p,
 
 BIF_RETTYPE spawn_link_3(BIF_ALIST_3)
 {
-    EPIPHANY_STUB(spawn_link_3);
+    EPIPHANY_STUB_FUN();
 }
 
 /**********************************************************************/
 
 BIF_RETTYPE spawn_opt_1(BIF_ALIST_1)
 {
-    EPIPHANY_STUB(spawn_opt_1);
+    EPIPHANY_STUB_FUN();
 }
 
   
@@ -139,7 +139,7 @@ BIF_RETTYPE spawn_opt_1(BIF_ALIST_1)
 /* remove a link from a process */
 BIF_RETTYPE unlink_1(BIF_ALIST_1)
 {
-    EPIPHANY_STUB(unlink_1);
+    EPIPHANY_STUB_FUN();
 }
 
 BIF_RETTYPE hibernate_3(BIF_ALIST_3)
@@ -386,7 +386,7 @@ BIF_RETTYPE raise_3(BIF_ALIST_3)
 
 BIF_RETTYPE exit_2(BIF_ALIST_2)
 {
-    EPIPHANY_STUB(exit_2);
+    EPIPHANY_STUB_FUN();
 }
 
 /**********************************************************************/
@@ -442,7 +442,7 @@ static BIF_RETTYPE process_flag_aux(Process *BIF_P,
 
 BIF_RETTYPE process_flag_2(BIF_ALIST_2)
 {
-    EPIPHANY_STUB(process_flag_2);
+    EPIPHANY_STUB_FUN();
 }
 
 BIF_RETTYPE process_flag_3(BIF_ALIST_3)
@@ -492,13 +492,13 @@ Sint do_send(Process *p, Eterm to, Eterm msg, int suspend, Eterm *refp);
 
 Sint
 do_send(Process *p, Eterm to, Eterm msg, int suspend, Eterm *refp) {
-    EPIPHANY_STUB(do_send);
+    EPIPHANY_STUB_FUN();
 }
 
 
 BIF_RETTYPE send_3(BIF_ALIST_3)
 {
-    EPIPHANY_STUB(send_3);
+    EPIPHANY_STUB_FUN();
 }
 
 BIF_RETTYPE send_2(BIF_ALIST_2)
@@ -508,7 +508,7 @@ BIF_RETTYPE send_2(BIF_ALIST_2)
 
 Eterm erl_send(Process *p, Eterm to, Eterm msg)
 {
-    EPIPHANY_STUB(erl_send);
+    EPIPHANY_STUB_FUN();
 }
 
 /**********************************************************************/
@@ -1216,22 +1216,22 @@ BIF_RETTYPE list_to_integer_2(BIF_ALIST_2)
 
 BIF_RETTYPE float_to_list_1(BIF_ALIST_1)
 {
-  EPIPHANY_STUB(float_to_list_1);
+  EPIPHANY_STUB_FUN();
 }
 
 BIF_RETTYPE float_to_list_2(BIF_ALIST_2)
 {
-  EPIPHANY_STUB(float_to_list_2);
+  EPIPHANY_STUB_FUN();
 }
 
 BIF_RETTYPE float_to_binary_1(BIF_ALIST_1)
 {
-  EPIPHANY_STUB(float_to_binary_1);
+  EPIPHANY_STUB_FUN();
 }
 
 BIF_RETTYPE float_to_binary_2(BIF_ALIST_2)
 {
-  EPIPHANY_STUB(float_to_binary_2);
+  EPIPHANY_STUB_FUN();
 }
 
 /**********************************************************************/

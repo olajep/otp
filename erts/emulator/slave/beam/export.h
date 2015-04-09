@@ -87,9 +87,7 @@ extern erts_smp_mtx_t export_staging_lock;
 ERTS_GLB_INLINE Export*
 erts_active_export_entry(Eterm m, Eterm f, unsigned int a)
 {
-    EPIPHANY_STUB(erts_active_export_entry);
-    // extern Export* erts_find_export_entry(Eterm m, Eterm f, unsigned a, ErtsCodeIndex);
-    // return erts_find_export_entry(m, f, a, erts_active_code_ix());
+    EPIPHANY_STUB_FUN();
 }
 
 #endif /* ERTS_GLB_INLINE_INCL_FUNC_DEF */
