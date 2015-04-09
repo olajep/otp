@@ -1095,7 +1095,7 @@ endif
 # ----------------------------------------------------------------------
 # Dependencies
 #
-$(TARGET)/Makefile: Makefile.in
+$(TARGET)/Makefile: Makefile.in ../config.status
 # We don't want to regenreate all the files because that will cause a full rebuild
 	$(gen_verbose) cd .. && ./config.status \
 		--file=emulator/$(TARGET)/Makefile:emulator/Makefile.in

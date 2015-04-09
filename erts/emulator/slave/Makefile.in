@@ -466,7 +466,8 @@ RUN_OBJS = \
 	$(OBJDIR)/copy.o		$(OBJDIR)/erl_term.o \
 	$(OBJDIR)/erl_bits_stub.o	$(OBJDIR)/erl_process_stub.o \
 	$(OBJDIR)/erl_message_stub.o \
-	$(OBJDIR)/erl_init.o		$(OBJDIR)/erl_printf_term.o
+	$(OBJDIR)/erl_init.o		$(OBJDIR)/erl_printf_term.o \
+	$(OBJDIR)/erl_debug.o
 
 OS_OBJS = \
 	$(OBJDIR)/elib_memmove.o \

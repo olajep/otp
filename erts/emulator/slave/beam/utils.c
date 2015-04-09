@@ -50,7 +50,6 @@
 #include "erl_sched_spec_pre_alloc.h"
 #include "beam_bp.h"
 #include "erl_ptab.h"
-#include "erl_check_io.h"
 
 #undef M_TRIM_THRESHOLD
 #undef M_TOP_PAD
@@ -2916,7 +2915,8 @@ void pat(Eterm atom)
 
 void pinfo()
 {
-    process_info(ERTS_PRINT_STDOUT, NULL);
+    //ESTUB
+    erts_printf("pinfo: not printing, is stubbed out\n");
 }
 
 
@@ -2924,7 +2924,7 @@ void pp(p)
 Process *p;
 {
     if(p)
-	print_process_info(ERTS_PRINT_STDERR, NULL, p);
+        erts_fprintf(stderr, "pp: not printing, is stubbed out\n");
 }
     
 void ppi(Eterm pid)

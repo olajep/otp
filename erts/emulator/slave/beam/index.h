@@ -63,14 +63,4 @@ void erts_index_merge(Hash*, IndexTable*);
 */
 void index_erase_latest_from(IndexTable*, Uint ix);
 
-ERTS_GLB_INLINE int index_put(IndexTable*, void*);
-
-#if ERTS_GLB_INLINE_INCL_FUNC_DEF
-
-ERTS_GLB_INLINE int index_put(IndexTable* t, void* tmpl)
-{
-    return index_put_entry(t, tmpl)->index;
-}
-#endif
-
 #endif

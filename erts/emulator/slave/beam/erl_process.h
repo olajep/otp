@@ -1709,10 +1709,7 @@ ERTS_GLB_INLINE void erts_proc_notify_new_message(Process *p, ErtsProcLocks lock
 ERTS_GLB_INLINE void
 erts_proc_notify_new_message(Process *p, ErtsProcLocks locks)
 {
-    /* No barrier needed, due to msg lock */
-    erts_aint32_t state = erts_smp_atomic32_read_nob(&p->state);
-    if (!(state & ERTS_PSFLG_ACTIVE))
-	erts_schedule_process(p, state, locks);
+    EPIPHANY_STUB_FUN();
 }
 #endif
 

@@ -26,6 +26,13 @@
 #include "erl_printf_format.h"
 #include <e-lib.h>
 
+static int is_leader(void);
+static ssize_t internal_write(int, const void*, const size_t);
+static int internal_vprintf(char*, va_list);
+static int internal_printf(char*, ...);
+static int sys_epiphany_printf(char*, va_list);
+static void pump_output(void);
+
 volatile int goflag = 0;
 e_mutex_t global_mutex __attribute__((section(".data_bank0")));
 
@@ -34,13 +41,14 @@ char outbuf[OUTBUF_SZ];
 char * volatile out_start = outbuf;
 char * volatile out_end = outbuf;
 
-int is_leader() {
-    ASSERT(04010 == 0xfaa);
+static int is_leader() {
+    // Hardcoded coordinates 32,8
+    // ETODO: use workgroup config instead
     return e_get_coreid() == 04010;
 }
 
-ssize_t internal_write(int __attribute__((unused)) fildes, const void *data,
-                       const size_t initial_count) {
+static ssize_t internal_write(int __attribute__((unused)) fildes,
+                              const void *data, const size_t initial_count) {
     size_t count = initial_count;
     e_mutex_lock(0, 0, &global_mutex);
 
@@ -65,7 +73,7 @@ ssize_t internal_write(int __attribute__((unused)) fildes, const void *data,
     return initial_count;
 }
 
-int internal_vprintf(char *format, va_list args) {
+static int internal_vprintf(char *format, va_list args) {
     int count = vsnprintf(NULL, 0, format, args);
     char buf[count+1];
     vsnprintf(buf, count+1, format, args);
@@ -73,38 +81,32 @@ int internal_vprintf(char *format, va_list args) {
     return count;
 }
 
-int internal_printf(char *format, ...) {
+static int internal_printf(char *format, ...) {
     va_list args;
+    int count;
     va_start(args, format);
-    int count = internal_vprintf(format, args);
+    count = internal_vprintf(format, args);
     va_end(args);
     return count;
 }
 
-int sys_epiphany_printf(char *format, va_list args) {
+static int sys_epiphany_printf(char *format, va_list args) {
     e_coreid_t id = e_get_coreid();
     unsigned row, col;
     int count;
+    if (goflag != 1) {
+        // We need the global mutex to be initialised to print, but we mustn't
+        // assert or we'll loop infinitely.
+        return -1;
+    }
     e_coords_from_coreid(id, &row, &col);
-    ASSERT (goflag == 1);
     count = internal_printf("[%d,%d] ", row, col);
     // We mustn't hold the lock while calling complex functions like
     // erts_printf_format, since they might rely on printing or stubbed code
-    count += erts_printf_format(internal_write, STDOUT_FILENO, format, args);
+    count += erts_printf_format((fmtfn_t)internal_write, NULL, format, args);
     fflush(stdout);
     return count;
 }
-
-void pump_output() {
-    char *captured_end = out_end;
-    char *captured_start = out_start;
-    if (captured_start > captured_end) {
-        write(STDOUT_FILENO, captured_start, OUTBUF_SZ - (outbuf - captured_start));
-        captured_start = outbuf;
-    }
-    write(STDOUT_FILENO, captured_start, captured_end - captured_start);
-    out_start = captured_end;
-};
 
 int
 main(int argc, char **argv)

@@ -202,7 +202,6 @@ void *erts_realloc(ErtsAlcType_t type, void *ptr, Uint size);
 void erts_free(ErtsAlcType_t type, void *ptr);
 void *erts_alloc_fnf(ErtsAlcType_t type, Uint size);
 void *erts_realloc_fnf(ErtsAlcType_t type, void *ptr, Uint size);
-int erts_is_allctr_wrapper_prelocked(void);
 
 #endif /* #if !ERTS_ALC_DO_INLINE */
 
@@ -254,13 +253,6 @@ ERTS_ALC_INLINE
 void *erts_realloc_fnf(ErtsAlcType_t __attribute__((unused)) type, void *ptr, Uint size)
 {
     return realloc(ptr, size);
-}
-
-ERTS_ALC_INLINE
-int erts_is_allctr_wrapper_prelocked(void)
-{
-    return erts_allctr_wrapper_prelocked                 /* locked */
-	&& !!erts_tsd_get(erts_allctr_prelock_tsd_key);  /* by me  */
 }
 
 #endif /* #if ERTS_ALC_DO_INLINE || defined(ERTS_ALC_INTERNAL__) */
