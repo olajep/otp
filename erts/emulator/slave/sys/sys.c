@@ -1310,7 +1310,7 @@ erl_sys_args(int* argc, char** argv)
 
     i = 1;
 
-    ASSERT(argc && argv);
+    ASSERT(argc && (*argc == 0 || argv));
 
     while (i < *argc) {
 	if(argv[i][0] == '-') {

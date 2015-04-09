@@ -3714,6 +3714,23 @@ get_map_elements_fail:
     c_p->freason = SYSTEM_LIMIT;
     goto lb_Cl_error;
 
+ OpCase(i_hello_world):
+    erts_printf("Hello world from BEAM!\n");
+    Next(0);
+
+ OpCase(i_write): {
+     Eterm value;
+     GetArg1(0, value);
+     switch (beam_reg_tag(Arg(0))) {
+     case R_REG_DEF: erts_printf("x0 = %T\n", value); break;
+     case X_REG_DEF: erts_printf("x%d = %T\n", x_reg_offset(Arg(0)), value); break;
+     case Y_REG_DEF: erts_printf("y%d = %T\n", y_reg_offset(Arg(0)), value); break;
+     }
+     Next(1);
+ }
+
+ OpCase(bad_op):
+     erl_exit(1, "bad op %d\n", I-demo_prog);
 
 #ifdef ERTS_OPCODE_COUNTER_SUPPORT
     DEFINE_COUNTING_LABELS;
@@ -3734,26 +3751,6 @@ get_map_elements_fail:
     /*
      * One-time initialization of Beam emulator.
      */
- OpCase(i_hello_world):
-    erts_printf("Hello world from BEAM!\n");
-    ASSERT(0);
-    erts_printf("No assertions, apparently...\n");
-    Next(0);
-
- OpCase(i_write): {
-     Eterm value;
-     GetArg1(0, value);
-     switch (beam_reg_tag(Arg(0))) {
-     case R_REG_DEF: erts_printf("x0 = %T\n", value); break;
-     case X_REG_DEF: erts_printf("x%d = %T\n", x_reg_offset(Arg(0)), value); break;
-     case Y_REG_DEF: erts_printf("y%d = %T\n", y_reg_offset(Arg(0)), value); break;
-     }
-     Next(1);
- }
-
- OpCase(bad_op): {
-     erl_exit(1, "bad op %d\n", I-demo_prog);
- }
 
  init_emulator:
  {

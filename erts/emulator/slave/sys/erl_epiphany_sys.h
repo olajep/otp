@@ -362,7 +362,7 @@ extern int exit_async(void);
 void sys_epiphany_stub(const char* name) __attribute__ ((__noreturn__));
 
 #define EPIPHANY_STUB(NAME) sys_epiphany_stub(#NAME)
-#define EPIPHANY_STUB_FUN() EPIPHANY_STUB(__FUNCTION__)
+#define EPIPHANY_STUB_FUN() sys_epiphany_stub(__FUNCTION__)
 
 #endif /* #ifndef _ERL_EPIPHANY_SYS_H */
 
