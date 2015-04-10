@@ -359,26 +359,7 @@ ERTS_PRE_ALLOC_IMPL(NAME##_pre, TYPE, PASZ, (void) 0, (void) 0, (void) 0)
 #endif
 
 #define ERTS_SCHED_PREF_QUICK_ALLOC_IMPL(NAME, TYPE, PASZ, ALCT)	\
-ERTS_SCHED_PREF_AUX(NAME, TYPE, PASZ)					\
-static void								\
-init_##NAME##_alloc(void)						\
-{									\
-    init_##NAME##_pre_alloc();						\
-}									\
-static ERTS_INLINE TYPE *						\
-NAME##_alloc(void)							\
-{									\
-    TYPE *res = NAME##_pre_alloc();					\
-    if (!res)								\
-	res = erts_alloc(ALCT, sizeof(TYPE));				\
-    return res;								\
-}									\
-static ERTS_INLINE void							\
-NAME##_free(TYPE *p)							\
-{									\
-    if (!NAME##_pre_free(p))						\
-	erts_free(ALCT, (void *) p);					\
-}
+ERTS_SCHED_PREF_AUX(NAME, TYPE, PASZ)
 
 #ifdef DEBUG
 #define ERTS_PRE_ALLOC_SIZE(SZ) 2

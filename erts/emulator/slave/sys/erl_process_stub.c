@@ -168,8 +168,6 @@ Uint erts_no_dirty_io_schedulers;
 #define ERTS_THR_PRGR_LATER_CLEANUP_OP_THRESHOLD_EAGER			(16*1024)
 #define ERTS_THR_PRGR_LATER_CLEANUP_OP_THRESHOLD_VERY_EAGER		(1024)
 
-static UWord thr_prgr_later_cleanup_op_threshold = ERTS_THR_PRGR_LATER_CLEANUP_OP_THRESHOLD_MEDIUM;
-
 ErtsPTab erts_proc erts_align_attribute(ERTS_CACHE_LINE_SIZE);
 
 int erts_sched_thread_suggested_stack_size = -1;
@@ -177,12 +175,6 @@ int erts_sched_thread_suggested_stack_size = -1;
 #ifdef ERTS_ENABLE_LOCK_CHECK
 ErtsLcPSDLocks erts_psd_required_locks[ERTS_PSD_SIZE];
 #endif
-
-static struct {
-    int aux_work;
-    int tse;
-    int sys_schedule;
-} sched_busy_wait;
 
 #ifdef ERTS_SMP
 int erts_disable_proc_not_running_opt;
@@ -299,8 +291,6 @@ erts_sched_stat_t erts_sched_stat;
 static erts_tsd_key_t sched_data_key;
 #endif
 
-static erts_smp_atomic32_t function_calls;
-
 #ifdef ERTS_SMP
 static erts_smp_atomic32_t doing_sys_schedule;
 static erts_smp_atomic32_t no_empty_run_queues;
@@ -326,7 +316,6 @@ typedef union {
     char align[ERTS_ALC_CACHE_LINE_ALIGN_SIZE(sizeof(ErtsSchedulerSleepInfo))];
 } ErtsAlignedSchedulerSleepInfo;
 
-static ErtsAlignedSchedulerSleepInfo *aligned_sched_sleep_info;
 #ifdef ERTS_DIRTY_SCHEDULERS
 #ifdef ERTS_SMP
 static ErtsAlignedSchedulerSleepInfo *aligned_dirty_cpu_sched_sleep_info;
@@ -334,8 +323,6 @@ static ErtsAlignedSchedulerSleepInfo *aligned_dirty_io_sched_sleep_info;
 #endif
 #endif
 
-static Uint last_reductions;
-static Uint last_exact_reductions;
 Uint erts_default_process_flags;
 Eterm erts_system_monitor;
 Eterm erts_system_monitor_long_gc;
@@ -371,86 +358,517 @@ struct ErtsProcSysTask_ {
     Eterm heap[1];
 };
 
-#define ERTS_PROC_SYS_TASK_SIZE(HSz) \
-    (sizeof(ErtsProcSysTask) - sizeof(Eterm) + sizeof(Eterm)*(HSz))
+#ifdef DEBUG
 
-struct ErtsProcSysTaskQs_ {
-    int qmask;
-    int ncount;
-    ErtsProcSysTask *q[ERTS_NO_PROC_PRIO_LEVELS];
-};
+void
+erts_debug_verify_clean_empty_process(Process* p)
+{
+    /* Things that erts_cleanup_empty_process() will *not* cleanup... */
+    ASSERT(p->htop == NULL);
+    ASSERT(p->stop == NULL);
+    ASSERT(p->hend == NULL);
+    ASSERT(p->heap == NULL);
+    ASSERT(p->common.id == ERTS_INVALID_PID);
+    ASSERT(ERTS_TRACER_PROC(p) == NIL);
+    ASSERT(ERTS_TRACE_FLAGS(p) == F_INITIAL_TRACE_FLAGS);
+    ASSERT(p->group_leader == ERTS_INVALID_PID);
+    ASSERT(p->next == NULL);
+    ASSERT(p->common.u.alive.reg == NULL);
+    ASSERT(p->heap_sz == 0);
+    ASSERT(p->high_water == NULL);
+    ASSERT(p->old_hend == NULL);
+    ASSERT(p->old_htop == NULL);
+    ASSERT(p->old_heap == NULL);
 
-ERTS_SCHED_PREF_QUICK_ALLOC_IMPL(proc_sys_task_queues,
-				 ErtsProcSysTaskQs,
-				 50,
-				 ERTS_ALC_T_PROC_SYS_TSK_QS)
+    ASSERT(ERTS_P_MONITORS(p) == NULL);
+    ASSERT(ERTS_P_LINKS(p) == NULL);
+    ASSERT(p->nodes_monitors == NULL);
+    ASSERT(p->suspend_monitors == NULL);
+    ASSERT(p->msg.first == NULL);
+    ASSERT(p->msg.len == 0);
+    ASSERT(p->u.bif_timers == NULL);
+    ASSERT(p->dictionary == NULL);
+    ASSERT(p->catches == 0);
+    ASSERT(p->cp == NULL);
+    ASSERT(p->i == NULL);
+    ASSERT(p->current == NULL);
 
-ERTS_SCHED_PREF_QUICK_ALLOC_IMPL(misc_op_list,
-				 ErtsMiscOpList,
-				 10,
-				 ERTS_ALC_T_MISC_OP_LIST)
+    ASSERT(p->parent == NIL);
 
-ERTS_SCHED_PREF_QUICK_ALLOC_IMPL(proclist,
-				 ErtsProcList,
-				 200,
-				 ERTS_ALC_T_PROC_LIST)
-
-#define ERTS_SCHED_SLEEP_INFO_IX(IX)					\
-    (ASSERT(-1 <= ((int) (IX))					        \
-		 && ((int) (IX)) < ((int) erts_no_schedulers)),		\
-     &aligned_sched_sleep_info[(IX)].ssi)
-#ifdef ERTS_DIRTY_SCHEDULERS
-#define ERTS_DIRTY_CPU_SCHED_SLEEP_INFO_IX(IX)				\
-    (ASSERT(0 <= ((int) (IX))					        \
-	    && ((int) (IX)) < ((int) erts_no_dirty_cpu_schedulers)),	\
-     &aligned_dirty_cpu_sched_sleep_info[(IX)].ssi)
-#define ERTS_DIRTY_IO_SCHED_SLEEP_INFO_IX(IX)				\
-    (ASSERT(0 <= ((int) (IX))					        \
-	    && ((int) (IX)) < ((int) erts_no_dirty_io_schedulers)),	\
-     &aligned_dirty_io_sched_sleep_info[(IX)].ssi)
+#ifdef ERTS_SMP
+    ASSERT(p->msg_inq.first == NULL);
+    ASSERT(p->msg_inq.len == 0);
+    ASSERT(p->suspendee == NIL);
+    ASSERT(p->pending_suspenders == NULL);
+    ASSERT(p->pending_exit.reason == THE_NON_VALUE);
+    ASSERT(p->pending_exit.bp == NULL);
 #endif
 
-#define ERTS_FOREACH_RUNQ(RQVAR, DO)					\
-do {									\
-    ErtsRunQueue *RQVAR;						\
-    int ix__;								\
-    for (ix__ = 0; ix__ < erts_no_run_queues; ix__++) {			\
-	RQVAR = ERTS_RUNQ_IX(ix__);					\
-	erts_smp_runq_lock(RQVAR);					\
-	{ DO; }								\
-	erts_smp_runq_unlock(RQVAR);					\
-    }									\
-} while (0)
+    /* Thing that erts_cleanup_empty_process() cleans up */
 
-#define ERTS_FOREACH_OP_RUNQ(RQVAR, DO)					\
-do {									\
-    ErtsRunQueue *RQVAR;						\
-    int ix__;								\
-    ERTS_SMP_LC_ASSERT(erts_smp_lc_mtx_is_locked(&schdlr_sspnd.mtx));	\
-    for (ix__ = 0; ix__ < schdlr_sspnd.online; ix__++) {		\
-	RQVAR = ERTS_RUNQ_IX(ix__);					\
-	erts_smp_runq_lock(RQVAR);					\
-	{ DO; }								\
-	erts_smp_runq_unlock(RQVAR);					\
-    }									\
-} while (0)
+    ASSERT(p->off_heap.first == NULL);
+    ASSERT(p->off_heap.overhead == 0);
 
-#define ERTS_ATOMIC_FOREACH_RUNQ_X(RQVAR, DO, DOX)			\
-do {									\
-    ErtsRunQueue *RQVAR;						\
-    int ix__;								\
-    for (ix__ = 0; ix__ < erts_no_run_queues; ix__++) {			\
-	RQVAR = ERTS_RUNQ_IX(ix__);					\
-	erts_smp_runq_lock(RQVAR);					\
-	{ DO; }								\
-    }									\
-    { DOX; }								\
-    for (ix__ = 0; ix__ < erts_no_run_queues; ix__++)			\
-	erts_smp_runq_unlock(ERTS_RUNQ_IX(ix__));			\
-} while (0)
+    ASSERT(p->mbuf == NULL);
+}
 
-#define ERTS_ATOMIC_FOREACH_RUNQ(RQVAR, DO) \
-  ERTS_ATOMIC_FOREACH_RUNQ_X(RQVAR, DO, )
+#endif
+
+/*
+ * Initiates a pseudo process that can be used
+ * for arithmetic BIFs.
+ */
+
+void erts_init_empty_process(Process *p)
+{
+    p->htop = NULL;
+    p->stop = NULL;
+    p->hend = NULL;
+    p->heap = NULL;
+    p->gen_gcs = 0;
+    p->max_gen_gcs = 0;
+    p->min_heap_size = 0;
+    p->min_vheap_size = 0;
+    p->rcount = 0;
+    p->common.id = ERTS_INVALID_PID;
+    p->reds = 0;
+    ERTS_TRACER_PROC(p) = NIL;
+    ERTS_TRACE_FLAGS(p) = F_INITIAL_TRACE_FLAGS;
+    p->group_leader = ERTS_INVALID_PID;
+    p->flags = 0;
+    p->fvalue = NIL;
+    p->freason = EXC_NULL;
+    p->ftrace = NIL;
+    p->fcalls = 0;
+
+    p->bin_vheap_sz = BIN_VH_MIN_SIZE;
+    p->bin_old_vheap_sz = BIN_VH_MIN_SIZE;
+    p->bin_old_vheap = 0;
+    p->sys_task_qs = NULL;
+    p->bin_vheap_mature = 0;
+#ifdef ERTS_SMP
+    p->common.u.alive.ptimer = NULL;
+#else
+    memset(&(p->common.u.alive.tm), 0, sizeof(ErlTimer));
+#endif
+    p->next = NULL;
+    p->off_heap.first = NULL;
+    p->off_heap.overhead = 0;
+    p->common.u.alive.reg = NULL;
+    p->heap_sz = 0;
+    p->high_water = NULL;
+    p->old_hend = NULL;
+    p->old_htop = NULL;
+    p->old_heap = NULL;
+    p->mbuf = NULL;
+    p->mbuf_sz = 0;
+    p->psd = NULL;
+    ERTS_P_MONITORS(p) = NULL;
+    ERTS_P_LINKS(p) = NULL;         /* List of links */
+    p->nodes_monitors = NULL;
+    p->suspend_monitors = NULL;
+    p->msg.first = NULL;
+    p->msg.last = &p->msg.first;
+    p->msg.save = &p->msg.first;
+    p->msg.len = 0;
+    p->u.bif_timers = NULL;
+    p->dictionary = NULL;
+    p->seq_trace_clock = 0;
+    p->seq_trace_lastcnt = 0;
+    p->seq_trace_token = NIL;
+    p->initial[0] = 0;
+    p->initial[1] = 0;
+    p->initial[2] = 0;
+    p->catches = 0;
+    p->cp = NULL;
+    p->i = NULL;
+    p->current = NULL;
+
+    /*
+     * Saved x registers.
+     */
+    p->arity = 0;
+    p->arg_reg = NULL;
+    p->max_arg_reg = 0;
+    p->def_arg_reg[0] = 0;
+    p->def_arg_reg[1] = 0;
+    p->def_arg_reg[2] = 0;
+    p->def_arg_reg[3] = 0;
+    p->def_arg_reg[4] = 0;
+    p->def_arg_reg[5] = 0;
+
+    p->parent = NIL;
+    p->approx_started = 0;
+    p->common.u.alive.started_interval = 0;
+
+#ifdef HIPE
+    hipe_init_process(&p->hipe);
+#ifdef ERTS_SMP
+    hipe_init_process_smp(&p->hipe_smp);
+#endif
+#endif
+
+    INIT_HOLE_CHECK(p);
+#ifdef DEBUG
+    p->last_old_htop = NULL;
+#endif
+
+    erts_smp_atomic32_init_nob(&p->state, (erts_aint32_t) PRIORITY_NORMAL);
+
+#ifdef ERTS_SMP
+    p->scheduler_data = NULL;
+    p->msg_inq.first = NULL;
+    p->msg_inq.last = &p->msg_inq.first;
+    p->msg_inq.len = 0;
+    p->suspendee = NIL;
+    p->pending_suspenders = NULL;
+    p->pending_exit.reason = THE_NON_VALUE;
+    p->pending_exit.bp = NULL;
+    erts_proc_lock_init(p);
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
+    RUNQ_SET_RQ(&p->run_queue, ERTS_RUNQ_IX(0));
+#endif
+
+#if !defined(NO_FPE_SIGNALS) || defined(HIPE)
+    p->fp_exception = 0;
+#endif
+
+}
+
+void
+erts_cleanup_empty_process(Process* p)
+{
+    /* We only check fields that are known to be used... */
+
+    // erts_cleanup_offheap(&p->off_heap); // ESTUB
+    p->off_heap.first = NULL;
+    p->off_heap.overhead = 0;
+
+    if (p->mbuf != NULL) {
+	free_message_buffer(p->mbuf);
+	p->mbuf = NULL;
+    }
+#ifdef ERTS_SMP
+    erts_proc_lock_fin(p);
+#endif
+#ifdef DEBUG
+    erts_debug_verify_clean_empty_process(p);
+#endif
+}
+
+/*
+** Allocate process and find out where to place next process.
+*/
+static Process*
+alloc_process(ErtsRunQueue *rq, erts_aint32_t state)
+{
+    Process *p;
+
+    p = erts_alloc_fnf(ERTS_ALC_T_PROC, sizeof(Process));
+    if (!p)
+	return NULL;
+
+    ASSERT(((char *) p) == ((char *) &p->common));
+
+    p->common.id = 0x3;
+    ASSERT(internal_pid_serial(p->common.id) <= ERTS_MAX_PID_SERIAL);
+    
+    p->rcount = 0;
+    p->heap = NULL;
+
+    /* ASSERT(p == (Process *) (erts_ptab_pix2intptr_nob( */
+    /* 				 &erts_proc, */
+    /* 				 internal_pid_index(p->common.id)))); */
+
+    return p;
+}
+
+static Process *
+erl_create_process_ptr(Process* parent, /* Parent of process (default group leader). */
+		       Eterm mod,	/* Tagged atom for module. */
+		       Eterm func,	/* Tagged atom for function. */
+		       Eterm args,	/* Arguments for function (must be well-formed list). */
+		       ErlSpawnOpts* so) /* Options for spawn. */
+{
+    Process *p;
+    Sint arity;			/* Number of arguments. */
+    Uint arg_size;		/* Size of arguments. */
+    Uint sz;			/* Needed words on heap. */
+    Uint heap_need;		/* Size needed on heap. */
+    Process *res = NULL;
+    erts_aint32_t state = 0;
+    erts_aint32_t prio = (erts_aint32_t) PRIORITY_NORMAL;
+
+#ifdef ERTS_SMP
+    erts_smp_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
+#endif
+
+    /*
+     * Check for errors.
+     */
+
+    if (is_not_atom(mod) || is_not_atom(func) || ((arity = erts_list_length(args)) < 0)) {
+	so->error_code = BADARG;
+	goto error;
+    }
+
+    state |= (((prio & ERTS_PSFLGS_PRIO_MASK) << ERTS_PSFLGS_ACT_PRIO_OFFSET)
+	      | ((prio & ERTS_PSFLGS_PRIO_MASK) << ERTS_PSFLGS_USR_PRIO_OFFSET));
+
+    p = alloc_process(NULL, state); /* All proc locks are locked by this thread
+				     on success */
+    if (!p) {
+	erts_send_error_to_logger_str(parent->group_leader,
+				      "Too many processes\n");
+	so->error_code = SYSTEM_LIMIT;
+	goto error;
+    }
+
+#ifdef BM_COUNTERS
+    processes_busy++;
+#endif
+    BM_COUNT(processes_spawned);
+
+    BM_SWAP_TIMER(system,size);
+    arg_size = size_object(args);
+    BM_SWAP_TIMER(size,system);
+    heap_need = arg_size;
+
+    p->flags = erts_default_process_flags;
+
+    if (so->flags & SPO_USE_ARGS) {
+	p->min_heap_size  = so->min_heap_size;
+	p->min_vheap_size = so->min_vheap_size;
+	p->max_gen_gcs    = so->max_gen_gcs;
+    } else {
+	p->min_heap_size  = H_MIN_SIZE;
+	p->min_vheap_size = BIN_VH_MIN_SIZE;
+	p->max_gen_gcs    = (Uint16) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
+    }
+    p->schedule_count = 0;
+    // ASSERT(p->min_heap_size == erts_next_heap_size(p->min_heap_size, 0));
+    
+    p->initial[INITIAL_MOD] = mod;
+    p->initial[INITIAL_FUN] = func;
+    p->initial[INITIAL_ARI] = (Uint) arity;
+
+    /*
+     * Must initialize binary lists here before copying binaries to process.
+     */
+    p->off_heap.first = NULL;
+    p->off_heap.overhead = 0;
+
+    heap_need +=
+	IS_CONST(parent->group_leader) ? 0 : NC_HEAP_SIZE(parent->group_leader);
+
+    if (heap_need < p->min_heap_size) {
+	sz = heap_need = p->min_heap_size;
+    } else {
+	sz = MAX(1024, heap_need);
+	// sz = erts_next_heap_size(heap_need, 0);
+    }
+
+#ifdef HIPE
+    hipe_init_process(&p->hipe);
+#ifdef ERTS_SMP
+    hipe_init_process_smp(&p->hipe_smp);
+#endif
+#endif
+    p->heap = (Eterm *) ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP, sizeof(Eterm)*sz);
+    p->old_hend = p->old_htop = p->old_heap = NULL;
+    p->high_water = p->heap;
+    p->gen_gcs = 0;
+    p->stop = p->hend = p->heap + sz;
+    p->htop = p->heap;
+    p->heap_sz = sz;
+    p->catches = 0;
+
+    p->bin_vheap_sz     = p->min_vheap_size;
+    p->bin_old_vheap_sz = p->min_vheap_size;
+    p->bin_old_vheap    = 0;
+    p->bin_vheap_mature = 0;
+
+    p->sys_task_qs = NULL;
+
+    /* No need to initialize p->fcalls. */
+
+    p->current = p->initial+INITIAL_MOD;
+
+    p->i = (BeamInstr *) beam_apply;
+    p->cp = (BeamInstr *) beam_apply+1;
+
+    p->arg_reg = p->def_arg_reg;
+    p->max_arg_reg = sizeof(p->def_arg_reg)/sizeof(p->def_arg_reg[0]);
+    p->arg_reg[0] = mod;
+    p->arg_reg[1] = func;
+    BM_STOP_TIMER(system);
+    BM_MESSAGE(args,p,parent);
+    BM_START_TIMER(system);
+    BM_SWAP_TIMER(system,copy);
+    p->arg_reg[2] = copy_struct(args, arg_size, &p->htop, &p->off_heap);
+    BM_MESSAGE_COPIED(arg_size);
+    BM_SWAP_TIMER(copy,system);
+    p->arity = 3;
+
+    p->fvalue = NIL;
+    p->freason = EXC_NULL;
+    p->ftrace = NIL;
+    p->reds = 0;
+
+#ifdef ERTS_SMP
+    p->common.u.alive.ptimer = NULL;
+#else
+    sys_memset(&p->common.u.alive.tm, 0, sizeof(ErlTimer));
+#endif
+
+    p->common.u.alive.reg = NULL;
+    ERTS_P_LINKS(p) = NULL;
+    ERTS_P_MONITORS(p) = NULL;
+    p->nodes_monitors = NULL;
+    p->suspend_monitors = NULL;
+
+    ASSERT(is_pid(parent->group_leader));
+
+    if (parent->group_leader == ERTS_INVALID_PID)
+	p->group_leader = p->common.id;
+    else {
+	/* Needs to be done after the heap has been set up */
+	p->group_leader =
+	    IS_CONST(parent->group_leader)
+	    ? parent->group_leader
+	    : STORE_NC(&p->htop, &p->off_heap, parent->group_leader);
+    }
+
+    p->msg.first = NULL;
+    p->msg.last = &p->msg.first;
+    p->msg.save = &p->msg.first;
+    p->msg.len = 0;
+#ifdef ERTS_SMP
+    p->msg_inq.first = NULL;
+    p->msg_inq.last = &p->msg_inq.first;
+    p->msg_inq.len = 0;
+#endif
+    p->u.bif_timers = NULL;
+    p->mbuf = NULL;
+    p->mbuf_sz = 0;
+    p->psd = NULL;
+    p->dictionary = NULL;
+    p->seq_trace_lastcnt = 0;
+    p->seq_trace_clock = 0;
+    SEQ_TRACE_TOKEN(p) = NIL;
+#ifdef USE_VM_PROBES
+    DT_UTAG(p) = NIL;
+    DT_UTAG_FLAGS(p) = 0;
+#endif
+    p->parent = (parent->common.id == ERTS_INVALID_PID
+		 ? NIL
+		 : parent->common.id);
+
+    INIT_HOLE_CHECK(p);
+#ifdef DEBUG
+    p->last_old_htop = NULL;
+#endif
+
+    /*
+     * Check if this process should be initially linked to its parent.
+     */
+
+    if (so->flags & SPO_LINK) {
+	if (IS_TRACED(parent)) {
+	    if (ERTS_TRACE_FLAGS(parent) & (F_TRACE_SOL|F_TRACE_SOL1)) {
+		ERTS_TRACE_FLAGS(p) |= (ERTS_TRACE_FLAGS(parent)&TRACEE_FLAGS);
+		ERTS_TRACER_PROC(p) = ERTS_TRACER_PROC(parent); /*maybe steal*/
+
+		if (ERTS_TRACE_FLAGS(parent) & F_TRACE_SOL1) {/*maybe override*/
+		    ERTS_TRACE_FLAGS(p) &= ~(F_TRACE_SOL1 | F_TRACE_SOL);
+		    ERTS_TRACE_FLAGS(parent) &= ~(F_TRACE_SOL1 | F_TRACE_SOL);
+		}
+	    }
+	}
+    }
+
+#ifdef ERTS_SMP
+    p->scheduler_data = NULL;
+    p->suspendee = NIL;
+    p->pending_suspenders = NULL;
+    p->pending_exit.reason = THE_NON_VALUE;
+    p->pending_exit.bp = NULL;
+#endif
+
+#if !defined(NO_FPE_SIGNALS) || defined(HIPE)
+    p->fp_exception = 0;
+#endif
+
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
+
+    res = p;
+
+    VERBOSE(DEBUG_PROCESSES, ("Created a new process: %T\n",p->common.id));
+
+#ifdef USE_VM_PROBES
+    if (DTRACE_ENABLED(process_spawn)) {
+        DTRACE_CHARBUF(process_name, DTRACE_TERM_BUF_SIZE);
+        DTRACE_CHARBUF(mfa, DTRACE_TERM_BUF_SIZE);
+
+        dtrace_fun_decode(p, mod, func, arity, process_name, mfa);
+        DTRACE2(process_spawn, process_name, mfa);
+    }
+#endif
+
+ error:
+
+    erts_smp_proc_unlock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
+
+    return res;
+}
+
+
+static void
+init_scheduler_data(ErtsSchedulerData* esdp, int num,
+		    ErtsSchedulerSleepInfo* ssi,
+		    ErtsRunQueue* runq,
+		    char** daww_ptr, size_t daww_sz)
+{
+#ifdef ERTS_SMP
+    erts_bits_init_state(&esdp->erl_bits_state);
+    esdp->match_pseudo_process = NULL;
+    esdp->free_process = NULL;
+#endif
+    esdp->x_reg_array = calloc(ERTS_X_REGS_ALLOCATED, sizeof(Eterm));
+    ASSERT(esdp->x_reg_array);
+    esdp->f_reg_array = calloc(MAX_REG, sizeof(FloatDef));
+    ASSERT(esdp->f_reg_array);
+#if !HEAP_ON_C_STACK
+    esdp->num_tmp_heap_used = 0;
+#endif
+#ifdef ERTS_DIRTY_SCHEDULERS
+    if (ERTS_RUNQ_IX_IS_DIRTY(runq->ix)) {
+	esdp->no = 0;
+	ERTS_DIRTY_SCHEDULER_NO(esdp) = (Uint) num;
+    }
+    else {
+	esdp->no = (Uint) num;
+	ERTS_DIRTY_SCHEDULER_NO(esdp) = 0;
+    }
+#else
+    esdp->no = (Uint) num;
+#endif
+    esdp->ssi = ssi;
+    esdp->current_process = NULL;
+    esdp->current_port = NULL;
+
+    esdp->virtual_reds = 0;
+    esdp->cpu_id = -1;
+
+    // erts_init_atom_cache_map(&esdp->atom_cache_map); // ESTUB
+
+    esdp->run_queue = runq;
+    esdp->run_queue->scheduler = esdp;
+
+    esdp->reductions = 0;
+
+    erts_port_task_handle_init(&esdp->nosuspend_port_task_handle);
+}
 
 Process *schedule(Process *p, int calls)
 {
@@ -458,10 +876,21 @@ Process *schedule(Process *p, int calls)
     if (p) {
         p->reds += calls;
         return p;
+    } else {
+	ErlSpawnOpts so;
+	Process parent;
+	erts_init_empty_process(&parent);
+	erts_smp_proc_lock(&parent, ERTS_PROC_LOCK_MAIN);
+	so.flags = 0;
+	p = erl_create_process_ptr(&parent, am_false, am_start, NIL, &so);
+	ASSERT(p);
+	erts_smp_proc_unlock(&parent, ERTS_PROC_LOCK_MAIN);
+	erts_cleanup_empty_process(&parent);
+	p->i = demo_prog;
+
+	erts_scheduler_data = calloc(1, sizeof(ErtsSchedulerData));
+	ASSERT(erts_scheduler_data);
+	init_scheduler_data(erts_scheduler_data, 0, NULL, NULL, NULL, 0);
+	return p;
     }
-    p = calloc(1, sizeof(Process));
-    p->i = demo_prog;
-    p->max_arg_reg = 10;
-    p->arg_reg = calloc(p->max_arg_reg, sizeof(Eterm));
-    return p;
 }

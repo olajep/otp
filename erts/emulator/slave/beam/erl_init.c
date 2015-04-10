@@ -225,31 +225,6 @@ Export *erts_delay_trap = NULL;
 int ignore_break;
 int replace_intr;
 
-static ERTS_INLINE int
-has_prefix(const char *prefix, const char *string)
-{
-    int i;
-    for (i = 0; prefix[i]; i++)
-	if (prefix[i] != string[i])
-	    return 0;
-    return 1;
-}
-
-static char*
-progname(char *fullname) 
-{
-    int i;
-    
-    i = strlen(fullname);
-    while (i >= 0) {
-	if ((fullname[i] != '/') && (fullname[i] != '\\')) 
-	    i--;
-	else 
-	    break;
-    }
-    return fullname+i+1;
-}
-
 static int
 this_rel_num(void)
 {

@@ -1681,6 +1681,7 @@ do {										\
 				 ? ERTS_PROC_GET_SCHDATA((Process *) (P))	\
 				 : erts_get_scheduler_data());			\
     if (esdp__ && !ERTS_SCHEDULER_IS_DIRTY(esdp__))				\
+	ASSERT(esdp__->verify_unused_temp_alloc);				\
 	esdp__->verify_unused_temp_alloc(					\
 	    esdp__->verify_unused_temp_alloc_data);				\
 } while (0)

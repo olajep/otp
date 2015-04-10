@@ -184,6 +184,7 @@ void erts_init_slave_io(void) {
     }
 
     e_set_host_verbosity(H_D1);
+    e_set_loader_verbosity(L_D1);
     if (e_init(NULL) != E_OK) { return; }
     slave_emu_online = 1;
 

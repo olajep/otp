@@ -42,7 +42,6 @@
 #include "erl_bits.h"
 
 static Export* await_proc_exit_trap = NULL;
-static Export* await_port_send_result_trap = NULL;
 Export* erts_format_cpu_topology_trap = NULL;
 
 #define DECL_AM(S) Eterm AM_ ## S = am_atom_put(#S, sizeof(#S) - 1)

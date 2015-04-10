@@ -1897,56 +1897,6 @@ buf_to_intlist(Eterm** hpp, const char *buf, size_t len, Eterm tail)
 }
 
 /*
-** Write io list in to a buffer.
-**
-** An iolist is defined as:
-**
-** iohead ::= Binary
-**        |   Byte (i.e integer in range [0..255]
-**        |   iolist
-**        ;
-**
-** iotail ::= []
-**        |   Binary  (added by tony)
-**        |   iolist
-**        ;
-**
-** iolist ::= []
-**        |   Binary
-**        |   [ iohead | iotail]
-**        ;
-** 
-** Return remaining bytes in buffer on success
-**        ERTS_IOLIST_TO_BUF_OVERFLOW on overflow
-**        ERTS_IOLIST_TO_BUF_TYPE_ERROR on type error (including that result would not be a whole number of bytes)
-**
-** Note! 
-** Do not detect indata errors in this fiunction that are not detected by erts_iolist_size!
-**
-** A caller should be able to rely on a successful return from erts_iolist_to_buf
-** if erts_iolist_size is previously successfully called and erts_iolist_to_buf 
-** is called with a buffer at least as large as the value given by erts_iolist_size.
-** 
-*/
-
-typedef enum {
-    ERTS_IL2B_BCOPY_OK,
-    ERTS_IL2B_BCOPY_YIELD,
-    ERTS_IL2B_BCOPY_OVERFLOW,
-    ERTS_IL2B_BCOPY_TYPE_ERROR
-} ErtsIL2BBCopyRes;
-
-static ERTS_INLINE ErlDrvSizeT
-iolist_to_buf(const int yield_support,
-	      ErtsIOList2BufState *state,
-	      Eterm obj,
-	      char* buf,
-	      ErlDrvSizeT alloced_len)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-/*
  * Return 0 if successful, and non-zero if unsuccessful.
  *
  * It is vital that if erts_iolist_to_buf would return an error for

@@ -2035,6 +2035,7 @@ void process_main(void)
 
  do_put_tuple: {
      Eterm* hp = HTOP;
+     erts_printf("Putting tuple...\n");
 
      *hp++ = make_arityval(pt_arity);
 
@@ -3720,6 +3721,7 @@ get_map_elements_fail:
 
  OpCase(i_write): {
      Eterm value;
+     erts_printf("Writing...\n");
      GetArg1(0, value);
      switch (beam_reg_tag(Arg(0))) {
      case R_REG_DEF: erts_printf("x0 = %T\n", value); break;
@@ -3819,19 +3821,16 @@ get_map_elements_fail:
 	 *(ptr++) = (BeamInstr)make_rreg(); // x0 receives the result
 
 	 *(ptr++) = (BeamInstr)OpCode(i_write);
-	 *(ptr++) = (BeamInstr)make_rreg(); // x0 contains the result
+	 *(ptr++) = (BeamInstr)make_rreg();
 
-	 *(ptr++) = (BeamInstr)OpCode(move_cr);
-	 *(ptr++) = (BeamInstr)am_true;
-
-	 *(ptr++) = (BeamInstr)OpCode(bif1_body_bsd);
-	 *(ptr++) = (BeamInstr)is_atom_1;
-	 *(ptr++) = (BeamInstr)make_rreg(); // x0 contains the argument
-	 *(ptr++) = (BeamInstr)OpCode(bad_op); // I'm not sure what goes here,
-					       // though
+	 *(ptr++) = (BeamInstr)OpCode(i_put_tuple_xI);
+	 *(ptr++) = (BeamInstr)1; // x1 receives the result
+	 *(ptr++) = (BeamInstr)2;
+	 *(ptr++) = (BeamInstr)NIL;
+	 *(ptr++) = (BeamInstr)((R_REG_DEF << _TAG_PRIMARY_SIZE) | TAG_PRIMARY_HEADER);
 
 	 *(ptr++) = (BeamInstr)OpCode(i_write);
-	 *(ptr++) = (BeamInstr)make_rreg(); // x0 contains the result
+	 *(ptr++) = (BeamInstr)make_xreg(1);
 	 *(ptr++) = (BeamInstr)OpCode(bad_op);
 	 *(ptr++) = (BeamInstr)OpCode(bad_op);
 	 *(ptr++) = (BeamInstr)OpCode(bad_op);
