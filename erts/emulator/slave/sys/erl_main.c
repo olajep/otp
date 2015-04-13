@@ -53,20 +53,23 @@ static ssize_t internal_write(int __attribute__((unused)) fildes,
     e_mutex_lock(0, 0, &global_mutex);
 
     while (count > 0) {
-        char *captured_end = out_end;
-        char *captured_start = out_start;
-        size_t to_write = count;
-        if (captured_end < captured_start && captured_end + to_write > captured_start)
-            to_write = captured_start - captured_end;
-        if (captured_end + to_write > outbuf + OUTBUF_SZ)
-            to_write = OUTBUF_SZ - (outbuf - captured_end);
-        memcpy(captured_end, data, to_write);
-        captured_end += to_write;
-        data += to_write;
-        count -= to_write;
-        if (captured_end == outbuf + OUTBUF_SZ)
-            captured_end = outbuf;
-        out_end = captured_end;
+	char *captured_end = out_end;
+	char *captured_start = out_start;
+	size_t to_write = count;
+	if (captured_end < captured_start && captured_end + to_write >= captured_start)
+	    to_write = captured_start - captured_end - 1;
+	if (captured_end + to_write > outbuf + OUTBUF_SZ)
+	    to_write = (outbuf + OUTBUF_SZ) - captured_end;
+	if (captured_end + to_write == outbuf + OUTBUF_SZ
+	    && captured_start == outbuf)
+	    to_write -= 1;
+	memcpy(captured_end, data, to_write);
+	captured_end += to_write;
+	data += to_write;
+	count -= to_write;
+	if (captured_end == outbuf + OUTBUF_SZ)
+	    captured_end = outbuf;
+	out_end = captured_end;
     }
 
     e_mutex_unlock(0, 0, &global_mutex);
@@ -90,20 +93,25 @@ static int internal_printf(char *format, ...) {
     return count;
 }
 
+static char in_line __attribute__((section(".data_bank0")));
+
 static int sys_epiphany_printf(char *format, va_list args) {
-    e_coreid_t id = e_get_coreid();
-    unsigned row, col;
-    int count;
+    int count = 0;
     if (goflag != 1) {
-        // We need the global mutex to be initialised to print, but we mustn't
-        // assert or we'll loop infinitely.
-        return -1;
+	// We need the global mutex to be initialised to print, but we mustn't
+	// assert or we'll loop infinitely.
+	return -1;
     }
-    e_coords_from_coreid(id, &row, &col);
-    count = internal_printf("[%d,%d] ", row, col);
+    if (!in_line) {
+	e_coreid_t id = e_get_coreid();
+	unsigned row, col;
+	e_coords_from_coreid(id, &row, &col);
+	count += internal_printf("\r[%d,%d] ", row, col);
+    }
     // We mustn't hold the lock while calling complex functions like
     // erts_printf_format, since they might rely on printing or stubbed code
     count += erts_printf_format((fmtfn_t)internal_write, NULL, format, args);
+    in_line = format[strlen(format)-1] != '\n';
     fflush(stdout);
     return count;
 }
@@ -112,12 +120,12 @@ int
 main(int argc, char **argv)
 {
     if (is_leader()) {
-        e_mutex_init(0, 0, &global_mutex, NULL);
-        erts_printf_stdout_func = sys_epiphany_printf;
-        erts_printf_stderr_func = sys_epiphany_printf;
-        goflag = 1;
+	e_mutex_init(0, 0, &global_mutex, NULL);
+	erts_printf_stdout_func = sys_epiphany_printf;
+	erts_printf_stderr_func = sys_epiphany_printf;
+	goflag = 1;
     } else {
-        while (goflag == 0);
+	while (goflag == 0);
     }
     e_irq_attach(E_SYNC, handl);
     e_irq_attach(E_SW_EXCEPTION, handl);

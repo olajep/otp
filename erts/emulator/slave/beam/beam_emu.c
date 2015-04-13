@@ -2996,6 +2996,8 @@ get_map_elements_fail:
      Eterm* argp;
      int i;
 
+     erts_printf("Context switch!\n");
+
      /*
       * Make sure that there is enough room for the argument registers to be saved.
       */
@@ -3729,6 +3731,14 @@ get_map_elements_fail:
      Next(1);
  }
 
+ OpCase(i_write_str): {
+     Eterm value;
+     const char *name = (const char*)Arg(1);
+     GetArg1(0, value);
+     erts_printf("%s = %T\n", name, value);
+     Next(2);
+ }
+
  OpCase(bad_op):
      erl_exit(1, "bad op %d\n", I-demo_prog);
 
@@ -3806,39 +3816,137 @@ get_map_elements_fail:
      /* } */
 
      {
+	 /* fib(0) -> 0;
+	  * fib(1) -> 1;
+	  * fib(N) -> fib(N-1) + fib(N-2);
+	  */
+	 static BeamInstr fib[] = {
+	     (BeamInstr)OpCode(i_fetch_cr),
+	     (BeamInstr)make_small(0),
+	     (BeamInstr)OpCode(i_is_eq_exact_f),
+	     (BeamInstr)(fib + 5),
+	     (BeamInstr)OpCode(return),
+
+	     /* fib+5: */
+	     (BeamInstr)OpCode(i_fetch_cr),
+	     (BeamInstr)make_small(1),
+	     (BeamInstr)OpCode(i_is_eq_exact_f),
+	     (BeamInstr)(fib + 10),
+	     (BeamInstr)OpCode(return),
+
+	     /* fib+10: */
+	     (BeamInstr)OpCode(allocate_tt),
+	     (BeamInstr)1,
+
+	     (BeamInstr)OpCode(move_ry), // Store N in y1
+	     (BeamInstr)(1 * sizeof(Eterm)),
+
+	     (BeamInstr)OpCode(i_fetch_rc), // x0 = N-1
+	     (BeamInstr)make_small(1),
+	     (BeamInstr)OpCode(i_minus_jId),
+	     (BeamInstr)OpCode(bad_op), // ??
+	     (BeamInstr)OpCode(bad_op), // ??
+	     (BeamInstr)make_rreg(),
+
+	     (BeamInstr)OpCode(i_call_f), // x0 = fib(N-1)
+	     (BeamInstr)fib,
+
+	     (BeamInstr)OpCode(i_fetch_yc), // prepare arguments to minus
+	     (BeamInstr)(1 * sizeof(Eterm)),
+	     (BeamInstr)make_small(2),
+
+	     (BeamInstr)OpCode(move_ry), // Store fib(N-1) in y1
+	     (BeamInstr)(1 * sizeof(Eterm)),
+
+	     (BeamInstr)OpCode(i_minus_jId), // x0 = N-2
+	     (BeamInstr)OpCode(bad_op), // ??
+	     (BeamInstr)OpCode(bad_op), // ??
+	     (BeamInstr)make_rreg(),
+
+	     (BeamInstr)OpCode(i_call_f), // x0 = fib(N-2)
+	     (BeamInstr)fib,
+
+	     (BeamInstr)OpCode(i_fetch_yr), // x0 = fib(N-1) + fib(N-2)
+	     (BeamInstr)(1 * sizeof(Eterm)),
+	     (BeamInstr)OpCode(i_plus_jId),
+	     (BeamInstr)OpCode(bad_op), // ??
+	     (BeamInstr)OpCode(bad_op), // ??
+	     (BeamInstr)make_rreg(),
+
+	     (BeamInstr)OpCode(deallocate_return_Q),
+	     (BeamInstr)(2 * sizeof(Eterm)),
+	 };
+
+	 static Export append_element_2_export = {
+	     .code = {
+		 [4] = (BeamInstr)append_element_2,
+	     },
+	 };
+
 	 BeamInstr *ptr = demo_prog = calloc(100, sizeof(BeamInstr));
 
 	 *(ptr++) = (BeamInstr)OpCode(i_hello_world);
 
-	 *(ptr++) = (BeamInstr)OpCode(i_fetch_cc);
-	 *(ptr++) = (BeamInstr)make_small(3);
-	 *(ptr++) = (BeamInstr)make_small(5);
-	 *(ptr++) = (BeamInstr)OpCode(i_plus_jId);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op); // ??
-	 *(ptr++) = (BeamInstr)OpCode(bad_op); // ??
-	 *(ptr++) = (BeamInstr)make_rreg(); // x0 receives the result
-
-	 *(ptr++) = (BeamInstr)OpCode(i_write);
+	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
+	 *(ptr++) = (BeamInstr)make_small(0);
+	 *(ptr++) = (BeamInstr)fib;
+	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
 	 *(ptr++) = (BeamInstr)make_rreg();
+	 *(ptr++) = (BeamInstr)"fib(0)";
+
+	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
+	 *(ptr++) = (BeamInstr)make_small(1);
+	 *(ptr++) = (BeamInstr)fib;
+	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
+	 *(ptr++) = (BeamInstr)make_rreg();
+	 *(ptr++) = (BeamInstr)"fib(1)";
+
+	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
+	 *(ptr++) = (BeamInstr)make_small(2);
+	 *(ptr++) = (BeamInstr)fib;
+	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
+	 *(ptr++) = (BeamInstr)make_rreg();
+	 *(ptr++) = (BeamInstr)"fib(2)";
+
+	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
+	 *(ptr++) = (BeamInstr)make_small(3);
+	 *(ptr++) = (BeamInstr)fib;
+	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
+	 *(ptr++) = (BeamInstr)make_rreg();
+	 *(ptr++) = (BeamInstr)"fib(3)";
+
+	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
+	 *(ptr++) = (BeamInstr)make_small(5);
+	 *(ptr++) = (BeamInstr)fib;
+	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
+	 *(ptr++) = (BeamInstr)make_rreg();
+	 *(ptr++) = (BeamInstr)"fib(5)";
+
+	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
+	 *(ptr++) = (BeamInstr)make_small(9);
+	 *(ptr++) = (BeamInstr)fib;
+	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
+	 *(ptr++) = (BeamInstr)make_rreg();
+	 *(ptr++) = (BeamInstr)"fib(9)";
 
 	 *(ptr++) = (BeamInstr)OpCode(i_put_tuple_xI);
-	 *(ptr++) = (BeamInstr)1 * sizeof(Eterm); // x1 receives the result
+	 *(ptr++) = (BeamInstr)(1 * sizeof(Eterm)); // x1 receives the result
 	 *(ptr++) = (BeamInstr)2;
 	 *(ptr++) = (BeamInstr)NIL;
 	 *(ptr++) = (BeamInstr)((R_REG_DEF << _TAG_PRIMARY_SIZE) | TAG_PRIMARY_HEADER);
 
 	 *(ptr++) = (BeamInstr)OpCode(i_write);
 	 *(ptr++) = (BeamInstr)make_xreg(1);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+
+	 *(ptr++) = (BeamInstr)OpCode(move_xr); // x0 = x1
+	 *(ptr++) = (BeamInstr)(1 * sizeof(Eterm));
+
+	 *(ptr++) = (BeamInstr)OpCode(call_bif_e);
+	 *(ptr++) = (BeamInstr)&append_element_2_export;
+
+	 *(ptr++) = (BeamInstr)OpCode(i_write);
+	 *(ptr++) = (BeamInstr)make_rreg();
+
 	 *(ptr++) = (BeamInstr)OpCode(bad_op);
      }
 

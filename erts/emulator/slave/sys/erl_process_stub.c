@@ -887,6 +887,8 @@ Process *schedule(Process *p, int calls)
 	erts_smp_proc_unlock(&parent, ERTS_PROC_LOCK_MAIN);
 	erts_cleanup_empty_process(&parent);
 	p->i = demo_prog;
+	// Should last a while
+	p->fcalls = 100000;
 
 	erts_scheduler_data = calloc(1, sizeof(ErtsSchedulerData));
 	ASSERT(erts_scheduler_data);
