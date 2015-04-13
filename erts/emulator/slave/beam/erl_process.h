@@ -1680,10 +1680,13 @@ do {										\
     ErtsSchedulerData *esdp__ = ((P)						\
 				 ? ERTS_PROC_GET_SCHDATA((Process *) (P))	\
 				 : erts_get_scheduler_data());			\
-    if (esdp__ && !ERTS_SCHEDULER_IS_DIRTY(esdp__))				\
+    /* ETODO: Actually put something in verify_unused_temp_alloc */		\
+    if (esdp__ && !ERTS_SCHEDULER_IS_DIRTY(esdp__)				\
+	&& esdp__->verify_unused_temp_alloc) {					\
 	ASSERT(esdp__->verify_unused_temp_alloc);				\
 	esdp__->verify_unused_temp_alloc(					\
 	    esdp__->verify_unused_temp_alloc_data);				\
+    }										\
 } while (0)
 #else
 #  define ERTS_VERIFY_UNUSED_TEMP_ALLOC(ESDP)

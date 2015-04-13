@@ -31,6 +31,7 @@ static ssize_t internal_write(int, const void*, const size_t);
 static int internal_vprintf(char*, va_list);
 static int internal_printf(char*, ...);
 static int sys_epiphany_printf(char*, va_list);
+static void __attribute__((interrupt, section(".data_bank1"))) handl(int);
 
 volatile int goflag = 0;
 e_mutex_t global_mutex __attribute__((section(".data_bank0")));
@@ -107,9 +108,6 @@ static int sys_epiphany_printf(char *format, va_list args) {
     return count;
 }
 
-static void __attribute__((interrupt, section(".data_bank0"))) handl(int);
-static void __attribute__((section(".data_bank0"))) clobberme(void);
-
 int
 main(int argc, char **argv)
 {
@@ -121,7 +119,6 @@ main(int argc, char **argv)
     } else {
         while (goflag == 0);
     }
-    erts_printf("Attaching handlers...\n");
     e_irq_attach(E_SYNC, handl);
     e_irq_attach(E_SW_EXCEPTION, handl);
     e_irq_attach(E_MEM_FAULT, handl);
@@ -131,27 +128,17 @@ main(int argc, char **argv)
     e_irq_attach(E_DMA1_INT, handl);
     e_irq_attach(E_USER_INT, handl);
 
-    erts_printf("Unmasking...\n");
+    // We start completely masked from interrupts, it seems
     e_reg_write(E_REG_IMASK, 0);
 
-    erts_printf("Protecting...\n");
     // Bits 2 and 3 protects the lower and upper half of data_bank1 from writing
     e_reg_write(E_REG_MEMPROTECT,
 		e_reg_read(E_REG_MEMPROTECT)
 		| (1 << 2)
 		| (1 << 3));
 
-    erts_printf("Clobbering %x\n", (unsigned)(*((volatile char*)clobberme)));
-    (*((volatile char*)clobberme))++;
-    erts_printf("Now %x\n", (unsigned)(*((volatile char*)clobberme)));
-
-    erts_printf("Testing...\n");
-    e_irq_set(0, 0, E_SYNC);
-    e_irq_set(0, 0, E_MEM_FAULT);
-    e_irq_set(0, 0, E_USER_INT);
-    erts_printf("Proceeding...\n");
     erl_start(argc, argv);
-    erts_fprintf(stdout, "Terminating normally\n");
+    erts_printf("Terminating normally\n");
     return 0;
 }
 
@@ -159,7 +146,3 @@ static void __attribute__((interrupt, section(".data_bank1")))
 handl(int __attribute__((unused)) crap) {
     erts_printf("Interrupted! IPEND=%x\n", e_reg_read(E_REG_IPEND));
 };
-
-static void __attribute__((section(".data_bank1")))
-clobberme() {
-}

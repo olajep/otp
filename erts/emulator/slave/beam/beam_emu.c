@@ -2035,7 +2035,6 @@ void process_main(void)
 
  do_put_tuple: {
      Eterm* hp = HTOP;
-     erts_printf("Putting tuple...\n");
 
      *hp++ = make_arityval(pt_arity);
 
@@ -3721,12 +3720,11 @@ get_map_elements_fail:
 
  OpCase(i_write): {
      Eterm value;
-     erts_printf("Writing...\n");
      GetArg1(0, value);
      switch (beam_reg_tag(Arg(0))) {
      case R_REG_DEF: erts_printf("x0 = %T\n", value); break;
-     case X_REG_DEF: erts_printf("x%d = %T\n", x_reg_offset(Arg(0)), value); break;
-     case Y_REG_DEF: erts_printf("y%d = %T\n", y_reg_offset(Arg(0)), value); break;
+     case X_REG_DEF: erts_printf("x%d = %T\n", x_reg_offset(Arg(0)) / sizeof(Eterm), value); break;
+     case Y_REG_DEF: erts_printf("y%d = %T\n", y_reg_offset(Arg(0)) / sizeof(Eterm), value); break;
      }
      Next(1);
  }
@@ -3824,7 +3822,7 @@ get_map_elements_fail:
 	 *(ptr++) = (BeamInstr)make_rreg();
 
 	 *(ptr++) = (BeamInstr)OpCode(i_put_tuple_xI);
-	 *(ptr++) = (BeamInstr)1; // x1 receives the result
+	 *(ptr++) = (BeamInstr)1 * sizeof(Eterm); // x1 receives the result
 	 *(ptr++) = (BeamInstr)2;
 	 *(ptr++) = (BeamInstr)NIL;
 	 *(ptr++) = (BeamInstr)((R_REG_DEF << _TAG_PRIMARY_SIZE) | TAG_PRIMARY_HEADER);
