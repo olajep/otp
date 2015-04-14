@@ -28,9 +28,8 @@
 
 static int in_emulator(void);
 static int is_leader(void);
+static void grab_barrier(void);
 static ssize_t internal_write(int, const void*, const size_t);
-static int internal_vprintf(char*, va_list);
-static int internal_printf(char*, ...);
 static int sys_epiphany_printf(char*, va_list);
 static void __attribute__((interrupt, section(".data_bank1"))) handl(int);
 
@@ -87,23 +86,6 @@ static ssize_t internal_write(int __attribute__((unused)) fildes,
     return initial_count;
 }
 
-static int internal_vprintf(char *format, va_list args) {
-    int count = vsnprintf(NULL, 0, format, args);
-    char buf[count+1];
-    vsnprintf(buf, count+1, format, args);
-    internal_write(STDOUT_FILENO, buf, count);
-    return count;
-}
-
-static int internal_printf(char *format, ...) {
-    va_list args;
-    int count;
-    va_start(args, format);
-    count = internal_vprintf(format, args);
-    va_end(args);
-    return count;
-}
-
 static char in_line __attribute__((section(".data_bank0")));
 
 struct print_buffer {
@@ -139,11 +121,36 @@ static int sys_epiphany_printf(char *format, va_list args) {
     return buf.count;
 }
 
+#ifdef ERTS_SMP
 static int slave_flag = 0;
+#endif
+
+static volatile int start_barrier __attribute__((section(".data_bank0")));
+static void grab_barrier() {
+    int row, col;
+    const int rows = e_group_config.group_rows;
+    const int cols = e_group_config.group_cols;
+    if (in_emulator()) {
+	// The barrier does not fix the problem in the emulator, and we don't
+	// know the workgroup size anyway (the fields above are always 0).
+	return;
+    }
+    start_barrier = 1;
+    for (row = 0; row < rows; row++) {
+	for (col = 0; col < cols; col++) {
+	    volatile int *other
+		= e_get_global_address(row, col, (void*)&start_barrier);
+	    while (*other == 0);
+	}
+    }
+}
 
 int
 main(int argc, char **argv)
 {
+    // Dram behaves strangely until all cores have started
+    grab_barrier();
+
     erts_printf_stdout_func = sys_epiphany_printf;
     erts_printf_stderr_func = sys_epiphany_printf;
 
@@ -169,11 +176,13 @@ main(int argc, char **argv)
     if (is_leader()) {
         erl_start(argc, argv);
     } else {
+#ifdef ERTS_SMP
         unsigned sched_no = e_group_config.core_row * e_group_config.group_cols
             + e_group_config.core_col;
         while (slave_flag == 0);
-        erts_printf("Goooooo!\n");
-        enter_scheduler(sched_no);
+	erts_printf("Scheduler %d flagged!\n", sched_no);
+	enter_scheduler(sched_no);
+#endif
     }
 
     erts_printf("Terminating normally\n");
