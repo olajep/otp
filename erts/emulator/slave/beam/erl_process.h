@@ -2234,6 +2234,7 @@ erts_sched_poke(ErtsSchedulerSleepInfo *ssi)
 
 #endif
 
+void enter_scheduler(int number);
 
 void erl_halt(int code);
 extern erts_smp_atomic32_t erts_halt_progress;

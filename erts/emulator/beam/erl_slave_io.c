@@ -64,6 +64,7 @@ static int pump_output(void) {
     ASSERT(outbuf <= captured_start && captured_start < outbuf + OUTBUF_SZ);
     ASSERT(outbuf <= captured_end && captured_end < outbuf + OUTBUF_SZ);
     // ETODO: Do I need a read-read fence here?
+    asm("DMB");
 
     if (captured_start > captured_end) {
 	written = write(STDOUT_FILENO, captured_start, (outbuf + OUTBUF_SZ) - captured_start);
@@ -76,6 +77,7 @@ static int pump_output(void) {
     if (written == -1) goto write_error;
     pumped += written;
     // ETODO: Do I need a read-write fence here?
+    asm("DMB");
     *out_start = captured_start + written;
     return pumped;
 
@@ -146,7 +148,7 @@ static int spoof_mmap(void) {
     return 0;
 }
 
-erts_tid_t pump_thread_tid;
+static erts_tid_t pump_thread_tid;
 
 static int start_pump_thread(void) {
     ethr_thr_opts opts = ETHR_THR_OPTS_DEFAULT_INITER;
@@ -156,11 +158,49 @@ static int start_pump_thread(void) {
     return 0;
 }
 
-static int pump_thread_flag = 1;
+static int slave_emu_online = 0;
+static e_epiphany_t workgroup;
 
+#define ROWS 1
+#define COLS 1
 static void *pump_thread_loop(void *arg) {
+    char *binary;
     erts_printf("Hi from pump thread\n");
-    while(pump_thread_flag) {
+
+    e_set_host_verbosity(H_D1);
+    e_set_loader_verbosity(L_D1);
+    if (e_init(NULL) != E_OK) { return NULL; }
+    slave_emu_online = 1;
+
+    if (e_reset_system() != E_OK) {
+	perror("Not loading slave emulator: e_reset_system");
+	erts_stop_slave_io();
+	return NULL;
+    }
+    printf("Opening %dx%d workgroup\n", ROWS, COLS);
+    if (e_open(&workgroup, 0, 0, ROWS, COLS) != E_OK) {
+	perror("Not loading slave emulator: e_open");
+	erts_stop_slave_io();
+	return NULL;
+    }
+
+    binary = getenv("SLAVE_BINARY");
+    if (binary == NULL) {
+	fprintf(stderr, "Not loading slave emulator: "
+		"SLAVE_BINARY environment variable unset\n");
+	return NULL;
+    }
+
+    printf("Loading and starting program\n");
+    if (e_load_group(binary, &workgroup, 0, 0, ROWS, COLS, E_TRUE) != E_OK) {
+	perror("Not loading slave emulator: e_load");
+	erts_stop_slave_io();
+	return NULL;
+    }
+
+    printf("Slave emulator online\n");
+
+    while(1) {
 	if (pump_output() == 0) {
 	    struct timespec ms = {0, 1000};
 	    nanosleep(&ms, NULL);
@@ -169,13 +209,7 @@ static void *pump_thread_loop(void *arg) {
     return NULL;
 }
 
-static int slave_emu_online = 0;
-static e_epiphany_t workgroup;
-
-#define ROWS 1
-#define COLS 1
 void erts_init_slave_io(void) {
-    char *binary;
     // We make things easy for ourselves by mapping in the shared memory area at
     // *the same* address as it is observed by the Epiphany chip.
     if (map_shm()) {
@@ -183,38 +217,6 @@ void erts_init_slave_io(void) {
 	return;
     }
 
-    e_set_host_verbosity(H_D1);
-    e_set_loader_verbosity(L_D1);
-    if (e_init(NULL) != E_OK) { return; }
-    slave_emu_online = 1;
-
-    if (e_reset_system() != E_OK) {
-	perror("Not loading slave emulator: e_reset_system");
-	erts_stop_slave_io();
-	return;
-    }
-    printf("Opening %dx%d workgroup\n", ROWS, COLS);
-    if (e_open(&workgroup, 0, 0, ROWS, COLS) != E_OK) {
-	perror("Not loading slave emulator: e_open");
-	erts_stop_slave_io();
-	return;
-    }
-
-    binary = getenv("SLAVE_BINARY");
-    if (binary == NULL) {
-	fprintf(stderr, "Not loading slave emulator: "
-		"SLAVE_BINARY environment variable unset\n");
-	return;
-    }
-
-    printf("Loading and starting program\n");
-    if (e_load_group(binary, &workgroup, 0, 0, ROWS, COLS, E_TRUE) != E_OK) {
-	perror("Not loading slave emulator: e_load");
-	erts_stop_slave_io();
-	return;
-    }
-
-    printf("Slave emulator online\n");
     if (start_pump_thread()) {
 	fprintf(stderr, "Could not spin up pump thread, killing slaves\n");
 	if (e_reset_system() != E_OK)
@@ -226,20 +228,18 @@ void erts_init_slave_io(void) {
 
 void erts_stop_slave_io(void) {
     int ret;
-    if (!slave_emu_online) return;
-
-    pump_thread_flag = 0;
-    if (ethr_thr_join(pump_thread_tid, NULL)) {
-	fprintf(stderr, "Could not join slave IO pump thread!\n");
-    }
-
     if (memfd > 0) {
+        const unsigned size      = 0x02000000;
+        const unsigned ephy_base = 0x8e000000;
+        ret = munmap((void*)ephy_base, size);
+	if (ret != 0) perror("munmap");
 	ret = close(memfd);
 	if (ret != 0) perror("free: memfd");
+        spoof_mmap();
     }
     
+    if (!slave_emu_online) return;
     ret = e_finalize();
     if (ret != E_OK) perror("e_finalize");
-
     slave_emu_online = 0;
 }

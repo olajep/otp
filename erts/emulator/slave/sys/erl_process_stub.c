@@ -358,6 +358,91 @@ struct ErtsProcSysTask_ {
     Eterm heap[1];
 };
 
+
+static void *sched_thread_func(void *vesdp);
+
+void enter_scheduler(int number) {
+    ErtsSchedulerData *esdp = ERTS_SCHEDULER_IX(number);
+    ASSERT(number == esdp->no - 1);
+
+    sched_thread_func((void*)esdp);
+}
+
+static void *
+sched_thread_func(void *vesdp)
+{
+    ErtsSchedulerData *esdp = vesdp;
+    Uint no = esdp->no;
+#ifdef ERTS_SMP
+    ERTS_SCHED_SLEEP_INFO_IX(no - 1)->event = erts_tse_fetch();
+    // ESTUB: thread_progress
+
+    erts_alloc_register_scheduler(vesdp);
+#endif
+#ifdef ERTS_ENABLE_LOCK_CHECK
+    {
+	char buf[31];
+	erts_snprintf(&buf[0], 31, "scheduler %beu", no);
+	erts_lc_set_thread_name(&buf[0]);
+    }
+#endif
+    // erts_tsd_set(sched_data_key, vesdp);
+#ifdef ERTS_SMP
+#if HAVE_ERTS_MSEG
+    erts_mseg_late_init();
+#endif
+#if ERTS_USE_ASYNC_READY_Q
+    esdp->aux_work_data.async_ready.queue = erts_get_async_ready_queue(no);
+#endif
+
+    erts_sched_init_check_cpu_bind(esdp);
+
+    erts_proc_lock_prepare_proc_lock_waiter();
+#endif
+
+#ifdef HIPE
+    hipe_thread_signal_init();
+#endif
+    erts_thread_init_float();
+
+    // erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+
+    /* ASSERT(erts_smp_atomic32_read_nob(&schdlr_sspnd.changing) */
+    /*        & ERTS_SCHDLR_SSPND_CHNG_ONLN); */
+
+/*     if (--schdlr_sspnd.curr_online == schdlr_sspnd.wait_curr_online) { */
+/* 	erts_smp_atomic32_read_band_nob(&schdlr_sspnd.changing, */
+/* 					~ERTS_SCHDLR_SSPND_CHNG_ONLN); */
+/* 	if (no != 1) */
+/* #ifdef ERTS_DIRTY_SCHEDULERS */
+/* 	    erts_smp_cnd_broadcast(&schdlr_sspnd.cnd); */
+/* #else */
+/* 	    erts_smp_cnd_signal(&schdlr_sspnd.cnd); */
+/* #endif */
+/*     } */
+
+/*     if (no == 1) { */
+/* 	while (schdlr_sspnd.curr_online != schdlr_sspnd.wait_curr_online) */
+/* 	    erts_smp_cnd_wait(&schdlr_sspnd.cnd, &schdlr_sspnd.mtx); */
+/* 	ERTS_SCHDLR_SSPND_CHNG_SET(0, ERTS_SCHDLR_SSPND_CHNG_WAITER); */
+/*     } */
+/*     erts_smp_mtx_unlock(&schdlr_sspnd.mtx); */
+
+#ifdef ERTS_DO_VERIFY_UNUSED_TEMP_ALLOC
+    /* esdp->verify_unused_temp_alloc */
+    /*     = erts_alloc_get_verify_unused_temp_alloc( */
+    /*         &esdp->verify_unused_temp_alloc_data); */
+    /* ERTS_VERIFY_UNUSED_TEMP_ALLOC(NULL); */
+#endif
+
+    process_main();
+    /* No schedulers should *ever* terminate */
+    erl_exit(ERTS_ABORT_EXIT,
+	     "Scheduler thread number %beu terminated\n",
+	     no);
+    return NULL;
+}
+
 #ifdef DEBUG
 
 void

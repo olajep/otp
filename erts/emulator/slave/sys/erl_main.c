@@ -26,6 +26,7 @@
 #include "erl_printf_format.h"
 #include <e-lib.h>
 
+static int in_emulator(void);
 static int is_leader(void);
 static ssize_t internal_write(int, const void*, const size_t);
 static int internal_vprintf(char*, va_list);
@@ -33,7 +34,6 @@ static int internal_printf(char*, ...);
 static int sys_epiphany_printf(char*, va_list);
 static void __attribute__((interrupt, section(".data_bank1"))) handl(int);
 
-volatile int goflag = 0;
 e_mutex_t global_mutex __attribute__((section(".data_bank0")));
 
 #define OUTBUF_SZ 1024
@@ -41,15 +41,26 @@ char outbuf[OUTBUF_SZ];
 char * volatile out_start = outbuf;
 char * volatile out_end = outbuf;
 
+static int in_emulator() {
+    return e_group_config.group_rows == 0
+        && e_group_config.group_cols == 0;
+}
+
 static int is_leader() {
-    // Hardcoded coordinates 32,8
-    // ETODO: use workgroup config instead
-    return e_get_coreid() == 04010;
+    if (in_emulator()) {
+        // Hardcoded coordinates 32,8
+        return e_get_coreid() == 04010;
+    } else {
+        return e_group_config.core_row == 0
+            && e_group_config.core_col == 0;
+    }
 }
 
 static ssize_t internal_write(int __attribute__((unused)) fildes,
                               const void *data, const size_t initial_count) {
     size_t count = initial_count;
+    if (in_emulator()) return write(STDOUT_FILENO, data, count);
+
     e_mutex_lock(0, 0, &global_mutex);
 
     while (count > 0) {
@@ -95,38 +106,48 @@ static int internal_printf(char *format, ...) {
 
 static char in_line __attribute__((section(".data_bank0")));
 
+struct print_buffer {
+    int count;
+    char buffer[512];
+};
+
+static int buffer_write(void *arg, char *data, size_t count) {
+    struct print_buffer *buf = (struct print_buffer*)arg;
+    size_t to_write = MIN(count, sizeof(buf->buffer) - buf->count);
+    memcpy(buf->buffer + buf->count, data, to_write);
+    buf->count += to_write;
+    return count; // Let's lie so nobody loops forever
+}
+
 static int sys_epiphany_printf(char *format, va_list args) {
-    int count = 0;
-    if (goflag != 1) {
-	// We need the global mutex to be initialised to print, but we mustn't
-	// assert or we'll loop infinitely.
-	return -1;
-    }
+    struct print_buffer buf = { .count = 0 };
     if (!in_line) {
 	e_coreid_t id = e_get_coreid();
 	unsigned row, col;
 	e_coords_from_coreid(id, &row, &col);
-	count += internal_printf("\r[%d,%d] ", row, col);
+	buf.count +=
+            snprintf(buf.buffer + buf.count, sizeof(buf.buffer) - buf.count,
+                     "[%d,%d] ", row, col);
     }
     // We mustn't hold the lock while calling complex functions like
-    // erts_printf_format, since they might rely on printing or stubbed code
-    count += erts_printf_format((fmtfn_t)internal_write, NULL, format, args);
+    // erts_printf_format, since they might rely on printing or stubbed
+    // code. Thus, we build the entire output first and print it all in one go.
+    erts_printf_format(buffer_write, &buf, format, args);
     in_line = format[strlen(format)-1] != '\n';
-    fflush(stdout);
-    return count;
+    if (!in_line) buffer_write(&buf, "\r", 1);
+    internal_write(0, buf.buffer, buf.count);
+    return buf.count;
 }
+
+static int slave_flag = 0;
 
 int
 main(int argc, char **argv)
 {
-    if (is_leader()) {
-	e_mutex_init(0, 0, &global_mutex, NULL);
-	erts_printf_stdout_func = sys_epiphany_printf;
-	erts_printf_stderr_func = sys_epiphany_printf;
-	goflag = 1;
-    } else {
-	while (goflag == 0);
-    }
+    erts_printf_stdout_func = sys_epiphany_printf;
+    erts_printf_stderr_func = sys_epiphany_printf;
+
+    erts_printf("Hi from epiphany\n");
     e_irq_attach(E_SYNC, handl);
     e_irq_attach(E_SW_EXCEPTION, handl);
     e_irq_attach(E_MEM_FAULT, handl);
@@ -145,10 +166,29 @@ main(int argc, char **argv)
 		| (1 << 2)
 		| (1 << 3));
 
-    erl_start(argc, argv);
+    if (is_leader()) {
+        erl_start(argc, argv);
+    } else {
+        unsigned sched_no = e_group_config.core_row * e_group_config.group_cols
+            + e_group_config.core_col;
+        while (slave_flag == 0);
+        erts_printf("Goooooo!\n");
+        enter_scheduler(sched_no);
+    }
+
     erts_printf("Terminating normally\n");
     return 0;
 }
+
+#ifdef ERTS_SMP
+void erts_sys_main_thread() {
+    // Do nothing; will go into BEAM
+}
+
+void erts_start_schedulers() {
+    slave_flag = 1;
+}
+#endif
 
 static void __attribute__((interrupt, section(".data_bank1")))
 handl(int __attribute__((unused)) crap) {
