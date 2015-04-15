@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1999-2013. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2015. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -17,24 +17,13 @@
  * %CopyrightEnd%
  */
 
-#ifdef HAVE_CONFIG_H
-#  include "config.h"
-#endif
+#define EPIPHANY_SRAM_DATA __attribute__((section(".data_bank0")))
+#define EPIPHANY_SRAM_FUNC __attribute__((section(".data_bank1")))
 
-#include "sys.h"
-#include "global.h"
-#include "erl_bits.h"
+int epiphany_coreno(void);
+int epiphany_workgroup_size(void);
 
-int
-erts_cmp_bits(byte* a_ptr, size_t a_offs, byte* b_ptr, size_t b_offs, size_t size) 
-{
-    EPIPHANY_STUB_FUN();
-}
-
-#if defined(ERTS_SMP)
-void
-erts_bits_init_state(ERL_BITS_PROTO_0)
-{
-    // Do nothing
-}
+#ifdef DEBUG
+int epiphany_in_dram(void *);
+int epiphany_sane_address(void *);
 #endif

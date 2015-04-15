@@ -24,16 +24,20 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_printf_format.h"
+#include "epiphany.h"
 #include <e-lib.h>
+
+// erl_epiphany_sys.h redeclares write(int, const void*, size_t) with the same
+// symbol as internal_write. We can't make it static, or that won't work.
+ssize_t internal_write(int, const void*, size_t);
 
 static int in_emulator(void);
 static int is_leader(void);
 static void grab_barrier(void);
-static ssize_t internal_write(int, const void*, const size_t);
 static int sys_epiphany_printf(char*, va_list);
-static void __attribute__((interrupt, section(".data_bank1"))) handl(int);
+EPIPHANY_SRAM_FUNC static void __attribute__((interrupt)) handl(int);
 
-e_mutex_t global_mutex __attribute__((section(".data_bank0")));
+EPIPHANY_SRAM_DATA e_mutex_t global_mutex;
 
 #define OUTBUF_SZ 1024
 char outbuf[OUTBUF_SZ];
@@ -55,8 +59,8 @@ static int is_leader() {
     }
 }
 
-static ssize_t internal_write(int __attribute__((unused)) fildes,
-                              const void *data, const size_t initial_count) {
+ssize_t internal_write(int __attribute__((unused)) fildes,
+		       const void *data, const size_t initial_count) {
     size_t count = initial_count;
     if (in_emulator()) return write(STDOUT_FILENO, data, count);
 
@@ -86,7 +90,7 @@ static ssize_t internal_write(int __attribute__((unused)) fildes,
     return initial_count;
 }
 
-static char in_line __attribute__((section(".data_bank0")));
+EPIPHANY_SRAM_DATA static char in_line;
 
 struct print_buffer {
     int count;
@@ -104,12 +108,9 @@ static int buffer_write(void *arg, char *data, size_t count) {
 static int sys_epiphany_printf(char *format, va_list args) {
     struct print_buffer buf = { .count = 0 };
     if (!in_line) {
-	e_coreid_t id = e_get_coreid();
-	unsigned row, col;
-	e_coords_from_coreid(id, &row, &col);
 	buf.count +=
             snprintf(buf.buffer + buf.count, sizeof(buf.buffer) - buf.count,
-                     "[%d,%d] ", row, col);
+		     "[%d] ", epiphany_coreno());
     }
     // We mustn't hold the lock while calling complex functions like
     // erts_printf_format, since they might rely on printing or stubbed
@@ -145,6 +146,67 @@ static void grab_barrier() {
     }
 }
 
+int epiphany_coreno(void) {
+    if (!in_emulator()) {
+	return e_group_config.core_row * e_group_config.group_cols
+	    + e_group_config.core_col;
+    } else {
+	// The emulator does not set e_group_config. Assume a P16 4x4 workgroup.
+	e_coreid_t id = e_get_coreid();
+	unsigned row, col;
+	e_coords_from_coreid(id, &row, &col);
+	ASSERT(32 <= row && row < 36);
+	ASSERT(8 <= col && col < 12);
+	return (row - 32) * 4 + (col - 8);
+    }
+}
+
+int epiphany_workgroup_size(void) {
+    if (!in_emulator()) {
+	return e_group_config.group_rows * e_group_config.group_cols;
+    } else {
+	// The emulator does not set e_group_config. Assume a P16 4x4 workgroup.
+	e_coreid_t id = e_get_coreid();
+	unsigned row, col;
+	e_coords_from_coreid(id, &row, &col);
+	ASSERT(32 <= row && row < 36);
+	ASSERT(8 <= col && col < 12);
+	return (row - 32) * 4 + (col - 8);
+    }
+}
+
+int epiphany_in_dram(void *addr) {
+    return 0x8e000000 <= (unsigned)addr && (unsigned)addr < 0x90000000;
+}
+
+int epiphany_sane_address(void *addrp) {
+    e_coreid_t owning;
+    unsigned row, col, min_row, min_col, max_row, max_col;
+    unsigned addr = (unsigned)addrp;
+
+    // Shared DRAM
+    if (epiphany_in_dram(addrp)) return 1;
+
+    // In memory space of core in workgroup
+    owning = addr >> (32 - 6);
+    e_coords_from_coreid(owning, &row, &col);
+    min_row = e_group_config.group_row;
+    max_row = min_row + e_group_config.group_rows;
+    min_col = e_group_config.group_col;
+    max_col = min_col + e_group_config.group_cols;
+    if ((row == 0 && col == 0)
+	|| ((min_row <= row && row < max_row)
+	    && (min_col <= col && col < max_col))) {
+	unsigned corespc = addr & (1024 * 1024);
+	// Local SRAM
+	if (corespc < 32 * 1024) return 1;
+
+	// Memory-mapped registers
+	if (corespc >= 0x000F0000) return 1;
+    }
+    return 0;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -177,8 +239,7 @@ main(int argc, char **argv)
         erl_start(argc, argv);
     } else {
 #ifdef ERTS_SMP
-        unsigned sched_no = e_group_config.core_row * e_group_config.group_cols
-            + e_group_config.core_col;
+	unsigned sched_no = epiphany_coreno();
         while (slave_flag == 0);
 	erts_printf("Scheduler %d flagged!\n", sched_no);
 	enter_scheduler(sched_no);
@@ -191,7 +252,8 @@ main(int argc, char **argv)
 
 #ifdef ERTS_SMP
 void erts_sys_main_thread() {
-    // Do nothing; will go into BEAM
+    // We want to run BEAM on the main thread
+    enter_scheduler(0);
 }
 
 void erts_start_schedulers() {
@@ -199,7 +261,7 @@ void erts_start_schedulers() {
 }
 #endif
 
-static void __attribute__((interrupt, section(".data_bank1")))
+EPIPHANY_SRAM_FUNC static void __attribute__((interrupt))
 handl(int __attribute__((unused)) crap) {
     erts_printf("Interrupted! IPEND=%x\n", e_reg_read(E_REG_IPEND));
 };

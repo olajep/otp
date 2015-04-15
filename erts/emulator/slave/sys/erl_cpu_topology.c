@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1999-2013. All Rights Reserved.
+ * Copyright Ericsson AB 2010-2015. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -17,24 +17,32 @@
  * %CopyrightEnd%
  */
 
+/*
+ * Description:	CPU topology and related functionality
+ */
+
 #ifdef HAVE_CONFIG_H
 #  include "config.h"
 #endif
 
-#include "sys.h"
 #include "global.h"
-#include "erl_bits.h"
+#include "erl_cpu_topology.h"
+#include "epiphany.h"
 
-int
-erts_cmp_bits(byte* a_ptr, size_t a_offs, byte* b_ptr, size_t b_offs, size_t size) 
-{
-    EPIPHANY_STUB_FUN();
-}
-
-#if defined(ERTS_SMP)
 void
-erts_bits_init_state(ERL_BITS_PROTO_0)
+erts_get_logical_processors(int *conf, int *onln, int *avail)
 {
-    // Do nothing
-}
+    int workgroup = epiphany_workgroup_size();
+    int online;
+#ifdef ERTS_SMP
+    online = workgroup;
+#else
+    online = 1;
 #endif
+    if (conf)
+	*conf = workgroup;
+    if (onln)
+	*onln = online;
+    if (avail)
+	*avail = online;
+}

@@ -43,6 +43,8 @@
 #include "erl_async.h"
 #include "dtrace-wrapper.h"
 #include "erl_ptab.h"
+#include "erl_node_container_utils.h"
+#include "epiphany.h"
 
 
 #define ERTS_DELAYED_WAKEUP_INFINITY (~(Uint64) 0)
@@ -228,8 +230,6 @@ do {									\
 
 
 static struct {
-    erts_smp_mtx_t mtx;
-    erts_smp_cnd_t cnd;
     int online;
     int curr_online;
     int wait_curr_online;
@@ -261,8 +261,6 @@ static struct {
 } schdlr_sspnd;
 
 static struct {
-    erts_smp_mtx_t update_mtx;
-    erts_smp_atomic32_t no_runqs;
     int last_active_runqs;
     int forced_check_balance;
     erts_smp_atomic32_t checking_balance;
@@ -291,14 +289,7 @@ erts_sched_stat_t erts_sched_stat;
 static erts_tsd_key_t sched_data_key;
 #endif
 
-#ifdef ERTS_SMP
-static erts_smp_atomic32_t doing_sys_schedule;
-static erts_smp_atomic32_t no_empty_run_queues;
-long erts_runq_supervision_interval = 0;
-static ethr_event runq_supervision_event;
-static erts_tid_t runq_supervisor_tid;
-static erts_atomic_t runq_supervisor_sleeping;
-#else /* !ERTS_SMP */
+#ifndef ERTS_SMP
 ErtsSchedulerData *erts_scheduler_data;
 #endif
 
@@ -315,13 +306,6 @@ typedef union {
     ErtsSchedulerSleepInfo ssi;
     char align[ERTS_ALC_CACHE_LINE_ALIGN_SIZE(sizeof(ErtsSchedulerSleepInfo))];
 } ErtsAlignedSchedulerSleepInfo;
-
-#ifdef ERTS_DIRTY_SCHEDULERS
-#ifdef ERTS_SMP
-static ErtsAlignedSchedulerSleepInfo *aligned_dirty_cpu_sched_sleep_info;
-static ErtsAlignedSchedulerSleepInfo *aligned_dirty_io_sched_sleep_info;
-#endif
-#endif
 
 Uint erts_default_process_flags;
 Eterm erts_system_monitor;
@@ -358,11 +342,11 @@ struct ErtsProcSysTask_ {
     Eterm heap[1];
 };
 
-
-static void *sched_thread_func(void *vesdp);
+static void *sched_thread_func(void *vesdp) __noreturn;
 
 void enter_scheduler(int number) {
     ErtsSchedulerData *esdp = ERTS_SCHEDULER_IX(number);
+    ASSERT(number == epiphany_coreno());
     ASSERT(number == esdp->no - 1);
 
     sched_thread_func((void*)esdp);
@@ -374,7 +358,6 @@ sched_thread_func(void *vesdp)
     ErtsSchedulerData *esdp = vesdp;
     Uint no = esdp->no;
 #ifdef ERTS_SMP
-    ERTS_SCHED_SLEEP_INFO_IX(no - 1)->event = erts_tse_fetch();
     // ESTUB: thread_progress
 
     erts_alloc_register_scheduler(vesdp);
@@ -394,10 +377,6 @@ sched_thread_func(void *vesdp)
 #if ERTS_USE_ASYNC_READY_Q
     esdp->aux_work_data.async_ready.queue = erts_get_async_ready_queue(no);
 #endif
-
-    erts_sched_init_check_cpu_bind(esdp);
-
-    erts_proc_lock_prepare_proc_lock_waiter();
 #endif
 
 #ifdef HIPE
@@ -429,6 +408,7 @@ sched_thread_func(void *vesdp)
 /*     erts_smp_mtx_unlock(&schdlr_sspnd.mtx); */
 
 #ifdef ERTS_DO_VERIFY_UNUSED_TEMP_ALLOC
+    esdp->verify_unused_temp_alloc = NULL;
     /* esdp->verify_unused_temp_alloc */
     /*     = erts_alloc_get_verify_unused_temp_alloc( */
     /*         &esdp->verify_unused_temp_alloc_data); */
@@ -440,7 +420,6 @@ sched_thread_func(void *vesdp)
     erl_exit(ERTS_ABORT_EXIT,
 	     "Scheduler thread number %beu terminated\n",
 	     no);
-    return NULL;
 }
 
 #ifdef DEBUG
@@ -609,8 +588,6 @@ void erts_init_empty_process(Process *p)
     p->pending_suspenders = NULL;
     p->pending_exit.reason = THE_NON_VALUE;
     p->pending_exit.bp = NULL;
-    erts_proc_lock_init(p);
-    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
     RUNQ_SET_RQ(&p->run_queue, ERTS_RUNQ_IX(0));
 #endif
 
@@ -633,9 +610,6 @@ erts_cleanup_empty_process(Process* p)
 	free_message_buffer(p->mbuf);
 	p->mbuf = NULL;
     }
-#ifdef ERTS_SMP
-    erts_proc_lock_fin(p);
-#endif
 #ifdef DEBUG
     erts_debug_verify_clean_empty_process(p);
 #endif
@@ -683,10 +657,6 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     Process *res = NULL;
     erts_aint32_t state = 0;
     erts_aint32_t prio = (erts_aint32_t) PRIORITY_NORMAL;
-
-#ifdef ERTS_SMP
-    erts_smp_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
-#endif
 
     /*
      * Check for errors.
@@ -884,8 +854,6 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     p->fp_exception = 0;
 #endif
 
-    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
-
     res = p;
 
     VERBOSE(DEBUG_PROCESSES, ("Created a new process: %T\n",p->common.id));
@@ -902,9 +870,7 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
 
  error:
 
-    erts_smp_proc_unlock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
-
-    return res;
+   return res;
 }
 
 
@@ -920,9 +886,9 @@ init_scheduler_data(ErtsSchedulerData* esdp, int num,
     esdp->free_process = NULL;
 #endif
     esdp->x_reg_array = calloc(ERTS_X_REGS_ALLOCATED, sizeof(Eterm));
-    ASSERT(esdp->x_reg_array);
+    ASSERT(epiphany_in_dram(esdp->x_reg_array));
     esdp->f_reg_array = calloc(MAX_REG, sizeof(FloatDef));
-    ASSERT(esdp->f_reg_array);
+    ASSERT(epiphany_in_dram(esdp->f_reg_array));
 #if !HEAP_ON_C_STACK
     esdp->num_tmp_heap_used = 0;
 #endif
@@ -955,6 +921,124 @@ init_scheduler_data(ErtsSchedulerData* esdp, int num,
     erts_port_task_handle_init(&esdp->nosuspend_port_task_handle);
 }
 
+void
+erts_init_scheduling(int no_schedulers, int no_schedulers_online)
+{
+    int ix, n;
+#if ERTS_HAVE_SCHED_UTIL_BALANCING_SUPPORT
+    if (erts_sched_balance_util)
+	erts_sched_compact_load = 0;
+#endif
+
+    ASSERT(no_schedulers_online <= no_schedulers);
+    ASSERT(no_schedulers_online >= 1);
+    ASSERT(no_schedulers >= 1);
+
+    n = no_schedulers;
+    erts_no_run_queues = n;
+
+    /* Create and initialize scheduler specific data */
+    erts_aligned_scheduler_data =
+	erts_alloc_permanent_cache_aligned(ERTS_ALC_T_SCHDLR_DATA,
+					   n*sizeof(ErtsAlignedSchedulerData));					   
+
+    for (ix = 0; ix < n; ix++) {
+	ErtsSchedulerData *esdp = ERTS_SCHEDULER_IX(ix);
+	init_scheduler_data(esdp, ix+1, NULL, ERTS_RUNQ_IX(ix), NULL, 0);
+    }
+
+#ifdef ERTS_SMP
+
+    aux_thread_aux_work_data =
+	erts_alloc_permanent_cache_aligned(ERTS_ALC_T_SCHDLR_DATA,
+					   sizeof(ErtsAuxWorkData));
+
+    erts_smp_atomic32_init_nob(&schdlr_sspnd.changing, 0);
+    schdlr_sspnd.online = no_schedulers_online;
+    schdlr_sspnd.curr_online = no_schedulers;
+    schdlr_sspnd.msb.ongoing = 0;
+    erts_smp_atomic32_init_nob(&schdlr_sspnd.active, no_schedulers);
+#ifdef ERTS_DIRTY_SCHEDULERS
+    erts_smp_atomic32_init_nob(&schdlr_sspnd.dirty_cpu_changing, 0);
+    schdlr_sspnd.dirty_cpu_online = no_dirty_cpu_schedulers_online;
+    schdlr_sspnd.dirty_cpu_curr_online = no_dirty_cpu_schedulers;
+    erts_smp_atomic32_init_nob(&schdlr_sspnd.dirty_cpu_active, no_dirty_cpu_schedulers);
+    erts_smp_atomic32_init_nob(&schdlr_sspnd.dirty_io_changing, 0);
+    schdlr_sspnd.dirty_io_online = no_dirty_io_schedulers;
+    schdlr_sspnd.dirty_io_curr_online = no_dirty_io_schedulers;
+    erts_smp_atomic32_init_nob(&schdlr_sspnd.dirty_io_active, no_dirty_io_schedulers);
+#endif
+    schdlr_sspnd.msb.procs = NULL;
+    balance_info.last_active_runqs = no_schedulers;
+    balance_info.forced_check_balance = 0;
+    balance_info.halftime = 1;
+    balance_info.full_reds_history_index = 0;
+    erts_smp_atomic32_init_nob(&balance_info.checking_balance, 0);
+    balance_info.prev_rise.active_runqs = 0;
+    balance_info.prev_rise.max_len = 0;
+    balance_info.prev_rise.reds = 0;
+    balance_info.n = 0;
+
+    schdlr_sspnd.wait_curr_online = no_schedulers_online;
+    schdlr_sspnd.curr_online *= 2; /* Boot strapping... */
+    ERTS_SCHDLR_SSPND_CHNG_SET((ERTS_SCHDLR_SSPND_CHNG_ONLN
+				| ERTS_SCHDLR_SSPND_CHNG_WAITER), 0);
+#ifdef ERTS_DIRTY_SCHEDULERS
+    schdlr_sspnd.dirty_cpu_wait_curr_online = no_dirty_cpu_schedulers_online;
+    schdlr_sspnd.dirty_cpu_curr_online *= 2;
+    ERTS_SCHDLR_SSPND_DIRTY_CPU_CHNG_SET((ERTS_SCHDLR_SSPND_CHNG_ONLN
+					  | ERTS_SCHDLR_SSPND_CHNG_WAITER), 0);
+    for (ix = no_dirty_cpu_schedulers_online; ix < no_dirty_cpu_schedulers; ix++) {
+	ErtsSchedulerData* esdp = ERTS_DIRTY_CPU_SCHEDULER_IX(ix);
+	erts_smp_atomic32_read_bor_nob(&esdp->ssi->flags, ERTS_SSI_FLG_SUSPENDED);
+    }
+
+    schdlr_sspnd.dirty_io_wait_curr_online = no_dirty_io_schedulers;
+    schdlr_sspnd.dirty_io_curr_online *= 2;
+    ERTS_SCHDLR_SSPND_DIRTY_IO_CHNG_SET((ERTS_SCHDLR_SSPND_CHNG_ONLN
+					 | ERTS_SCHDLR_SSPND_CHNG_WAITER), 0);
+#endif
+
+#else /* !ERTS_SMP */
+    {
+	ErtsSchedulerData *esdp;
+	esdp = ERTS_SCHEDULER_IX(0);
+	erts_scheduler_data = esdp;
+#ifdef USE_THREADS
+	erts_tsd_set(sched_data_key, (void *) esdp);
+#endif
+    }
+    erts_no_schedulers = 1;
+#ifdef ERTS_DIRTY_SCHEDULERS
+    erts_no_dirty_cpu_schedulers = 0;
+    erts_no_dirty_io_schedulers = 0;
+#endif
+#endif
+
+#ifndef ERTS_SMP
+#ifdef ERTS_DO_VERIFY_UNUSED_TEMP_ALLOC
+    erts_scheduler_data->verify_unused_temp_alloc
+	= erts_alloc_get_verify_unused_temp_alloc(
+	    &erts_scheduler_data->verify_unused_temp_alloc_data);
+    ERTS_VERIFY_UNUSED_TEMP_ALLOC(NULL);
+#endif
+#endif
+
+#if !defined(ERTS_SMP) && defined(ERTS_ENABLE_LOCK_CHECK)
+    erts_lc_set_thread_name("scheduler 1");
+#endif
+}
+
+#ifdef ERTS_SMP
+
+ErtsSchedulerData *
+erts_get_scheduler_data(void)
+{
+    return ERTS_SCHEDULER_IX(epiphany_coreno());
+}
+
+#endif
+
 Process *schedule(Process *p, int calls)
 {
     extern BeamInstr *demo_prog;
@@ -965,19 +1049,21 @@ Process *schedule(Process *p, int calls)
 	ErlSpawnOpts so;
 	Process parent;
 	erts_init_empty_process(&parent);
-	erts_smp_proc_lock(&parent, ERTS_PROC_LOCK_MAIN);
 	so.flags = 0;
 	p = erl_create_process_ptr(&parent, am_false, am_start, NIL, &so);
-	ASSERT(p);
-	erts_smp_proc_unlock(&parent, ERTS_PROC_LOCK_MAIN);
+	ASSERT(epiphany_in_dram(p));
 	erts_cleanup_empty_process(&parent);
 	p->i = demo_prog;
 	// Should last a while
 	p->fcalls = 100000;
 
+#ifndef ERTS_SMP
 	erts_scheduler_data = calloc(1, sizeof(ErtsSchedulerData));
-	ASSERT(erts_scheduler_data);
+	ASSERT(epiphany_in_dram(erts_scheduler_data));
 	init_scheduler_data(erts_scheduler_data, 0, NULL, NULL, NULL, 0);
+#else
+	p->scheduler_data = erts_get_scheduler_data();
+#endif
 	return p;
     }
 }

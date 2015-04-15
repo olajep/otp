@@ -359,11 +359,7 @@ ERTS_GLB_INLINE void erts_smp_port_unlock(Port *prt);
 
 ERTS_GLB_INLINE void erts_port_inc_refc(Port *prt)
 {
-#ifdef ERTS_SMP
-    erts_ptab_inc_refc(&prt->common);
-#else
-    erts_atomic32_inc_nob(&prt->refc);
-#endif
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void erts_port_dec_refc(Port *prt)

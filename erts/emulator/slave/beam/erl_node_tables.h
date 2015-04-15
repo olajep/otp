@@ -185,49 +185,49 @@ ERTS_GLB_INLINE void erts_smp_de_links_unlock(DistEntry *dep);
 ERTS_GLB_INLINE void
 erts_deref_dist_entry(DistEntry *dep)
 {
-    EPIPHANY_STUB(erts_deref_dist_entry);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_deref_node_entry(ErlNode *np)
 {
-    EPIPHANY_STUB(erts_deref_node_entry);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_de_rlock(DistEntry *dep)
 {
-    erts_smp_rwmtx_rlock(&dep->rwmtx);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_de_runlock(DistEntry *dep)
 {
-    erts_smp_rwmtx_runlock(&dep->rwmtx);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_de_rwlock(DistEntry *dep)
 {
-    erts_smp_rwmtx_rwlock(&dep->rwmtx);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_de_rwunlock(DistEntry *dep)
 {
-    erts_smp_rwmtx_rwunlock(&dep->rwmtx);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_de_links_lock(DistEntry *dep)
 {
-    erts_smp_mtx_lock(&dep->lnk_mtx);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_de_links_unlock(DistEntry *dep)
 {
-    erts_smp_mtx_unlock(&dep->lnk_mtx);
+    EPIPHANY_STUB_FUN();
 }
 
 #endif /* #if ERTS_GLB_INLINE_INCL_FUNC_DEF */

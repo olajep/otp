@@ -388,57 +388,6 @@ BIF_RETTYPE exit_2(BIF_ALIST_2)
     EPIPHANY_STUB_FUN();
 }
 
-/**********************************************************************/
-/* this sets some process info- trapping exits or the error handler */
-
-
-/* Handle flags common to both process_flag_2 and process_flag_3. */
-static BIF_RETTYPE process_flag_aux(Process *BIF_P,
-				    Process *rp,
-				    Eterm flag,
-				    Eterm val)
-{
-   Eterm old_value = NIL;	/* shut up warning about use before set */
-   Sint i;
-   if (flag == am_save_calls) {
-       struct saved_calls *scb;
-       if (!is_small(val))
-	   goto error;
-       i = signed_val(val);
-       if (i < 0 || i > 10000)
-	   goto error;
-
-       if (i == 0)
-	   scb = NULL;
-       else {
-	   Uint sz = sizeof(*scb) + (i-1) * sizeof(scb->ct[0]);
-	   scb = erts_alloc(ERTS_ALC_T_CALLS_BUF, sz);
-	   scb->len = i;
-	   scb->cur = 0;
-	   scb->n = 0;
-       }
-
-       scb = ERTS_PROC_SET_SAVED_CALLS_BUF(rp, ERTS_PROC_LOCK_MAIN, scb);
-
-       if (!scb)
-	   old_value = make_small(0);
-       else {
-	   old_value = make_small(scb->len);
-	   erts_free(ERTS_ALC_T_CALLS_BUF, (void *) scb);
-       }
-
-       /* Make sure the process in question is rescheduled
-	  immediately, if it's us, so the call saving takes effect. */
-       if (rp == BIF_P)
-	   BIF_RET2(old_value, CONTEXT_REDS);
-       else
-	   BIF_RET(old_value);
-   }
-
- error:
-   BIF_ERROR(BIF_P, BADARG);
-}
-
 BIF_RETTYPE process_flag_2(BIF_ALIST_2)
 {
     EPIPHANY_STUB_FUN();
@@ -446,20 +395,8 @@ BIF_RETTYPE process_flag_2(BIF_ALIST_2)
 
 BIF_RETTYPE process_flag_3(BIF_ALIST_3)
 {
-   Process *rp;
-   Eterm res;
-
-   if ((rp = erts_pid2proc(BIF_P, ERTS_PROC_LOCK_MAIN,
-			   BIF_ARG_1, ERTS_PROC_LOCK_MAIN)) == NULL) {
-       BIF_ERROR(BIF_P, BADARG);
-   }
-
-   res = process_flag_aux(BIF_P, rp, BIF_ARG_2, BIF_ARG_3);
-
-   if (rp != BIF_P)
-       erts_smp_proc_unlock(rp, ERTS_PROC_LOCK_MAIN);
-
-   return res;
+    // We need locks on the process
+    EPIPHANY_STUB_FUN();
 }
 
 /**********************************************************************/
@@ -1552,29 +1489,11 @@ BIF_RETTYPE self_0(BIF_ALIST_0)
 static Uint32 reference0; /* Initialized in erts_init_bif */
 static Uint32 reference1;
 static Uint32 reference2;
-static erts_smp_spinlock_t make_ref_lock;
-static erts_smp_mtx_t ports_snapshot_mtx;
-erts_smp_atomic_t erts_dead_ports_ptr; /* To store dying ports during snapshot */
 
 void
 erts_make_ref_in_array(Uint32 ref[ERTS_MAX_REF_NUMBERS])
 {
-    erts_smp_spin_lock(&make_ref_lock);
-
-    reference0++;
-    if (reference0 >= MAX_REFERENCE) {
-	reference0 = 0;
-	reference1++;
-	if (reference1 == 0) {
-	    reference2++;
-	}
-    }
-
-    ref[0] = reference0;
-    ref[1] = reference1;
-    ref[2] = reference2;
-
-    erts_smp_spin_unlock(&make_ref_lock);
+    EPIPHANY_STUB_FUN();
 }
 
 Eterm erts_make_ref_in_buffer(Eterm buffer[REF_THING_SIZE])
@@ -1887,24 +1806,7 @@ BIF_RETTYPE erts_internal_cmp_term_2(BIF_ALIST_2) {
 static ERTS_INLINE int
 skip_current_msgq(Process *c_p)
 {
-    int res;
-#if defined(ERTS_ENABLE_LOCK_CHECK) && defined(ERTS_SMP)
-    erts_proc_lc_chk_only_proc_main(c_p);
-#endif
-
-    erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
-    if (ERTS_PROC_PENDING_EXIT(c_p)) {
-	KILL_CATCHES(c_p);
-	c_p->freason = EXC_EXIT;
-	res = 0;
-    }
-    else {
-	ERTS_SMP_MSGQ_MV_INQ2PRIVQ(c_p);
-	c_p->msg.save = c_p->msg.last;
-	res = 1;
-    }
-    erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
-    return res;
+    EPIPHANY_STUB_FUN();
 }
 
 void
@@ -1972,9 +1874,6 @@ void erts_init_bif(void)
     reference1 = 0;
     reference2 = 0;
 
-    erts_smp_spinlock_init(&make_ref_lock, "make_ref");
-    erts_smp_mtx_init(&ports_snapshot_mtx, "ports_snapshot");
-    erts_smp_atomic_init_nob(&erts_dead_ports_ptr, (erts_aint_t) NULL);
 
     // ETODO: Init export fields
 }

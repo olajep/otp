@@ -46,8 +46,6 @@
 #include "erl_smp.h"
 #include "erl_time.h"
 #include "erl_thr_progress.h"
-#include "erl_thr_queue.h"
-#include "erl_sched_spec_pre_alloc.h"
 #include "beam_bp.h"
 #include "erl_ptab.h"
 
@@ -2068,8 +2066,6 @@ is_string(Eterm list)
  * Process and Port timers in smp case
  */
 
-ERTS_SCHED_PREF_PRE_ALLOC_IMPL(ptimer_pre, ErtsSmpPTimer, 1000)
-
 #define ERTS_PTMR_FLGS_ALLCD_SIZE \
   2
 #define ERTS_PTMR_FLGS_ALLCD_MASK \
@@ -2083,74 +2079,7 @@ ERTS_SCHED_PREF_PRE_ALLOC_IMPL(ptimer_pre, ErtsSmpPTimer, 1000)
 static void
 init_ptimers(void)
 {
-    init_ptimer_pre_alloc();
-}
-
-static ERTS_INLINE void
-free_ptimer(ErtsSmpPTimer *ptimer)
-{
-    switch (ptimer->timer.flags & ERTS_PTMR_FLGS_ALLCD_MASK) {
-    case ERTS_PTMR_FLGS_PREALLCD:
-	(void) ptimer_pre_free(ptimer);
-	break;
-    case ERTS_PTMR_FLGS_SLALLCD:
-	erts_free(ERTS_ALC_T_SL_PTIMER, (void *) ptimer);
-	break;
-    case ERTS_PTMR_FLGS_LLALLCD:
-	erts_free(ERTS_ALC_T_LL_PTIMER, (void *) ptimer);
-	break;
-    default:
-	erl_exit(ERTS_ABORT_EXIT,
-		 "Internal error: Bad ptimer alloc type\n");
-	break;
-    }
-}
-
-/* Callback for process timeout cancelled */
-static void
-ptimer_cancelled(ErtsSmpPTimer *ptimer)
-{
-    free_ptimer(ptimer);
-}
-
-/* Callback for process timeout */
-static void
-ptimer_timeout(ErtsSmpPTimer *ptimer)
-{
-    if (is_internal_pid(ptimer->timer.id)) {
-	Process *p;
-	p = erts_pid2proc_opt(NULL,
-			      0,
-			      ptimer->timer.id,
-			      ERTS_PROC_LOCK_MAIN|ERTS_PROC_LOCK_STATUS,
-			      ERTS_P2P_FLG_ALLOW_OTHER_X);
-	if (p) {
-	    if (!ERTS_PROC_IS_EXITING(p)
-		&& !(ptimer->timer.flags & ERTS_PTMR_FLG_CANCELLED)) {
-		ASSERT(*ptimer->timer.timer_ref == ptimer);
-		*ptimer->timer.timer_ref = NULL;
-		(*ptimer->timer.timeout_func)(p);
-	    }
-	    erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN|ERTS_PROC_LOCK_STATUS);
-	}
-    }
-    else {
-	Port *p;
-	ASSERT(is_internal_port(ptimer->timer.id));
-	p = erts_id2port_sflgs(ptimer->timer.id,
-			       NULL,
-			       0,
-			       ERTS_PORT_SFLGS_DEAD);
-	if (p) {
-	    if (!(ptimer->timer.flags & ERTS_PTMR_FLG_CANCELLED)) {
-		ASSERT(*ptimer->timer.timer_ref == ptimer);
-		*ptimer->timer.timer_ref = NULL;
-		(*ptimer->timer.timeout_func)(p);
-	    }
-	    erts_port_release(p);
-	}
-    }
-    free_ptimer(ptimer);
+    // ESTUB
 }
 
 void
@@ -2159,44 +2088,13 @@ erts_create_smp_ptimer(ErtsSmpPTimer **timer_ref,
 		       ErlTimeoutProc timeout_func,
 		       Uint timeout)
 {
-    ErtsSmpPTimer *res = ptimer_pre_alloc();
-    if (res)
-	res->timer.flags = ERTS_PTMR_FLGS_PREALLCD;
-    else {
-	if (timeout < ERTS_ALC_MIN_LONG_LIVED_TIME) {
-	    res = erts_alloc(ERTS_ALC_T_SL_PTIMER, sizeof(ErtsSmpPTimer));
-	    res->timer.flags = ERTS_PTMR_FLGS_SLALLCD;
-	}
-	else {
-	    res = erts_alloc(ERTS_ALC_T_LL_PTIMER, sizeof(ErtsSmpPTimer));
-	    res->timer.flags = ERTS_PTMR_FLGS_LLALLCD;
-	}
-    }
-    res->timer.timeout_func = timeout_func;
-    res->timer.timer_ref = timer_ref;
-    res->timer.id = id;
-    res->timer.tm.active = 0; /* MUST be initalized */
-
-    ASSERT(!*timer_ref);
-
-    *timer_ref = res;
-
-    erts_set_timer(&res->timer.tm,
-		  (ErlTimeoutProc) ptimer_timeout,
-		  (ErlCancelProc) ptimer_cancelled,
-		  (void*) res,
-		  timeout);
+    EPIPHANY_STUB_FUN();
 }
 
 void
 erts_cancel_smp_ptimer(ErtsSmpPTimer *ptimer)
 {
-    if (ptimer) {
-	ASSERT(*ptimer->timer.timer_ref == ptimer);
-	*ptimer->timer.timer_ref = NULL;
-	ptimer->timer.flags |= ERTS_PTMR_FLG_CANCELLED;
-	erts_cancel_timer(&ptimer->timer.tm);
-    }
+    EPIPHANY_STUB_FUN();
 }
 
 #endif
@@ -2875,11 +2773,6 @@ Process *p;
 {
     if(p)
         erts_fprintf(stderr, "pp: not printing, is stubbed out\n");
-}
-    
-void ppi(Eterm pid)
-{
-    pp(erts_proc_lookup(pid));
 }
 
 void td(Eterm x)

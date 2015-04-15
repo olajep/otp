@@ -43,6 +43,11 @@
 #endif
 #include "dtrace-wrapper.h"
 
+#ifdef DEBUG
+// For sanity-checking pointers
+#include "epiphany.h"
+#endif
+
 /* #define HARDDEBUG 1 */
 
 #if defined(NO_JUMP_TABLE)
@@ -1045,10 +1050,10 @@ void process_main(void)
         * process is running. I.e. there is no race for init_done.
         */
 	init_done = 1;
-        fprintf(stderr, "Initialising BEAM\n");
+	erts_printf("Initialising BEAM\n");
 	goto init_emulator;
     }
-    fprintf(stderr, "Running BEAM\n");
+    erts_printf("Running BEAM (stack=%x)\n", (unsigned)&pt_arity);
 
     c_p = NULL;
     reds_used = 0;
@@ -1068,6 +1073,7 @@ void process_main(void)
 #endif
     ERTS_VERIFY_UNUSED_TEMP_ALLOC(c_p);
     c_p = schedule(c_p, reds_used);
+    ASSERT(epiphany_in_dram(c_p));
     ERTS_VERIFY_UNUSED_TEMP_ALLOC(c_p);
 #ifdef DEBUG
     pid = c_p->common.id; /* Save for debugging purpouses */
@@ -1075,8 +1081,11 @@ void process_main(void)
     ERTS_SMP_REQ_PROC_MAIN_LOCK(c_p);
     PROCESS_MAIN_CHK_LOCKS(c_p);
 
+    ASSERT(epiphany_sane_address(ERTS_PROC_GET_SCHDATA(c_p)));
     reg = ERTS_PROC_GET_SCHDATA(c_p)->x_reg_array;
+    ASSERT(epiphany_sane_address(reg));
     freg = ERTS_PROC_GET_SCHDATA(c_p)->f_reg_array;
+    ASSERT(epiphany_sane_address(freg));
 #if !HEAP_ON_C_STACK
     tmp_big = ERTS_PROC_GET_SCHDATA(c_p)->beam_emu_tmp_heap;
 #endif
@@ -1672,18 +1681,7 @@ void process_main(void)
 
      if (!msgp) {
 #ifdef ERTS_SMP
-	 erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
-	 /* Make sure messages wont pass exit signals... */
-	 if (ERTS_PROC_PENDING_EXIT(c_p)) {
-	     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
-	     SWAPOUT;
-	     goto do_schedule; /* Will be rescheduled for exit */
-	 }
-	 ERTS_SMP_MSGQ_MV_INQ2PRIVQ(c_p);
-	 msgp = PEEK_MESSAGE(c_p);
-	 if (msgp)
-	     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
-	 else
+     EPIPHANY_STUB(OpCase(i_loop_rec_fr));
 #endif
 	 {
 	     SET_I((BeamInstr *) Arg(0));
@@ -1744,7 +1742,7 @@ void process_main(void)
 
 
  OpCase(i_wait_timeout_fs): {
-     erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+     EPIPHANY_STUB(OpCase(i_wait_timeout_fs));
 
      /* Fall through */
  }
@@ -1780,7 +1778,7 @@ void process_main(void)
 #endif
 	 } else {		/* Wrong time */
 	     OpCase(i_wait_error_locked): {
-		 erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+		 EPIPHANY_STUB(OpCase(i_wait_error_locked));
 		 /* Fall through */
 	     }
 	     OpCase(i_wait_error): {
@@ -1808,21 +1806,21 @@ void process_main(void)
 	     c_p->arity = 0;
 	     erts_smp_atomic32_read_band_relb(&c_p->state, ~ERTS_PSFLG_ACTIVE);
 	     ASSERT(!ERTS_PROC_IS_EXITING(c_p));
-	     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+	     EPIPHANY_STUB(OpCase(wait_));
 	     c_p->current = NULL;
 	     goto do_schedule;
 	 }
 	 OpCase(wait_unlocked_f): {
-	     erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+	     EPIPHANY_STUB(OpCase(wait_unlocked_f));
 	     goto wait2;
 	 }
      }
-     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+     EPIPHANY_STUB(OpCase(i_wait_timeout_locked_fs));
      Next(2);
  }
 
  OpCase(i_wait_timeout_fI): {
-     erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+     EPIPHANY_STUB(OpCase(i_wait_timeout_fI));
  }
 
  OpCase(i_wait_timeout_locked_fI): {
@@ -1834,7 +1832,7 @@ void process_main(void)
      * receive statement will examine the first message first.
      */
  OpCase(timeout_locked): {
-     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+     EPIPHANY_STUB(OpCase(timeout_locked));
  }
 
  OpCase(timeout): {

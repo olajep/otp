@@ -426,43 +426,6 @@ NAME##_free(TYPE *p)							\
     }									\
 }
 
-#include "erl_sched_spec_pre_alloc.h"
-
-#define ERTS_SCHED_PREF_PRE_ALLOC_IMPL(NAME, TYPE, PASZ)		\
-union erts_sspa_##NAME##__ {						\
-    erts_sspa_blk_t next;						\
-    TYPE type;								\
-};									\
-									\
-static erts_sspa_data_t *sspa_data_##NAME##__;				\
-									\
-static void								\
-init_##NAME##_alloc(void)						\
-{									\
-    sspa_data_##NAME##__ =						\
-	erts_sspa_create(sizeof(union erts_sspa_##NAME##__),		\
-			 ERTS_PRE_ALLOC_SIZE((PASZ)));			\
-}									\
-									\
-static TYPE *								\
-NAME##_alloc(void)							\
-{									\
-    ErtsSchedulerData *esdp = erts_get_scheduler_data();		\
-    if (!esdp || ERTS_SCHEDULER_IS_DIRTY(esdp))				\
-	return NULL;							\
-    return (TYPE *) erts_sspa_alloc(sspa_data_##NAME##__,		\
-				    (int) esdp->no - 1);		\
-}									\
-									\
-static int								\
-NAME##_free(TYPE *p)							\
-{									\
-    ErtsSchedulerData *esdp = erts_get_scheduler_data();		\
-    return erts_sspa_free(sspa_data_##NAME##__,				\
-			  esdp ? (int) esdp->no - 1 : -1,		\
-			  (char *) p);					\
-}
-
 #ifdef DEBUG
 #define ERTS_ALC_DBG_BLK_SZ(PTR) (*(((UWord *) (PTR)) - 2))
 #endif /* #ifdef DEBUG */

@@ -559,6 +559,7 @@ typedef union {
 } ErtsDirtySchedId;
 #endif
 
+// Differs beween slave and master; mustn't be shared
 struct ErtsSchedulerData_ {
     /*
      * Keep X registers first (so we get as many low
@@ -569,7 +570,6 @@ struct ErtsSchedulerData_ {
     FloatDef* f_reg_array;	/* Floating point registers. */
 
 #ifdef ERTS_SMP
-    ethr_tid tid;		/* Thread id */
     struct erl_bits_state erl_bits_state; /* erl_bits.c state */
     void *match_pseudo_process; /* erl_db_util.c:db_prog_match() */
     Process *free_process;
@@ -655,66 +655,19 @@ ERTS_GLB_INLINE void erts_smp_reset_max_len(ErtsRunQueue *rq, ErtsRunQueueInfo *
 ERTS_GLB_INLINE void
 erts_smp_inc_runq_len(ErtsRunQueue *rq, ErtsRunQueueInfo *rqi, int prio)
 {
-    erts_aint32_t len;
-
-    ERTS_SMP_LC_ASSERT(erts_smp_lc_runq_is_locked(rq));
-
-    len = erts_smp_atomic32_read_nob(&rqi->len);
-    ASSERT(len >= 0);
-    if (len == 0) {
-	ASSERT((erts_smp_atomic32_read_nob(&rq->flags)
-		& ((erts_aint32_t) (1 << prio))) == 0);
-	erts_smp_atomic32_read_bor_nob(&rq->flags,
-				       (erts_aint32_t) (1 << prio));
-    }
-    len++;
-    if (rqi->max_len < len)
-	rqi->max_len = len;
-
-    erts_smp_atomic32_set_relb(&rqi->len, len);
-
-#ifdef ERTS_SMP
-    if (rq->len == 0)
-	erts_non_empty_runq(rq);
-#endif
-    rq->len++;
-    if (rq->max_len < rq->len)
-	rq->max_len = len;
-    ASSERT(rq->len > 0);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_dec_runq_len(ErtsRunQueue *rq, ErtsRunQueueInfo *rqi, int prio)
 {
-    erts_aint32_t len;
-
-    ERTS_SMP_LC_ASSERT(erts_smp_lc_runq_is_locked(rq));
-
-    len = erts_smp_atomic32_read_nob(&rqi->len);
-    len--;
-    ASSERT(len >= 0);
-    if (len == 0) {
-	ASSERT((erts_smp_atomic32_read_nob(&rq->flags)
-		& ((erts_aint32_t) (1 << prio))));
-	erts_smp_atomic32_read_band_nob(&rq->flags,
-					~((erts_aint32_t) (1 << prio)));
-    }
-    erts_smp_atomic32_set_relb(&rqi->len, len);
-
-    rq->len--;
-    ASSERT(rq->len >= 0);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_reset_max_len(ErtsRunQueue *rq, ErtsRunQueueInfo *rqi)
 {
-    erts_aint32_t len;
-
-    ERTS_SMP_LC_ASSERT(erts_smp_lc_runq_is_locked(rq));
-
-    len = erts_smp_atomic32_read_nob(&rqi->len);
-    ASSERT(rqi->max_len >= len);
-    rqi->max_len = len;
+    EPIPHANY_STUB_FUN();
 }
 
 #endif /* ERTS_GLB_INLINE_INCL_FUNC_DEF */
@@ -1683,7 +1636,7 @@ do {										\
     /* ETODO: Actually put something in verify_unused_temp_alloc */		\
     if (esdp__ && !ERTS_SCHEDULER_IS_DIRTY(esdp__)				\
 	&& esdp__->verify_unused_temp_alloc) {					\
-	ASSERT(esdp__->verify_unused_temp_alloc);				\
+	ASSERT(epiphany_in_dram(esdp__->verify_unused_temp_alloc));		\
 	esdp__->verify_unused_temp_alloc(					\
 	    esdp__->verify_unused_temp_alloc_data);				\
     }										\
@@ -1861,7 +1814,7 @@ ERTS_GLB_INLINE ErtsRunQueue *erts_check_emigration_need(ErtsRunQueue *c_rq,
 ERTS_GLB_INLINE ErtsMigrationPaths *
 erts_get_migration_paths_managed(void)
 {
-    return (ErtsMigrationPaths *) erts_atomic_read_ddrb(&erts_migration_paths);
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE ErtsMigrationPaths *
@@ -2031,9 +1984,7 @@ erts_get_runq_current(ErtsSchedulerData *esdp)
 ERTS_GLB_INLINE void
 erts_smp_runq_lock(ErtsRunQueue *rq)
 {
-#ifdef ERTS_SMP
-    erts_smp_mtx_lock(&rq->mtx);
-#endif
+    EPIPHANY_STUB_FUN();
 }
 
 #ifdef ERTS_ENABLE_LOCK_COUNT
@@ -2045,19 +1996,13 @@ erts_smp_runq_lock(ErtsRunQueue *rq)
 ERTS_GLB_INLINE int
 erts_smp_runq_trylock(ErtsRunQueue *rq)
 {
-#ifdef ERTS_SMP
-    return erts_smp_mtx_trylock(&rq->mtx);
-#else
-    return 0;
-#endif
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_runq_unlock(ErtsRunQueue *rq)
 {
-#ifdef ERTS_SMP
-    erts_smp_mtx_unlock(&rq->mtx);
-#endif
+    EPIPHANY_STUB_FUN();
 }
 
 #ifdef ERTS_ENABLE_LOCK_COUNT
@@ -2089,18 +2034,7 @@ ERTS_GLB_INLINE void
 erts_smp_xrunq_lock(ErtsRunQueue *rq, ErtsRunQueue *xrq)
 {
 #ifdef ERTS_SMP
-    ERTS_SMP_LC_ASSERT(erts_smp_lc_mtx_is_locked(&rq->mtx));
-    if (xrq != rq) {
-	if (erts_smp_mtx_trylock(&xrq->mtx) == EBUSY) {
-	    if (rq < xrq)
-		erts_smp_mtx_lock(&xrq->mtx);
-	    else {
-		erts_smp_mtx_unlock(&rq->mtx);
-		erts_smp_mtx_lock(&xrq->mtx);
-		erts_smp_mtx_lock(&rq->mtx);
-	    }
-	}
-    }
+    EPIPHANY_STUB_FUN();
 #endif
 }
 
@@ -2110,8 +2044,7 @@ ERTS_GLB_INLINE void
 erts_smp_xrunq_unlock(ErtsRunQueue *rq, ErtsRunQueue *xrq)
 {
 #ifdef ERTS_SMP
-    if (xrq != rq)
-	erts_smp_mtx_unlock(&xrq->mtx);
+    EPIPHANY_STUB_FUN();
 #endif
 }
 
@@ -2119,17 +2052,7 @@ ERTS_GLB_INLINE void
 erts_smp_runqs_lock(ErtsRunQueue *rq1, ErtsRunQueue *rq2)
 {
 #ifdef ERTS_SMP
-    ASSERT(rq1 && rq2);
-    if (rq1 == rq2)
-	erts_smp_mtx_lock(&rq1->mtx);
-    else if (rq1 < rq2) {
-	erts_smp_mtx_lock(&rq1->mtx);
-	erts_smp_mtx_lock(&rq2->mtx);	
-    }
-    else {
-	erts_smp_mtx_lock(&rq2->mtx);
-	erts_smp_mtx_lock(&rq1->mtx);	
-    }
+    EPIPHANY_STUB_FUN();
 #endif
 }
 
@@ -2137,10 +2060,7 @@ ERTS_GLB_INLINE void
 erts_smp_runqs_unlock(ErtsRunQueue *rq1, ErtsRunQueue *rq2)
 {
 #ifdef ERTS_SMP
-    ASSERT(rq1 && rq2);
-    erts_smp_mtx_unlock(&rq1->mtx);
-    if (rq1 != rq2)
-	erts_smp_mtx_unlock(&rq2->mtx);
+    EPIPHANY_STUB_FUN();
 #endif
 }
 
@@ -2214,13 +2134,7 @@ ERTS_GLB_INLINE void erts_sched_poke(ErtsSchedulerSleepInfo *ssi);
 ERTS_GLB_INLINE void
 erts_sched_poke(ErtsSchedulerSleepInfo *ssi)
 {
-    erts_aint32_t flags;
-    ERTS_THR_MEMORY_BARRIER;
-    flags = erts_smp_atomic32_read_nob(&ssi->flags);
-    if (flags & ERTS_SSI_FLG_SLEEPING) {
-	flags = erts_smp_atomic32_read_band_nob(&ssi->flags, ~ERTS_SSI_FLGS_SLEEP);
-	erts_sched_finish_poke(ssi, flags);
-    }
+    EPIPHANY_STUB_FUN();
 }
 
 
@@ -2228,13 +2142,12 @@ erts_sched_poke(ErtsSchedulerSleepInfo *ssi)
 
 #endif /* #ifdef ERTS_SMP */
 
-#include "erl_process_lock.h"
 
 #undef ERTS_INCLUDE_SCHEDULER_INTERNALS
 
 #endif
 
-void enter_scheduler(int number);
+void __noreturn enter_scheduler(int number);
 
 void erl_halt(int code);
 extern erts_smp_atomic32_t erts_halt_progress;

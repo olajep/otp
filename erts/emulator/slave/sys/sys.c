@@ -61,7 +61,6 @@
 #include "erl_mseg.h"
 
 extern char **environ;
-static erts_smp_rwmtx_t environ_rwmtx;
 
 #define MAX_VSIZE 16		/* Max number of entries allowed in an I/O
 				 * vector sock_sendv().
@@ -255,7 +254,7 @@ erts_sys_schedule_interrupt(int set)
 void
 erts_sys_schedule_interrupt_timed(int set, erts_short_time_t msec)
 {
-    ERTS_CHK_IO_INTR_TMD(set, msec);
+    EPIPHANY_STUB_FUN();
 }
 #endif
 
@@ -491,24 +490,6 @@ int erts_sys_prepare_crash_dump(int secs)
     return prepare_crash_dump(secs);
 }
 
-static ERTS_INLINE void
-break_requested(void)
-{
-  /*
-   * just set a flag - checked for and handled by
-   * scheduler threads erts_check_io() (not signal handler).
-   */
-#ifdef DEBUG			
-  fprintf(stderr,"break!\n");
-#endif
-  if (ERTS_BREAK_REQUESTED)
-      erl_exit(ERTS_INTR_EXIT, "");
-
-  ERTS_SET_BREAK_REQUESTED;
-  // ESTUB
-  // ERTS_CHK_IO_AS_INTR(); /* Make sure we don't sleep in poll */
-}
-
 /* set up signal handlers for break and quit */
 #if (defined(SIG_SIGSET) || defined(SIG_SIGNAL))
 static RETSIGTYPE request_break(void)
@@ -521,28 +502,6 @@ static RETSIGTYPE request_break(int signum)
 #else
     break_requested();
 #endif
-}
-
-static ERTS_INLINE void
-sigusr1_exit(void)
-{
-    char env[21]; /* enough to hold any 64-bit integer */
-    size_t envsz;
-    int i, secs = -1;
-
-    /* We do this at interrupt level, since the main reason for
-     * wanting to generate a crash dump in this way is that the emulator
-     * is hung somewhere, so it won't be able to poll any flag we set here.
-     */
-    ERTS_SET_GOT_SIGUSR1;
-
-    envsz = sizeof(env);
-    if ((i = erts_sys_getenv_raw("ERL_CRASH_DUMP_SECONDS", env, &envsz)) >= 0) {
-	secs = i != 0 ? 0 : atoi(env);
-    }
-
-    prepare_crash_dump(secs);
-    erl_exit(1, "Received SIGUSR1\n");
 }
 
 #ifdef ETHR_UNUSABLE_SIGUSRX
@@ -580,12 +539,6 @@ static RETSIGTYPE user_signal2(int signum)
 #endif
 
 #endif /* #ifndef ETHR_UNUSABLE_SIGUSRX */
-
-static void
-quit_requested(void)
-{
-    erl_exit(ERTS_INTR_EXIT, "");
-}
 
 #if (defined(SIG_SIGSET) || defined(SIG_SIGNAL))
 static RETSIGTYPE do_quit(void)
@@ -675,34 +628,6 @@ int* pBuild;			/* Pointer to build number. */
     *pBuild = 0;
 }
 
-void init_getenv_state(GETENV_STATE *state)
-{
-   erts_smp_rwmtx_rlock(&environ_rwmtx);
-   *state = NULL;
-}
-
-char *getenv_string(GETENV_STATE *state0)
-{
-   char **state = (char **) *state0;
-   char *cp;
-
-   ERTS_SMP_LC_ASSERT(erts_smp_lc_rwmtx_is_rlocked(&environ_rwmtx));
-
-   if (state == NULL)
-      state = environ;
-
-   cp = *state++;
-   *state0 = (GETENV_STATE) state;
-
-   return cp;
-}
-
-void fini_getenv_state(GETENV_STATE *state)
-{
-   *state = NULL;
-   erts_smp_rwmtx_runlock(&environ_rwmtx);
-}
-
 
 /************************** Port I/O *******************************/
 
@@ -773,9 +698,7 @@ erts_sys_putenv(char *key, char *value)
     strcpy(env,key);
     strcat(env,"=");
     strcat(env,value);
-    erts_smp_rwmtx_rwlock(&environ_rwmtx);
     res = putenv(env);
-    erts_smp_rwmtx_rwunlock(&environ_rwmtx);
 #ifdef HAVE_COPYING_PUTENV
     erts_free(ERTS_ALC_T_TMP, env);
 #endif
@@ -822,9 +745,7 @@ int
 erts_sys_getenv(char *key, char *value, size_t *size)
 {
     int res;
-    erts_smp_rwmtx_rlock(&environ_rwmtx);
     res = erts_sys_getenv__(key, value, size);
-    erts_smp_rwmtx_runlock(&environ_rwmtx);
     return res;
 }
 
@@ -832,9 +753,7 @@ int
 erts_sys_unsetenv(char *key)
 {
     int res;
-    erts_smp_rwmtx_rwlock(&environ_rwmtx);
     res = unsetenv(key);
-    erts_smp_rwmtx_rwunlock(&environ_rwmtx);
     return res;
 }
 
@@ -1027,44 +946,6 @@ erl_debug(char* fmt, ...)
 
 #endif /* DEBUG */
 
-#if !CHLDWTHR  /* ---------------------------------------------------------- */
-
-#define ERTS_REPORT_EXIT_STATUS report_exit_status
-
-#define check_children() (0)
-
-#ifdef ERTS_SMP
-
-static void
-erts_check_children(void)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-#endif
-
-#elif CHLDWTHR && defined(ERTS_SMP) /* ------------------------------------- */
-
-#define ERTS_REPORT_EXIT_STATUS report_exit_status
-
-#define check_children() (0)
-
-
-#else /* CHLDWTHR && !defined(ERTS_SMP) ------------------------------------ */
-
-#define ERTS_REPORT_EXIT_STATUS initiate_report_exit_status
-
-static ERTS_INLINE void
-initiate_report_exit_status(ErtsSysReportExit *rep, int status)
-{
-    rep->next = report_exit_transit_list;
-    rep->status = status;
-    report_exit_transit_list = rep;
-    erts_sys_schedule_interrupt(1);
-}
-
-#endif /* ------------------------------------------------------------------ */
-
 #if CHLDWTHR
 
 static void *
@@ -1119,8 +1000,6 @@ erl_sys_schedule(int runnable)
 
 #ifdef ERTS_SMP
 
-static erts_smp_tid_t sig_dispatcher_tid;
-
 static void
 smp_sig_notify(char c)
 {
@@ -1135,135 +1014,6 @@ smp_sig_notify(char c)
 	    "about received signal";
 	erts_silence_warn_unused_result(write(2, msg, sizeof(msg)));
 	abort();
-    }
-}
-
-static void *
-signal_dispatcher_thread_func(void *unused)
-{
-#if !CHLDWTHR
-    int initialized = 0;
-    int notify_check_children = 0;
-#endif
-#ifdef ERTS_ENABLE_LOCK_CHECK
-    erts_lc_set_thread_name("signal_dispatcher");
-#endif
-    while (1) {
-	char buf[32];
-	int res, i;
-	/* Block on read() waiting for a signal notification to arrive... */
-	res = read(sig_notify_fds[0], (void *) &buf[0], 32);
-	if (res < 0) {
-	    if (errno == EINTR)
-		continue;
-	    erl_exit(ERTS_ABORT_EXIT,
-		     "signal-dispatcher thread got unexpected error: %s (%d)\n",
-		     erl_errno_id(errno),
-		     errno);
-	}
-	for (i = 0; i < res; i++) {
-	    /*
-	     * NOTE 1: The signal dispatcher thread should not do work
-	     *         that takes a substantial amount of time (except
-	     *         perhaps in test and debug builds). It needs to
-	     *         be responsive, i.e, it should only dispatch work
-	     *         to other threads.
-	     *
-	     * NOTE 2: The signal dispatcher thread is not a blockable
-	     *         thread (i.e., not a thread managed by the
-	     *         erl_thr_progress module). This is intentional.
-	     *         We want to be able to interrupt writing of a crash
-	     *         dump by hitting C-c twice. Since it isn't a
-	     *         blockable thread it is important that it doesn't
-	     *         change the state of any data that a blocking thread
-	     *         expects to have exclusive access to (unless the
-	     *         signal dispatcher itself explicitly is blocking all
-	     *         blockable threads).
-	     */
-	    switch (buf[i]) {
-	    case 0: /* Emulator initialized */
-#if !CHLDWTHR
-		initialized = 1;
-		if (!notify_check_children)
-#endif
-		    break;
-#if !CHLDWTHR
-	    case 'C': /* SIGCHLD */
-		if (initialized)
-		    erts_smp_notify_check_children_needed();
-		else
-		    notify_check_children = 1;
-		break;
-#endif
-	    case 'I': /* SIGINT */
-		break_requested();
-		break;
-	    case 'Q': /* SIGQUIT */
-		quit_requested();
-		break;
-	    case '1': /* SIGUSR1 */
-		sigusr1_exit();
-		break;
-#ifdef QUANTIFY
-	    case '2': /* SIGUSR2 */
-		quantify_save_data(); /* Might take a substantial amount of
-					 time, but this is a test/debug
-					 build */
-		break;
-#endif
-	    default:
-		erl_exit(ERTS_ABORT_EXIT,
-			 "signal-dispatcher thread received unknown "
-			 "signal notification: '%c'\n",
-			 buf[i]);
-	    }
-	}
-	ERTS_SMP_LC_ASSERT(!erts_thr_progress_is_blocking());
-    }
-    return NULL;
-}
-
-static void
-init_smp_sig_notify(void)
-{
-    erts_smp_thr_opts_t thr_opts = ERTS_SMP_THR_OPTS_DEFAULT_INITER;
-    thr_opts.detached = 1;
-
-    if (pipe(sig_notify_fds) < 0) {
-	erl_exit(ERTS_ABORT_EXIT,
-		 "Failed to create signal-dispatcher pipe: %s (%d)\n",
-		 erl_errno_id(errno),
-		 errno);
-    }
-
-    /* Start signal handler thread */
-    erts_smp_thr_create(&sig_dispatcher_tid,
-			signal_dispatcher_thread_func,
-			NULL,
-			&thr_opts);
-}
-
-void
-erts_sys_main_thread(void)
-{
-    erts_thread_disable_fpe();
-    /* Become signal receiver thread... */
-#ifdef ERTS_ENABLE_LOCK_CHECK
-    erts_lc_set_thread_name("signal_receiver");
-#endif
-
-    smp_sig_notify(0); /* Notify initialized */
-    while (1) {
-	/* Wait for a signal to arrive... */
-
-#ifdef DEBUG
-	int res =
-#else
-	(void)
-#endif
-	    select(0, NULL, NULL, NULL, NULL);
-	ASSERT(res < 0);
-	ASSERT(errno == EINTR);
     }
 }
 
@@ -1301,8 +1051,6 @@ erl_sys_args(int* argc, char** argv)
 {
     int i, j;
 
-    erts_smp_rwmtx_init(&environ_rwmtx, "environ");
-
     i = 1;
 
     ASSERT(argc && (*argc == 0 || argv));
@@ -1336,26 +1084,7 @@ erl_sys_args(int* argc, char** argv)
     }
 
  done_parsing:
-
-#ifdef ERTS_ENABLE_KERNEL_POLL
-    if (erts_use_kernel_poll) {
-	char no_kp[10];
-	size_t no_kp_sz = sizeof(no_kp);
-	int res = erts_sys_getenv_raw("ERL_NO_KERNEL_POLL", no_kp, &no_kp_sz);
-	if (res > 0
-	    || (res == 0
-		&& sys_strcmp("false", no_kp) != 0
-		&& sys_strcmp("FALSE", no_kp) != 0)) {
-	    erts_use_kernel_poll = 0;
-	}
-    }
-#endif
-
     // ETODO: init io
-
-#ifdef ERTS_SMP
-    init_smp_sig_notify();
-#endif
 
     /* Handled arguments have been marked with NULL. Slide arguments
        not handled towards the beginning of argv. */

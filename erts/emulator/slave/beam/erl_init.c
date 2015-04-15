@@ -285,14 +285,9 @@ erl_init(int ncpu,
 /*     erts_init_time(); */
 /*     erts_init_sys_common_misc(); */
 /*     erts_init_process(ncpu, proc_tab_sz, legacy_proc_tab); */
-/*     erts_init_scheduling(no_schedulers, */
-/* 			 no_schedulers_online */
-/* #ifdef ERTS_DIRTY_SCHEDULERS */
-/* 			 , no_dirty_cpu_schedulers, */
-/* 			 no_dirty_cpu_schedulers_online, */
-/* 			 no_dirty_io_schedulers */
-/* #endif */
-/* 			 ); */
+    erts_init_scheduling(no_schedulers,
+			 no_schedulers_online
+			 );
     /* erts_init_cpu_topology(); /\* Must be after init_scheduling *\/ */
     /* erts_init_gc(); /\* Must be after init_scheduling *\/ */
     // erts_alloc_late_init();
@@ -477,7 +472,6 @@ early_init(int *argc, char **argv) /*
     int dirty_cpu_scheds_onln_pctg = 100;
     int dirty_io_scheds;
 #endif
-
     erts_save_emu_args(*argc, argv);
 
     // ESTUB
@@ -495,10 +489,9 @@ early_init(int *argc, char **argv) /*
 
     erts_use_sender_punish = 1;
 
-    //erts_pre_early_init_cpu_topology(&max_reader_groups,
-    //  			     &ncpu,
-    //  			     &ncpuonln,
-    //  			     &ncpuavail);
+    erts_get_logical_processors(&ncpu,
+				&ncpuonln,
+				&ncpuavail);
 #ifndef ERTS_SMP
     ncpu = 1;
     ncpuonln = 1;
@@ -515,9 +508,6 @@ early_init(int *argc, char **argv) /*
 
     erts_sys_pre_init();
     erts_atomic_init_nob(&exiting, 0);
-#ifdef ERTS_SMP
-    erts_thr_progress_pre_init();
-#endif
 
 #ifdef ERTS_ENABLE_LOCK_CHECK
     erts_lc_init();
@@ -567,9 +557,6 @@ early_init(int *argc, char **argv) /*
 #endif
 
 #ifdef ERTS_SMP
-    no_schedulers = schdlrs;
-    no_schedulers_online = schdlrs_onln;
-
     erts_no_schedulers = (Uint) no_schedulers;
 #endif
 #ifdef ERTS_DIRTY_SCHEDULERS
@@ -583,31 +570,6 @@ early_init(int *argc, char **argv) /*
     // erts_alloc_init(argc, argv, &alloc_opts); /* Handles (and removes)
     // 					 -M flags. */
 
-    /* Require allocators */
-#ifdef ERTS_SMP
-    /*
-     * Thread progress management:
-     *
-     * * Managed threads:
-     * ** Scheduler threads (see erl_process.c)
-     * ** Aux thread (see erl_process.c)
-     * ** Sys message dispatcher thread (see erl_trace.c)
-     *
-     * * Unmanaged threads that need to register:
-     * ** Async threads (see erl_async.c)
-     * ** Dirty scheduler threads
-     */
-    erts_thr_progress_init(no_schedulers,
-			   no_schedulers+2,
-#ifndef ERTS_DIRTY_SCHEDULERS
-			   erts_async_max_threads
-#else
-			   erts_async_max_threads +
-			   erts_no_dirty_cpu_schedulers +
-			   erts_no_dirty_io_schedulers
-#endif
-			   );
-#endif
     // erts_thr_q_init();
     erts_init_utils();
     // erts_early_init_cpu_topology(no_schedulers,
@@ -813,16 +775,6 @@ system_cleanup(int flush_async)
 	 * Another thread is currently exiting the system;
 	 * wait for it to do its job.
 	 */
-#ifdef ERTS_SMP
-	if (erts_thr_progress_is_managed_thread()) {
-	    /*
-	     * The exiting thread might be waiting for
-	     * us to block; need to update status...
-	     */
-	    erts_thr_progress_active(NULL, 0);
-	    erts_thr_progress_prepare_wait(NULL);
-	}
-#endif
 	/* Wait forever... */
 	while (1)
 	    erts_milli_sleep(10000000);

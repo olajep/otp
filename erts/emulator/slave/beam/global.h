@@ -1154,70 +1154,7 @@ erts_alloc_message_heap_state(Uint size,
 			      ErtsProcLocks *receiver_locks,
 			      erts_aint32_t *statep)
 {
-    Eterm *hp;
-    erts_aint32_t state;
-#ifdef ERTS_SMP
-    int locked_main = 0;
-    state = erts_smp_atomic32_read_acqb(&receiver->state);
-    if (statep)
-	*statep = state;
-    if (state & (ERTS_PSFLG_EXITING|ERTS_PSFLG_PENDING_EXIT))
-	goto allocate_in_mbuf;
-#endif
-
-    if (size > (Uint) INT_MAX)
-	erl_exit(ERTS_ABORT_EXIT, "HUGE size (%beu)\n", size);
-
-    if (
-#if defined(ERTS_SMP)
-	*receiver_locks & ERTS_PROC_LOCK_MAIN
-#else
-	1
-#endif
-	) {
-#ifdef ERTS_SMP
-    try_allocate_on_heap:
-#endif
-	state = erts_smp_atomic32_read_nob(&receiver->state);
-	if (statep)
-	    *statep = state;
-	if ((state & (ERTS_PSFLG_EXITING|ERTS_PSFLG_PENDING_EXIT))
-	    || (receiver->flags & F_DISABLE_GC)
-	    || HEAP_LIMIT(receiver) - HEAP_TOP(receiver) <= size) {
-	    /*
-	     * The heap is either potentially in an inconsistent
-	     * state, or not large enough.
-	     */
-#ifdef ERTS_SMP
-	    if (locked_main) {
-		*receiver_locks &= ~ERTS_PROC_LOCK_MAIN;
-		erts_smp_proc_unlock(receiver, ERTS_PROC_LOCK_MAIN);
-	    }
-#endif
-	    goto allocate_in_mbuf;
-	}
-	hp = HEAP_TOP(receiver);
-	HEAP_TOP(receiver) = hp + size;
-	*bpp = NULL;
-	*ohpp = &MSO(receiver);
-    }
-#ifdef ERTS_SMP
-    else if (erts_smp_proc_trylock(receiver, ERTS_PROC_LOCK_MAIN) == 0) {
-	locked_main = 1;
-	*receiver_locks |= ERTS_PROC_LOCK_MAIN;
-	goto try_allocate_on_heap;
-    }
-#endif
-    else {
-	ErlHeapFragment *bp;
-    allocate_in_mbuf:
-	bp = new_message_buffer(size);
-	hp = bp->mem;
-	*bpp = bp;
-	*ohpp = &bp->off_heap;
-    }
-
-    return hp;
+    EPIPHANY_STUB_FUN();
 }
 
 ERTS_GLB_INLINE Eterm *

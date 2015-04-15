@@ -31,20 +31,7 @@
 #define ERTS_ALC_INTERNAL__
 #include "sys.h"
 #define ERL_THREADS_EMU_INTERNAL__
-#include "erl_threads.h"
 #include "global.h"
-#include "erl_db.h"
-#include "erl_binary.h"
-#include "erl_bits.h"
-#include "erl_instrument.h"
-#include "erl_mseg.h"
-#include "erl_monitors.h"
-#include "erl_bif_timer.h"
-#include "erl_cpu_topology.h"
-#include "erl_thr_queue.h"
-#if defined(ERTS_ALC_T_DRV_SEL_D_STATE) || defined(ERTS_ALC_T_DRV_EV_D_STATE)
-#include "erl_check_io.h"
-#endif
 
 __decl_noreturn void
 erts_alc_fatal_error(int error, int func, ErtsAlcType_t n, ...)
@@ -110,4 +97,34 @@ __decl_noreturn void
 erts_realloc_n_enomem(ErtsAlcType_t n, void *ptr, Uint size)
 {
     erts_alc_fatal_error(ERTS_ALC_E_NOMEM, ERTS_ALC_O_REALLOC, n, size);
+}
+
+void
+erts_alloc_register_scheduler(void __attribute__((unused)) *vesdp)
+{
+    // Do nothing
+}
+
+void *erts_alloc_permanent_cache_aligned(ErtsAlcType_t type, Uint size)
+{
+    UWord v = (UWord) erts_alloc(type, size + (ERTS_CACHE_LINE_SIZE-1)
+#ifdef VALGRIND
+				  + sizeof(UWord)
+#endif
+				 );
+
+#ifdef VALGRIND
+    {   /* Link them to avoid Leak_PossiblyLost */
+	static UWord* first_in_list = NULL;
+        *(UWord**)v = first_in_list;
+	first_in_list = (UWord*) v;
+	v += sizeof(UWord);
+    }
+#endif
+
+    if (v & ERTS_CACHE_LINE_MASK) {
+	v = (v & ~ERTS_CACHE_LINE_MASK) + ERTS_CACHE_LINE_SIZE;
+    }
+    ASSERT((v & ERTS_CACHE_LINE_MASK) == 0);
+    return (void*)v;
 }
