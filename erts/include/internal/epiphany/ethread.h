@@ -58,9 +58,12 @@ ethr_sint32_t ethr_native_atomic32_cmpxchg(ethr_native_atomic32_t *var,
 #define ETHR_NATIVE_SPINLOCKS_REQUIRE_DESTRUCTION 1
 #define ETHR_NATIVE_SPINLOCK_IMPL "epiphany"
 /* The epiphany mutexes /are/ spinlocks, but they need to be allocated in
- * SRAM. The number is an index into an array that contains the mutex.
+ * SRAM. The mutexes are allocated from an array.
  */
-typedef int ethr_native_spinlock_t;
+typedef struct {
+    char row, col;
+    unsigned short ix;
+} ethr_native_spinlock_t;
 
 void ethr_native_spinlock_init(ethr_native_spinlock_t*);
 int ethr_native_spinlock_destroy(ethr_native_spinlock_t*);

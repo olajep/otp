@@ -258,7 +258,7 @@ struct ethr_cond_ {
 #elif defined(ETHR_EPIPHANY)
 typedef struct ethr_mutex_ ethr_mutex;
 struct ethr_mutex_ {
-    e_mutex_t *e_mtx;
+    ethr_native_spinlock_t mtx;
 #if ETHR_XCHK
     int initialized;
 #endif
@@ -740,19 +740,19 @@ void sys_epiphany_stub(const char* name) __attribute__ ((__noreturn__));
 static ETHR_INLINE int
 ETHR_INLINE_MTX_FUNC_NAME_(ethr_mutex_trylock)(ethr_mutex *mtx)
 {
-    EPIPHANY_STUB_FUN();
+    return ethr_native_spin_trylock(&mtx->mtx);
 }
 
 static ETHR_INLINE void
 ETHR_INLINE_MTX_FUNC_NAME_(ethr_mutex_lock)(ethr_mutex *mtx)
 {
-    EPIPHANY_STUB_FUN();
+     ethr_native_spin_lock(&mtx->mtx);
 }
 
 static ETHR_INLINE void
 ETHR_INLINE_MTX_FUNC_NAME_(ethr_mutex_unlock)(ethr_mutex *mtx)
 {
-    EPIPHANY_STUB_FUN();
+     ethr_native_spin_unlock(&mtx->mtx);
 }
 
 #endif /* ETHR_TRY_INLINE_FUNCS */

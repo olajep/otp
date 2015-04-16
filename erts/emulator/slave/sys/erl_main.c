@@ -146,33 +146,51 @@ static void grab_barrier() {
     }
 }
 
-int epiphany_coreno(void) {
+struct workgroup_coords epiphany_workgroup_origin(void) {
     if (!in_emulator()) {
-	return e_group_config.core_row * e_group_config.group_cols
-	    + e_group_config.core_col;
+	struct workgroup_coords origin = { .row = 0, .col = 0 };
+	return origin;
     } else {
 	// The emulator does not set e_group_config. Assume a P16 4x4 workgroup.
+	struct workgroup_coords origin = { .row = 32, .col = 8 };
+#ifdef DEBUG
 	e_coreid_t id = e_get_coreid();
 	unsigned row, col;
 	e_coords_from_coreid(id, &row, &col);
 	ASSERT(32 <= row && row < 36);
 	ASSERT(8 <= col && col < 12);
-	return (row - 32) * 4 + (col - 8);
+#endif
+	return origin;
+    }
+}
+
+int epiphany_coreno(void) {
+    e_coreid_t id = e_get_coreid();
+    unsigned row, col;
+    struct workgroup_coords origin = epiphany_workgroup_origin();
+    struct workgroup_dimens dimens = epiphany_workgroup_dimens();
+    e_coords_from_coreid(id, &row, &col);
+
+    return (row - origin.row) * dimens.cols + (col - origin.col);
+}
+
+struct workgroup_dimens epiphany_workgroup_dimens(void) {
+    if (!in_emulator()) {
+	struct workgroup_dimens dimens = {
+	    .rows = e_group_config.group_rows,
+	    .cols = e_group_config.group_cols,
+	};
+	return dimens;
+    } else {
+	// The emulator does not set e_group_config. Assume a P16 4x4 workgroup.
+	struct workgroup_dimens dimens = { .rows = 4, .cols = 4, };
+	return dimens;
     }
 }
 
 int epiphany_workgroup_size(void) {
-    if (!in_emulator()) {
-	return e_group_config.group_rows * e_group_config.group_cols;
-    } else {
-	// The emulator does not set e_group_config. Assume a P16 4x4 workgroup.
-	e_coreid_t id = e_get_coreid();
-	unsigned row, col;
-	e_coords_from_coreid(id, &row, &col);
-	ASSERT(32 <= row && row < 36);
-	ASSERT(8 <= col && col < 12);
-	return (row - 32) * 4 + (col - 8);
-    }
+    struct workgroup_dimens dimens = epiphany_workgroup_dimens();
+    return dimens.rows * dimens.cols;
 }
 
 int epiphany_in_dram(void *addr) {

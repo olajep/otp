@@ -1771,7 +1771,8 @@ ethr_mutex_init(ethr_mutex *mtx)
     }
     mtx->initialized = ETHR_MUTEX_INITIALIZED;
 #endif
-    EPIPHANY_STUB_FUN();
+    ethr_native_spinlock_init(&mtx->mtx);
+    return 0;
 }
 
 int
@@ -1796,7 +1797,7 @@ ethr_mutex_destroy(ethr_mutex *mtx)
 #if ETHR_XCHK
     mtx->initialized = 0;
 #endif
-    EPIPHANY_STUB_FUN();
+    return ethr_native_spinlock_destroy(&mtx->mtx);
 }
 
 int
