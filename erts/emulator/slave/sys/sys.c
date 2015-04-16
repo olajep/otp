@@ -385,8 +385,6 @@ erts_sys_pre_init(void)
 
     erts_thr_init(&eid);
 
-    report_exit_list = NULL;
-
 #ifdef ERTS_ENABLE_LOCK_COUNT
     erts_lcnt_init();
 #endif

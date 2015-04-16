@@ -63,6 +63,8 @@ AC_CONFIG_HEADER(include/config.h:config.h.in include/erl_int_sizes_config.h:../
 dnl ----------------------------------------------------------------------
 dnl Optional features.
 dnl ----------------------------------------------------------------------
+ENABLE_ALLOC_TYPE_VARS=
+AC_SUBST(ENABLE_ALLOC_TYPE_VARS)
 
 AC_ARG_ENABLE(threads,
 AS_HELP_STRING([--enable-threads], [enable async thread support])
@@ -319,6 +321,20 @@ AC_CHECK_LIB(m, sin)
 AC_SEARCH_LIBS([e_mutex_lock], [e-lib])
 if test "x$ac_cv_search_e_mutex_lock" = xno; then
    AC_MSG_ERROR([Could not find the Epiphany Hardware Utility Library (eLib)])
+fi
+
+dnl Try to find a thread library.
+dnl
+dnl We don't expect it to find anything, but we need the sizeof defines anyway
+dnl to provide our own ethread implementation.
+dnl
+dnl ETHR_LIB_NAME, ETHR_LIBS, ETHR_X_LIBS, ETHR_THR_LIB_BASE and ETHR_DEFS
+dnl are set by ERL_FIND_ETHR_LIB
+ERL_FIND_ETHR_LIB
+
+if test "X$ETHR_LIB_NAME" = "X"; then
+    # We provide our own
+    ETHR_DEFS="-DUSE_THREADS -DETHR_EPIPHANY $ETHR_DEFS"
 fi
 
 ERTS_BUILD_SMP_EMU=$enable_smp_support

@@ -94,7 +94,7 @@ void LeaveCriticalSection(CRITICAL_SECTION *);
 #  endif
 #endif
 
-#if 0
+#if 0 || defined(ETHR_EPIPHANY)
 #  define ETHR_MTX_Q_LOCK_SPINLOCK__
 #  define ETHR_MTX_QLOCK_TYPE__ ethr_spinlock_t
 #elif defined(ETHR_PTHREADS) || defined(ETHR_OSE_THREADS)
@@ -254,7 +254,9 @@ struct ethr_cond_ {
     int initialized;
 #endif
 };
-
+#elif defined(ETHR_EPIPHANY)
+typedef e_mutex_t *ethr_mutex;
+typedef struct{} ethr_cond;
 #else
 #  error "no mutex implementation"
 #endif

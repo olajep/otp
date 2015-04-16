@@ -589,8 +589,8 @@ early_init(int *argc, char **argv) /*
 	elid.mem.ll.alloc = ethr_ll_alloc;
 	elid.mem.ll.realloc = ethr_ll_realloc;
 	elid.mem.ll.free = ethr_ll_free;
-	elid.main_threads = max_main_threads;
-	elid.reader_groups = reader_groups;
+	elid.main_threads = no_schedulers;
+	elid.reader_groups = no_schedulers;
 
 	erts_thr_late_init(&elid);
     }

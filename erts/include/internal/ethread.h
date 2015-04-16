@@ -216,6 +216,15 @@ typedef OSPPDKEY ethr_tsd_key;
 
 #define ETHR_HAVE_THREAD_NAMES
 
+#elif defined(ETHR_EPIPHANY)
+
+#include <e-lib.h>
+
+typedef e_coreid_t ethr_tid;
+typedef void **ethr_tsd_key;
+
+#define ETHR_USE_OWN_RWMTX_IMPL__
+
 #else /* No supported thread lib found */
 
 #ifdef ETHR_NO_SUPP_THR_LIB_NOT_FATAL
@@ -356,6 +365,8 @@ extern ethr_runtime_t ethr_runtime__;
 #          include "sparc32/ethread.h"
 #        elif defined(__tile__)
 #          include "tile/ethread.h"
+#        elif defined(__epiphany__)
+#          include "epiphany/ethread.h"
 #        endif
 #      elif ETHR_SIZEOF_PTR == 8
 #        if defined(__x86_64__)
@@ -627,6 +638,8 @@ typedef struct ethr_ts_event_ ethr_ts_event; /* Needed by ethr_mutex.h */
 #  include "pthread/ethr_event.h"
 #elif defined(ETHR_OSE_THREADS)
 #  include "ose/ethr_event.h"
+#elif defined(ETHR_EPIPHANY)
+#  include "epiphany/ethr_event.h"
 #endif
 
 int ethr_set_main_thr_status(int, int);
