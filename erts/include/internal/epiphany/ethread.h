@@ -22,7 +22,6 @@
  */
 #ifndef ETHREAD_EPIPHANY_ETHREAD_H
 #define ETHREAD_EPIPHANY_ETHREAD_H
-#include <e-lib.h>
 
 /* Atomics */
 #define ETHR_HAVE_NATIVE_ATOMIC32 1
@@ -43,21 +42,66 @@ ethr_sint32_t ethr_native_atomic32_cmpxchg(ethr_native_atomic32_t *var,
 					   ethr_sint32_t val,
 					   ethr_sint32_t old_val);
 
-/* Epiphany provides no way to barrier, but as long as all accesses are within
- * the same 1MiB region of memory, all accesses should be sequentially
- * consistent (but this is never promised by the specification). Also, loads are
- * always ordered since there is no out-of-order execution or speculation.
+/*
+ * Epiphany provides no way to barrier, but with some assumptions, we can
+ * provide that.
+ *
+ * We assume that all accesses that all accesses that take the same route
+ * through the same mesh network (of which there are three; one for on-code
+ * loads, one for on-core stores, and one for off core accesses) are strictly
+ * ordered. In other words, we assume that memory accesses cannot "overtake"
+ * each other on the same mesh network, and that any endpoint applies memory
+ * accesses in the order they arrive.
+ *
+ * We also assume that loads are ordered before any succeeding accesses. This is
+ * sane presuming the architecture is strictly in-order and does not speculate
+ * loads or stores.
+ *
+ * Lastly, we assume all available off-core memory is on the east bus (which is
+ * the case on the currently available Parallella boards).
+ *
+ * Under these assumptions, we can construct a memory barrier for all off-core
+ * accesses by simply writing something to DRAM, and then spinning until we can
+ * read that thing back.
  */
-#define ETHR_MEMBAR(B) do {			  \
-	__asm__ __volatile__ ("" : : : "memory"); \
-	__sync_synchronize();			  \
+static inline void epiphany_dram_write_barrier(void);
+#define ETHR_LoadLoad	(1 << 0)
+#define ETHR_LoadStore	(1 << 1)
+#define ETHR_StoreLoad	(1 << 2)
+#define ETHR_StoreStore	(1 << 3)
+
+#define ETHR_MEMBAR(B) do {				\
+	__asm__ __volatile__ ("" : : : "memory");	\
+	__sync_synchronize();				\
+	if ((B) & ETHR_StoreLoad) {			\
+	    epiphany_dram_write_barrier();		\
+	}						\
     } while(0)
+
+extern volatile char epiphany_dram_write_barrier_data[16];
+static inline void epiphany_dram_write_barrier(void) {
+    register unsigned coreid, index;
+    register int new;
+    /* We could use e-lib, but we don't want to include it everywhere. */
+    __asm__("MOVFS %0,COREID;" : "=r"(coreid));
+    ETHR_ASSERT((0b111100111100 & coreid) == ((32 << 6) | 8));
+    index = (coreid & 0b11) | ((coreid >> 4) & 0b1100);
+    new = !epiphany_dram_write_barrier_data[index];
+    epiphany_dram_write_barrier_data[index] = new;
+    /*
+     * We tell GCC memory is clobbered so that it will not try to be smart with
+     * the read.
+     */
+    __asm__ __volatile__ ("" : : : "memory");
+    while (epiphany_dram_write_barrier_data[index] != new);
+}
 
 /* Spinlocks */
 #define ETHR_HAVE_NATIVE_SPINLOCKS 1
 #define ETHR_NATIVE_SPINLOCKS_REQUIRE_DESTRUCTION 1
 #define ETHR_NATIVE_SPINLOCK_IMPL "epiphany"
-/* The epiphany mutexes /are/ spinlocks, but they need to be allocated in
+/*
+ * The epiphany mutexes /are/ spinlocks, but they need to be allocated in
  * SRAM. The mutexes are allocated from an array.
  */
 typedef struct {

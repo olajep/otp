@@ -176,6 +176,8 @@ ethr_abort__(void)
 }
 
 /* Atomics */
+volatile char epiphany_dram_write_barrier_data[16];
+
 void
 ethr_native_atomic32_init(ethr_native_atomic32_t *var, ethr_sint32_t val)
 {
@@ -225,8 +227,10 @@ ethr_native_spinlock_init(ethr_native_spinlock_t *lock)
     e_coreid_t me = e_get_coreid();
     unsigned myrow, row, mycol, col;
     int i;
-    /* It is unnecessary to use all this allocation if the address is in SRAM
-     * anyway */
+    /*
+     * It is unnecessary to use this allocation scheme if the address is in SRAM
+     * anyway.
+     */
     ASSERT(epiphany_in_dram(lock));
 
     e_coords_from_coreid(me, &myrow, &mycol);
@@ -269,12 +273,17 @@ void
 ethr_native_spin_unlock(ethr_native_spinlock_t *lock)
 {
     ethr_native_spinlock_t lockv = *lock;
-#if defined(DEBUG) || defined(ETHR_DEBUG)
     volatile e_mutex_t *mtx = e_get_global_address(lockv.row, lockv.col, mutexes + lockv.ix);
     e_coreid_t me = e_get_coreid();
     ASSERT(*((volatile e_mutex_t*)mtx) == me);
-#endif
+
+    ETHR_MEMBAR(ETHR_LoadLoad|ETHR_LoadStore|ETHR_StoreLoad|ETHR_StoreStore);
     e_mutex_unlock(lockv.row, lockv.col, mutexes + lockv.ix);
+    /*
+     * Explicit barrier against the core containing the mutex since ETHR_MEMBAR
+     * only ensures DRAM writes have completed.
+     */
+    while (*mtx == me);
 }
 
 int
@@ -285,7 +294,17 @@ ethr_native_spin_trylock(ethr_native_spinlock_t *lock)
     volatile e_mutex_t *mtx = e_get_global_address(lockv.row, lockv.col, mutexes + lockv.ix);
     ASSERT(*((volatile e_mutex_t*)mtx) != MUTEX_UNUSED);
 #endif
-    return e_mutex_trylock(lockv.row, lockv.col, mutexes + lockv.ix);
+    if (e_mutex_trylock(lockv.row, lockv.col, mutexes + lockv.ix)) {
+	return EBUSY;
+    } else {
+	/*
+	 * We barrier just because consumers might assume a barrier is implied
+	 * in a lock.
+	 */
+	ETHR_MEMBAR(ETHR_LoadLoad|ETHR_LoadStore|ETHR_StoreLoad
+		    |ETHR_StoreStore);
+	return 0;
+    }
 }
 
 int
@@ -293,7 +312,7 @@ ethr_native_spin_is_locked(ethr_native_spinlock_t *lock)
 {
     ethr_native_spinlock_t lockv = *lock;
     volatile e_mutex_t *mtx = e_get_global_address(lockv.row, lockv.col, mutexes + lockv.ix);
-    ASSERT(*((volatile e_mutex_t*)mtx) != MUTEX_UNUSED);
+    ASSERT(*mtx != MUTEX_UNUSED);
     return *mtx == MUTEX_UNLOCKED;
 }
 
@@ -306,4 +325,6 @@ ethr_native_spin_lock(ethr_native_spinlock_t *lock)
     ASSERT(*((volatile e_mutex_t*)mtx) != MUTEX_UNUSED);
 #endif
     e_mutex_lock(lockv.row, lockv.col, mutexes + lockv.ix);
+    /* We barrier just because consumers might assume a barrier is implied in a lock. */
+    ETHR_MEMBAR(ETHR_LoadLoad|ETHR_LoadStore|ETHR_StoreLoad|ETHR_StoreStore);
 }
