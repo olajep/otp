@@ -335,6 +335,7 @@ ERL_FIND_ETHR_LIB
 if test "X$ETHR_LIB_NAME" = "X"; then
     # We provide our own
     ETHR_DEFS="-DUSE_THREADS -DETHR_EPIPHANY $ETHR_DEFS"
+    ETHR_THR_LIB_BASE_DIR=epiphany
 fi
 
 ERTS_BUILD_SMP_EMU=$enable_smp_support

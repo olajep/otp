@@ -1,0 +1,228 @@
+/*
+ * %CopyrightBegin%
+ *
+ * Copyright Ericsson AB 2010-2015. All Rights Reserved.
+ *
+ * The contents of this file are subject to the Erlang Public License,
+ * Version 1.1, (the "License"); you may not use this file except in
+ * compliance with the License. You should have received a copy of the
+ * Erlang Public License along with this software. If not, it can be
+ * retrieved online at http://www.erlang.org/.
+ *
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ * the License for the specific language governing rights and limitations
+ * under the License.
+ *
+ * %CopyrightEnd%
+ */
+
+/*
+ * Description: Epiphany implementation of the ethread library
+ */
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+#include "sys.h"
+
+#define ETHR_CHILD_WAIT_SPIN_COUNT 4000
+
+#define ETHREAD_IMPL__
+
+#include "ethread.h"
+#include "ethr_internal.h"
+
+#ifndef ETHR_HAVE_ETHREAD_DEFINES
+#error Missing configure defines
+#endif
+
+void
+ethr_compiler_barrier(void)
+{
+    ETHR_MEMBAR(0);
+}
+
+int
+ethr_init(ethr_init_data *id)
+{
+    return 0;
+}
+
+int
+ethr_late_init(ethr_late_init_data *id)
+{
+    return 0;
+}
+
+int
+ethr_thr_create(ethr_tid *tid, void * (*func)(void *), void *arg,
+		ethr_thr_opts *opts)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_thr_join(ethr_tid tid, void **res)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_thr_detach(ethr_tid tid)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+void
+ethr_thr_exit(void *res)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+ethr_tid
+ethr_self(void)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_equal_tids(ethr_tid tid1, ethr_tid tid2)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+
+/*
+ * Thread specific events
+ */
+
+ethr_ts_event *
+ethr_get_ts_event(void)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+void
+ethr_leave_ts_event(ethr_ts_event *tsep)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+/*
+ * Thread specific data
+ */
+
+int
+ethr_tsd_key_create(ethr_tsd_key *keyp, char *keyname)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_tsd_key_delete(ethr_tsd_key key)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_tsd_set(ethr_tsd_key key, void *value)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+void *
+ethr_tsd_get(ethr_tsd_key key)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+/* internal exports */
+
+int
+ethr_set_tse__(ethr_ts_event *tsep)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+ethr_ts_event
+*ethr_get_tse__(void)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+/*
+ * Signal functions
+ */
+
+#if ETHR_HAVE_ETHR_SIG_FUNCS
+
+int ethr_sigmask(int how, const sigset_t *set, sigset_t *oset)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int ethr_sigwait(const sigset_t *set, int *sig)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+#endif /* #if ETHR_HAVE_ETHR_SIG_FUNCS */
+
+ETHR_IMPL_NORETURN__
+ethr_abort__(void)
+{
+    abort();
+}
+
+/* Atomics */
+void
+ethr_native_atomic32_init(ethr_native_atomic32_t *var, ethr_sint32_t val)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+ethr_sint32_t
+ethr_native_atomic32_cmpxchg(ethr_native_atomic32_t *var,
+			     ethr_sint32_t val,
+			     ethr_sint32_t old_val)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+/* Spinlocks */
+void
+ethr_native_spinlock_init(ethr_native_spinlock_t *lock)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_native_spinlock_destroy(ethr_native_spinlock_t *lock)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+void
+ethr_native_spin_unlock(ethr_native_spinlock_t *lock)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_native_spin_trylock(ethr_native_spinlock_t *lock)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_native_spin_is_locked(ethr_native_spinlock_t *lock)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+void
+ethr_native_spin_lock(ethr_native_spinlock_t *lock)
+{
+    EPIPHANY_STUB_FUN();
+}

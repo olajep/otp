@@ -29,31 +29,44 @@
 #define ETHR_NATIVE_ATOMIC32_IMPL "epiphany"
 typedef ethr_sint32_t *ethr_native_atomic32_t;
 
+#define ETHR_HAVE_ETHR_NATIVE_ATOMIC32_INIT
+void ethr_native_atomic32_init(ethr_native_atomic32_t *var, ethr_sint32_t val);
+
 #define ETHR_HAVE_ETHR_NATIVE_ATOMIC32_ADDR
-ethr_sint32_t *ethr_native_atomic32_addr(ethr_native_atomic32_t);
+static inline ethr_sint32_t *
+ethr_native_atomic32_addr(ethr_native_atomic32_t *arg) {
+    return *arg;
+}
 
 #define ETHR_HAVE_ETHR_NATIVE_ATOMIC32_CMPXCHG
-int ethr_native_atomic32_cmpxchg(ethr_native_atomic32_t *var,
-				 ethr_sint32_t *val,
-				 ethr_sint32_t *old_val);
+ethr_sint32_t ethr_native_atomic32_cmpxchg(ethr_native_atomic32_t *var,
+					   ethr_sint32_t val,
+					   ethr_sint32_t old_val);
 
 /* Epiphany provides no way to barrier, but as long as all accesses are within
  * the same 1MiB region of memory, all accesses should be sequentially
  * consistent (but this is never promised by the specification). Also, loads are
  * always ordered since there is no out-of-order execution or speculation.
  */
-#define ETHR_MEMBAR(B)
+#define ETHR_MEMBAR(B) do {			  \
+	__asm__ __volatile__ ("" : : : "memory"); \
+	__sync_synchronize();			  \
+    } while(0)
 
 /* Spinlocks */
 #define ETHR_HAVE_NATIVE_SPINLOCKS 1
+#define ETHR_NATIVE_SPINLOCKS_REQUIRE_DESTRUCTION 1
 #define ETHR_NATIVE_SPINLOCK_IMPL "epiphany"
-/* The epiphany mutexes /are/ spinlocks */
-typedef e_mutex_t *ethr_native_spinlock_t;
+/* The epiphany mutexes /are/ spinlocks, but they need to be allocated in
+ * SRAM. The number is an index into an array that contains the mutex.
+ */
+typedef int ethr_native_spinlock_t;
 
 void ethr_native_spinlock_init(ethr_native_spinlock_t*);
-void ethr_native_spinlock_unlock(ethr_native_spinlock_t*);
-int ethr_native_spinlock_trylock(ethr_native_spinlock_t*);
-int ethr_native_spinlock_is_locked(ethr_native_spinlock_t*);
-void ethr_native_spinlock_lock(ethr_native_spinlock_t*);
+int ethr_native_spinlock_destroy(ethr_native_spinlock_t*);
+void ethr_native_spin_unlock(ethr_native_spinlock_t*);
+int ethr_native_spin_trylock(ethr_native_spinlock_t*);
+int ethr_native_spin_is_locked(ethr_native_spinlock_t*);
+void ethr_native_spin_lock(ethr_native_spinlock_t*);
 
 #endif /* ETHREAD_EPIPHANY_ETHREAD_H */

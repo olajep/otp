@@ -342,6 +342,22 @@ struct ErtsProcSysTask_ {
     Eterm heap[1];
 };
 
+#if defined(ERTS_SMP) && defined(ERTS_ENABLE_LOCK_CHECK)
+int
+erts_dbg_check_halloc_lock(Process *p)
+{
+    if (ERTS_PROC_LOCK_MAIN & erts_proc_lc_my_proc_locks(p))
+	return 1;
+    if (p->common.id == ERTS_INVALID_PID)
+	return 1;
+    if (p->scheduler_data && p == p->scheduler_data->match_pseudo_process)
+	return 1;
+    if (erts_thr_progress_is_blocking())
+	return 1;
+    return 0;
+}
+#endif
+
 static void *sched_thread_func(void *vesdp) __noreturn;
 
 void enter_scheduler(int number) {
@@ -373,9 +389,6 @@ sched_thread_func(void *vesdp)
 #ifdef ERTS_SMP
 #if HAVE_ERTS_MSEG
     erts_mseg_late_init();
-#endif
-#if ERTS_USE_ASYNC_READY_Q
-    esdp->aux_work_data.async_ready.queue = erts_get_async_ready_queue(no);
 #endif
 #endif
 

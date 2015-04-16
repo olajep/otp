@@ -508,6 +508,9 @@ early_init(int *argc, char **argv) /*
 
     erts_sys_pre_init();
     erts_atomic_init_nob(&exiting, 0);
+#ifdef ERTS_SMP
+    erts_thr_progress_pre_init();
+#endif
 
 #ifdef ERTS_ENABLE_LOCK_CHECK
     erts_lc_init();

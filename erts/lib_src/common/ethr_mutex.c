@@ -1752,6 +1752,107 @@ ethr_cond_destroy(ethr_cond *cnd)
     return 0;
 }
 
+#elif defined(ETHR_EPIPHANY)
+/* -- epiphany mutex and condition variables -------------------------------- */
+
+/* FIXME: include from somewhere instead */
+void sys_epiphany_stub(const char* name) __attribute__ ((__noreturn__));
+
+#define EPIPHANY_STUB(NAME) sys_epiphany_stub(#NAME)
+#define EPIPHANY_STUB_FUN() sys_epiphany_stub(__FUNCTION__)
+
+int
+ethr_mutex_init(ethr_mutex *mtx)
+{
+#if ETHR_XCHK
+    if (!mtx) {
+	ETHR_ASSERT(0);
+	return EINVAL;
+    }
+    mtx->initialized = ETHR_MUTEX_INITIALIZED;
+#endif
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_mutex_init_opt(ethr_mutex *mtx, ethr_mutex_opt *opt)
+{
+    return ethr_mutex_init(mtx);
+}
+
+int
+ethr_mutex_destroy(ethr_mutex *mtx)
+{
+#if ETHR_XCHK
+    if (ethr_not_inited__) {
+	ETHR_ASSERT(0);
+	return EACCES;
+    }
+    if (!mtx || mtx->initialized != ETHR_MUTEX_INITIALIZED) {
+	ETHR_ASSERT(0);
+	return EINVAL;
+    }
+#endif
+#if ETHR_XCHK
+    mtx->initialized = 0;
+#endif
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_cond_init(ethr_cond *cnd)
+{
+#if ETHR_XCHK
+    if (!cnd) {
+	ETHR_ASSERT(0);
+	return EINVAL;
+    }
+    cnd->initialized = ETHR_COND_INITIALIZED;
+#endif
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_cond_init_opt(ethr_cond *cnd, ethr_cond_opt *opt)
+{
+    return ethr_cond_init(cnd);
+}
+
+int
+ethr_cond_destroy(ethr_cond *cnd)
+{
+#if ETHR_XCHK
+    if (ethr_not_inited__) {
+	ETHR_ASSERT(0);
+	return EACCES;
+    }
+    if (!cnd || cnd->initialized != ETHR_COND_INITIALIZED) {
+	ETHR_ASSERT(0);
+	return EINVAL;
+    }
+    cnd->initialized = 0;
+#endif
+    EPIPHANY_STUB_FUN();
+}
+
+void
+ethr_cond_signal(ethr_cond *cnd)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+void
+ethr_cond_broadcast(ethr_cond *cnd)
+{
+    EPIPHANY_STUB_FUN();
+}
+
+int
+ethr_cond_wait(ethr_cond *cnd, ethr_mutex *mtx)
+{
+    EPIPHANY_STUB_FUN();
+}
+
 #else
 #error "No mutex implementation found"
 #endif

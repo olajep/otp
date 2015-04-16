@@ -247,10 +247,20 @@ DEPLIBS =
 
 LIBSCTP =
 
+#
+# ethread library
+#
+ETHR_THR_LIB_BASE_DIR=@ETHR_THR_LIB_BASE_DIR@
+
 ERTS_INTERNAL_LIB_OBJS = \
 	$(OBJDIR)/erl_printf_format.o \
 	$(OBJDIR)/erl_printf.o \
-	$(OBJDIR)/erl_misc_utils.o
+	$(OBJDIR)/erl_misc_utils.o \
+	$(OBJDIR)/ethread.o \
+	$(OBJDIR)/ethr_atomics.o \
+	$(OBJDIR)/ethr_aux.o \
+	$(OBJDIR)/ethr_mutex.o \
+	$(OBJDIR)/ethr_event.o
 
 TTF_DIR=$(TARGET)/$(TYPE)/$(FLAVOR)
 CREATE_DIRS += $(TTF_DIR)
@@ -431,6 +441,9 @@ $(OBJDIR)/%.o: sys/%.c
 $(OBJDIR)/%.o: ../sys/common/%.c
 	$(V_CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
+$(OBJDIR)/%.o: $(ERL_TOP)/erts/lib_src/$(ETHR_THR_LIB_BASE_DIR)/%.c
+	$(V_CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
 $(OBJDIR)/%.o: $(ERL_TOP)/erts/lib_src/common/%.c
 	$(V_CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
@@ -473,7 +486,9 @@ RUN_OBJS = \
 	$(OBJDIR)/erl_message_stub.o \
 	$(OBJDIR)/erl_init.o		$(OBJDIR)/erl_printf_term.o \
 	$(OBJDIR)/erl_debug.o		$(OBJDIR)/erl_cpu_topology.o \
-	$(OBJDIR)/erl_lock_count.o
+	$(OBJDIR)/erl_lock_count.o	$(OBJDIR)/erl_lock_check.o \
+	$(OBJDIR)/erl_process_lock.o	$(OBJDIR)/erl_thr_progress.o \
+	$(OBJDIR)/io.o			$(OBJDIR)/erl_time_sup.o
 
 OS_OBJS = \
 	$(OBJDIR)/elib_memmove.o \

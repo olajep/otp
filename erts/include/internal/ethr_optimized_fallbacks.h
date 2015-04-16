@@ -27,7 +27,8 @@
 
 #if defined(ETHR_HAVE_NATIVE_SPINLOCKS)
 
-#if defined(ETHR_TRY_INLINE_FUNCS) || defined(ETHR_AUX_IMPL__)
+#if (defined(ETHR_TRY_INLINE_FUNCS) || defined(ETHR_AUX_IMPL__)) \
+    && !defined(ETHR_NATIVE_SPINLOCKS_REQUIRE_DESTRUCTION)
 
 static ETHR_INLINE int
 ethr_native_spinlock_destroy(ethr_native_spinlock_t *lock)

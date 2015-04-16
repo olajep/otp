@@ -61,6 +61,7 @@
 #include "erl_mseg.h"
 
 extern char **environ;
+static erts_smp_rwmtx_t environ_rwmtx;
 
 #define MAX_VSIZE 16		/* Max number of entries allowed in an I/O
 				 * vector sock_sendv().
@@ -309,16 +310,7 @@ typedef struct {
 static void *
 thr_create_prepare(void)
 {
-    erts_thr_create_data_t *tcdp;
-
-    tcdp = erts_alloc(ERTS_ALC_T_TMP, sizeof(erts_thr_create_data_t));
-
-#ifdef ERTS_THR_HAVE_SIG_FUNCS
-    erts_thr_sigmask(SIG_BLOCK, &thr_create_sigmask, &tcdp->saved_sigmask);
-#endif
-    tcdp->sched_bind_data = erts_sched_bind_atthrcreate_prepare();
-
-    return (void *) tcdp;
+    EPIPHANY_STUB_FUN();
 }
 
 
@@ -326,37 +318,13 @@ thr_create_prepare(void)
 static void
 thr_create_cleanup(void *vtcdp)
 {
-    erts_thr_create_data_t *tcdp = (erts_thr_create_data_t *) vtcdp;
-
-    erts_sched_bind_atthrcreate_parent(tcdp->sched_bind_data);
-
-#ifdef ERTS_THR_HAVE_SIG_FUNCS
-    /* Restore signalmask... */
-    erts_thr_sigmask(SIG_SETMASK, &tcdp->saved_sigmask, NULL);
-#endif
-
-    erts_free(ERTS_ALC_T_TMP, tcdp);
+    EPIPHANY_STUB_FUN();
 }
 
 static void
 thr_create_prepare_child(void *vtcdp)
 {
-    erts_thr_create_data_t *tcdp = (erts_thr_create_data_t *) vtcdp;
-
-#ifdef ERTS_ENABLE_LOCK_COUNT
-    erts_lcnt_thread_setup();
-#endif
-
-#ifndef NO_FPE_SIGNALS
-    /*
-     * We do not want fp exeptions in other threads than the
-     * scheduler threads. We enable fpe explicitly in the scheduler
-     * threads after this.
-     */
-    erts_thread_disable_fpe();
-#endif
-
-    erts_sched_bind_atthrcreate_child(tcdp->sched_bind_data);
+    EPIPHANY_STUB_FUN();
 }
 
 #endif /* #ifdef USE_THREADS */
@@ -696,7 +664,9 @@ erts_sys_putenv(char *key, char *value)
     strcpy(env,key);
     strcat(env,"=");
     strcat(env,value);
+    erts_smp_rwmtx_rwlock(&environ_rwmtx);
     res = putenv(env);
+    erts_smp_rwmtx_rwunlock(&environ_rwmtx);
 #ifdef HAVE_COPYING_PUTENV
     erts_free(ERTS_ALC_T_TMP, env);
 #endif
@@ -743,7 +713,9 @@ int
 erts_sys_getenv(char *key, char *value, size_t *size)
 {
     int res;
+    erts_smp_rwmtx_rlock(&environ_rwmtx);
     res = erts_sys_getenv__(key, value, size);
+    erts_smp_rwmtx_runlock(&environ_rwmtx);
     return res;
 }
 
@@ -751,7 +723,9 @@ int
 erts_sys_unsetenv(char *key)
 {
     int res;
+    erts_smp_rwmtx_rwlock(&environ_rwmtx);
     res = unsetenv(key);
+    erts_smp_rwmtx_rwunlock(&environ_rwmtx);
     return res;
 }
 
@@ -1048,6 +1022,8 @@ void
 erl_sys_args(int* argc, char** argv)
 {
     int i, j;
+
+    erts_smp_rwmtx_init(&environ_rwmtx, "environ");
 
     i = 1;
 
