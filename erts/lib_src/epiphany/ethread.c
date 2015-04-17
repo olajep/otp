@@ -33,6 +33,7 @@
 #include "ethread.h"
 #include "ethr_internal.h"
 
+#include <e-lib.h>
 #include "epiphany.h"
 
 #ifndef ETHR_HAVE_ETHREAD_DEFINES
@@ -48,12 +49,30 @@ ethr_compiler_barrier(void)
 int
 ethr_init(ethr_init_data *id)
 {
+    int res;
+
+    if (!ethr_not_inited__)
+	return EINVAL;
+
+    ethr_not_inited__ = 0;
+
+    res = ethr_init_common__(id);
+    if (res != 0)
+	goto error;
+
     return 0;
+ error:
+    ethr_not_inited__ = 1;
+    return res;
 }
 
 int
 ethr_late_init(ethr_late_init_data *id)
 {
+    int res = ethr_late_init_common__(id);
+    if (res != 0)
+	return res;
+    ethr_not_completely_inited__ = 0;
     return 0;
 }
 
@@ -85,7 +104,7 @@ ethr_thr_exit(void *res)
 ethr_tid
 ethr_self(void)
 {
-    EPIPHANY_STUB_FUN();
+    return e_get_coreid();
 }
 
 int
