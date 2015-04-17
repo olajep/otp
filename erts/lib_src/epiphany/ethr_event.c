@@ -26,17 +26,22 @@
 #include "sys.h"
 
 #include "ethread.h"
+#include "epiphany.h"
 
 int
 ethr_event_init(ethr_event *e)
 {
-    EPIPHANY_STUB_FUN();
+    // ESTUB
+    ASSERT(epiphany_in_dram(e));
+    return 0;
 }
 
 int
 ethr_event_destroy(ethr_event *e)
 {
-    EPIPHANY_STUB_FUN();
+    // ESTUB
+    ASSERT(epiphany_in_dram(e));
+    return 0;
 }
 
 static ETHR_INLINE int

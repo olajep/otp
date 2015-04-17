@@ -40,6 +40,8 @@
 #error Missing configure defines
 #endif
 
+static ethr_tsd_key ethr_ts_event_key__;
+
 void
 ethr_compiler_barrier(void)
 {
@@ -57,6 +59,10 @@ ethr_init(ethr_init_data *id)
     ethr_not_inited__ = 0;
 
     res = ethr_init_common__(id);
+    if (res != 0)
+	goto error;
+
+    res = ethr_tsd_key_create(&ethr_ts_event_key__, "ethr_ts_event_key");
     if (res != 0)
 	goto error;
 
@@ -137,8 +143,9 @@ ethr_leave_ts_event(ethr_ts_event *tsep)
 int
 ethr_tsd_key_create(ethr_tsd_key *keyp, char *keyname)
 {
-    *keyp = calloc(epiphany_workgroup_size(), sizeof(void*));
-    return 0;
+    void **buf = calloc(epiphany_workgroup_size(), sizeof(void*));
+    *keyp = buf;
+    return buf ? 0 : ENOMEM;
 }
 
 int
@@ -163,16 +170,14 @@ ethr_tsd_get(ethr_tsd_key key)
 
 /* internal exports */
 
-int
-ethr_set_tse__(ethr_ts_event *tsep)
+int ethr_set_tse__(ethr_ts_event *tsep)
 {
-    EPIPHANY_STUB_FUN();
+    return ethr_tsd_set(ethr_ts_event_key__, (void *) tsep);
 }
 
-ethr_ts_event
-*ethr_get_tse__(void)
+ethr_ts_event *ethr_get_tse__(void)
 {
-    EPIPHANY_STUB_FUN();
+    return ethr_tsd_get(ethr_ts_event_key__);
 }
 
 /*
