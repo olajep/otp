@@ -118,25 +118,28 @@ ethr_leave_ts_event(ethr_ts_event *tsep)
 int
 ethr_tsd_key_create(ethr_tsd_key *keyp, char *keyname)
 {
-    EPIPHANY_STUB_FUN();
+    *keyp = calloc(epiphany_workgroup_size(), sizeof(void*));
+    return 0;
 }
 
 int
 ethr_tsd_key_delete(ethr_tsd_key key)
 {
-    EPIPHANY_STUB_FUN();
+    free(key);
+    return 0;
 }
 
 int
 ethr_tsd_set(ethr_tsd_key key, void *value)
 {
-    EPIPHANY_STUB_FUN();
+    key[epiphany_coreno()] = value;
+    return 0;
 }
 
 void *
 ethr_tsd_get(ethr_tsd_key key)
 {
-    EPIPHANY_STUB_FUN();
+    return key[epiphany_coreno()];
 }
 
 /* internal exports */
