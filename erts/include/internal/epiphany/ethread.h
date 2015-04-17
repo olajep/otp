@@ -26,7 +26,14 @@
 /* Atomics */
 #define ETHR_HAVE_NATIVE_ATOMIC32 1
 #define ETHR_NATIVE_ATOMIC32_IMPL "epiphany"
-typedef ethr_sint32_t *ethr_native_atomic32_t;
+
+#define ETHR_MAX_EPIPHANY_CORECOUNT 16
+
+typedef struct {
+    volatile signed char level[ETHR_MAX_EPIPHANY_CORECOUNT];
+    volatile signed char waiting[ETHR_MAX_EPIPHANY_CORECOUNT-1];
+    ethr_sint32_t val;
+} ethr_native_atomic32_t;
 
 #define ETHR_HAVE_ETHR_NATIVE_ATOMIC32_INIT
 void ethr_native_atomic32_init(ethr_native_atomic32_t *var, ethr_sint32_t val);
@@ -34,7 +41,7 @@ void ethr_native_atomic32_init(ethr_native_atomic32_t *var, ethr_sint32_t val);
 #define ETHR_HAVE_ETHR_NATIVE_ATOMIC32_ADDR
 static inline ethr_sint32_t *
 ethr_native_atomic32_addr(ethr_native_atomic32_t *arg) {
-    return *arg;
+    return &arg->val;
 }
 
 #define ETHR_HAVE_ETHR_NATIVE_ATOMIC32_CMPXCHG

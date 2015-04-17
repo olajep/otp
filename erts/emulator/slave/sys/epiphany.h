@@ -17,6 +17,9 @@
  * %CopyrightEnd%
  */
 
+#ifndef _SYS_EPIPHANY_H_
+#define _SYS_EPIPHANY_H_
+
 #define EPIPHANY_SRAM_DATA __attribute__((section(".data_bank0")))
 #define EPIPHANY_SRAM_FUNC __attribute__((section(".data_bank1")))
 
@@ -37,3 +40,5 @@ struct workgroup_dimens epiphany_workgroup_dimens(void);
 int epiphany_in_dram(void *);
 int epiphany_sane_address(void *);
 #endif
+
+#endif /* defined(_SYS_EPIPHANY_H) */

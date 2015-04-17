@@ -33,6 +33,8 @@
 #include "ethread.h"
 #include "ethr_internal.h"
 
+#include "epiphany.h"
+
 #ifndef ETHR_HAVE_ETHREAD_DEFINES
 #error Missing configure defines
 #endif
@@ -178,10 +180,48 @@ ethr_abort__(void)
 /* Atomics */
 volatile char epiphany_dram_write_barrier_data[16];
 
+/*
+ * The "atomics" are implemented by acquiring a Peterson's algorithm mutex. The
+ * reason the SRAM mutexes are not used instead is that atomics are not freed,
+ * so we'd leak and run out of mutexes.
+ */
 void
 ethr_native_atomic32_init(ethr_native_atomic32_t *var, ethr_sint32_t val)
 {
-    EPIPHANY_STUB_FUN();
+    int i;
+    ASSERT(epiphany_sane_address(var));
+    for (i = 0; i < ETHR_MAX_EPIPHANY_CORECOUNT; i++) var->level[i] = -1;
+    for (i = 0; i < ETHR_MAX_EPIPHANY_CORECOUNT - 1; i++) var->waiting[i] = -1;
+    var->val = val;
+}
+
+static void
+lock_peterson(ethr_native_atomic32_t *var) {
+    int l, me = epiphany_coreno();
+    ASSERT(0 <= me && me < ETHR_MAX_EPIPHANY_CORECOUNT);
+
+    for (l = 0; l < ETHR_MAX_EPIPHANY_CORECOUNT - 1; l++) {
+	var->level[me] = l;
+	var->waiting[l] = me;
+	ETHR_MEMBAR(ETHR_StoreLoad);
+	while (var->waiting[l] == me) {
+	    int k, count = 0;
+	    for (k = 0; k < ETHR_MAX_EPIPHANY_CORECOUNT; k++) {
+		if (k == me) continue;
+		if (var->level[k] >= l) {
+		    count++;
+		    break;
+		}
+	    }
+	    if (count == 0) break;
+	}
+    }
+}
+
+static void
+unlock_peterson(ethr_native_atomic32_t *var) {
+    int me = epiphany_coreno();
+    var->level[me] = -1;
 }
 
 ethr_sint32_t
@@ -189,7 +229,14 @@ ethr_native_atomic32_cmpxchg(ethr_native_atomic32_t *var,
 			     ethr_sint32_t val,
 			     ethr_sint32_t old_val)
 {
-    EPIPHANY_STUB_FUN();
+    ethr_sint32_t read_val;
+    ASSERT(epiphany_sane_address(var));
+    lock_peterson(var);
+    read_val = var->val;
+    if (read_val == old_val)
+	var->val = val;
+    unlock_peterson(var);
+    return read_val;
 }
 
 /* Spinlocks */
