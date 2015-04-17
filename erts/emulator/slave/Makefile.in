@@ -412,6 +412,10 @@ endif
 
 CFLAGS += -MMD -MP
 
+# We don't want any stray printf's breaking things, but we don't want to include
+# "sys.h" or otherwise mess with portability.
+INTERNAL_LIB_CFLAGS = $(CFLAGS) -include epiphany_io_redirect.h
+
 # ----------------------------------------------------------------------
 # Pattern rules
 #
@@ -442,10 +446,10 @@ $(OBJDIR)/%.o: ../sys/common/%.c
 	$(V_CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJDIR)/%.o: $(ERL_TOP)/erts/lib_src/$(ETHR_THR_LIB_BASE_DIR)/%.c
-	$(V_CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+	$(V_CC) $(INTERNAL_LIB_CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJDIR)/%.o: $(ERL_TOP)/erts/lib_src/common/%.c
-	$(V_CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+	$(V_CC) $(INTERNAL_LIB_CFLAGS) $(INCLUDES) -c $< -o $@
 
 # We have to do this rigmarole in order to avoid header files we have overridden
 # being included, since the compiler always searches the source file directory

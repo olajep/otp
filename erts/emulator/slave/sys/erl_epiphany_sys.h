@@ -25,12 +25,7 @@
 #define _ERL_EPIPHANY_SYS_H
 
 #include <stdio.h>
-#ifndef EPIPHANY_NO_WRITE_REDIRECT
-// ETODO: Do we need this?
-ssize_t write(int fildes, const void *buf, size_t nbyte) asm("_internal_write");
-#define printf erts_printf
-#define fprintf erts_fprintf
-#endif
+#include "epiphany_io_redirect.h"
 #include <math.h>
 #include <limits.h>
 #include <stdlib.h>
