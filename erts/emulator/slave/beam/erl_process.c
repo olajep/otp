@@ -25,25 +25,8 @@
 
 #include <stddef.h> /* offsetof() */
 #include "sys.h"
-#include "erl_vm.h"
 #include "global.h"
-#include "erl_process.h"
-#include "error.h"
-#include "bif.h"
-#include "erl_db.h"
-#include "dist.h"
-#include "beam_catches.h"
-#include "erl_instrument.h"
-#include "erl_threads.h"
-#include "erl_binary.h"
-#include "beam_bp.h"
-#include "erl_cpu_topology.h"
-#include "erl_thr_progress.h"
-#include "erl_thr_queue.h"
-#include "erl_async.h"
-#include "dtrace-wrapper.h"
-#include "erl_ptab.h"
-#include "erl_node_container_utils.h"
+#include "erl_process_lock.h"
 #include "epiphany.h"
 
 
@@ -342,22 +325,6 @@ struct ErtsProcSysTask_ {
     Eterm heap[1];
 };
 
-#if defined(ERTS_SMP) && defined(ERTS_ENABLE_LOCK_CHECK)
-int
-erts_dbg_check_halloc_lock(Process *p)
-{
-    if (ERTS_PROC_LOCK_MAIN & erts_proc_lc_my_proc_locks(p))
-	return 1;
-    if (p->common.id == ERTS_INVALID_PID)
-	return 1;
-    if (p->scheduler_data && p == p->scheduler_data->match_pseudo_process)
-	return 1;
-    if (erts_thr_progress_is_blocking())
-	return 1;
-    return 0;
-}
-#endif
-
 static void *sched_thread_func(void *vesdp) __noreturn;
 
 void enter_scheduler(int number) {
@@ -385,7 +352,9 @@ sched_thread_func(void *vesdp)
 	erts_lc_set_thread_name(&buf[0]);
     }
 #endif
-    // erts_tsd_set(sched_data_key, vesdp);
+#ifdef USE_THREADS
+    erts_tsd_set(sched_data_key, vesdp);
+#endif
 #ifdef ERTS_SMP
 #if HAVE_ERTS_MSEG
     erts_mseg_late_init();
@@ -601,6 +570,8 @@ void erts_init_empty_process(Process *p)
     p->pending_suspenders = NULL;
     p->pending_exit.reason = THE_NON_VALUE;
     p->pending_exit.bp = NULL;
+    erts_proc_lock_init(p);
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
     RUNQ_SET_RQ(&p->run_queue, ERTS_RUNQ_IX(0));
 #endif
 
@@ -608,6 +579,15 @@ void erts_init_empty_process(Process *p)
     p->fp_exception = 0;
 #endif
 
+}
+
+void
+erts_free_proc(Process *p)
+{
+#ifdef ERTS_SMP
+    erts_proc_lock_fin(p);
+#endif
+    erts_free(ERTS_ALC_T_PROC, (void *) p);
 }
 
 void
@@ -623,6 +603,9 @@ erts_cleanup_empty_process(Process* p)
 	free_message_buffer(p->mbuf);
 	p->mbuf = NULL;
     }
+#ifdef ERTS_SMP
+    erts_proc_lock_fin(p);
+#endif
 #ifdef DEBUG
     erts_debug_verify_clean_empty_process(p);
 #endif
@@ -640,9 +623,17 @@ alloc_process(ErtsRunQueue *rq, erts_aint32_t state)
     if (!p)
 	return NULL;
 
+    memzero(p, sizeof(Process));
+
     ASSERT(((char *) p) == ((char *) &p->common));
 
-    p->common.id = 0x3;
+    p->common.id = 8|3;
+    erts_smp_atomic32_init_relb(&p->state, state);
+
+#ifdef ERTS_SMP
+    erts_proc_lock_init(p); /* All locks locked */
+#endif
+
     ASSERT(internal_pid_serial(p->common.id) <= ERTS_MAX_PID_SERIAL);
     
     p->rcount = 0;
@@ -670,6 +661,10 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     Process *res = NULL;
     erts_aint32_t state = 0;
     erts_aint32_t prio = (erts_aint32_t) PRIORITY_NORMAL;
+
+#ifdef ERTS_SMP
+    erts_smp_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
+#endif
 
     /*
      * Check for errors.
@@ -867,6 +862,8 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     p->fp_exception = 0;
 #endif
 
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
+
     res = p;
 
     VERBOSE(DEBUG_PROCESSES, ("Created a new process: %T\n",p->common.id));
@@ -882,6 +879,8 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
 #endif
 
  error:
+
+    erts_smp_proc_unlock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
 
    return res;
 }
@@ -1076,7 +1075,26 @@ Process *schedule(Process *p, int calls)
 	init_scheduler_data(erts_scheduler_data, 0, NULL, NULL, NULL, 0);
 #else
 	p->scheduler_data = erts_get_scheduler_data();
+
+	// Lock the main lock so lc is happy
+	erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
 #endif
 	return p;
     }
 }
+
+#if defined(ERTS_SMP) && defined(ERTS_ENABLE_LOCK_CHECK)
+int
+erts_dbg_check_halloc_lock(Process *p)
+{
+    if (ERTS_PROC_LOCK_MAIN & erts_proc_lc_my_proc_locks(p))
+	return 1;
+    if (p->common.id == ERTS_INVALID_PID)
+	return 1;
+    if (p->scheduler_data && p == p->scheduler_data->match_pseudo_process)
+	return 1;
+    if (erts_thr_progress_is_blocking())
+	return 1;
+    return 0;
+}
+#endif

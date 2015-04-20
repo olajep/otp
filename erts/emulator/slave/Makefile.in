@@ -44,10 +44,6 @@ OPCODE_TABLES = $(ERL_TOP)/lib/compiler/src/genop.tab ../beam/ops.tab
 DEBUG_CFLAGS = @DEBUG_CFLAGS@
 CONFIGURE_CFLAGS = @CFLAGS@
 
-# Inlining complicates header reuse
-DEBUG_CFLAGS += -DERTS_INLINE -DERTS_CAN_INLINE=0
-CONFIGURE_CFLAGS += -DERTS_INLINE -DERTS_CAN_INLINE=0
-
 #
 # Run this make file with TYPE set to the type of emulator you want.
 # Different versions of the emulator for different uses. The default

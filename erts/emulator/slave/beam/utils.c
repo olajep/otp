@@ -21,14 +21,13 @@
 #  include "config.h"
 #endif
 
-#ifndef ERTS_NO_INLINE
-#  define ERTS_DO_INCL_GLB_INLINE_FUNC_DEF
-#endif
+#define ERTS_DO_INCL_GLB_INLINE_FUNC_DEF
 
 #include "sys.h"
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_process.h"
+#include "erl_process_lock.h"
 #include "big.h"
 #include "bif.h"
 #include "erl_binary.h"
