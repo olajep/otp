@@ -38,6 +38,7 @@ struct workgroup_coords epiphany_workgroup_origin(void);
 struct workgroup_dimens epiphany_workgroup_dimens(void);
 
 void epiphany_backtrace(void);
+void returning_abort(void);
 
 #ifdef DEBUG
 int epiphany_in_dram(void *);

@@ -105,12 +105,6 @@ static int sys_epiphany_printf(char *format, va_list args) {
 }
 
 void
-epiphany_backtrace(void)
-{
-    // ESTUB
-}
-
-void
 epiphany_init_io(void)
 {
     erts_printf_stdout_func = sys_epiphany_printf;

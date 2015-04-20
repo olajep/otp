@@ -203,7 +203,11 @@ static erts_lc_lock_order_t erts_lock_order[] = {
        & ERTS_LC_FLG_LT_ALL						\
        & ~(ERTS_LC_FLG_LT_SPINLOCK|ERTS_LC_FLG_LT_RWSPINLOCK)))
 
+#ifdef __epiphany__
+static void lc_abort(void);
+#else
 static __decl_noreturn void  __noreturn lc_abort(void);
+#endif
 
 static char *
 lock_type(Uint16 flags)
@@ -667,10 +671,19 @@ thread_exit_handler(void)
     }
 }
 
-static __decl_noreturn void
+#ifdef __epiphany__
+#  include "epiphany.h"
+static
+#else
+static __decl_noreturn
+#endif
+void
 lc_abort(void)
 {
-#ifdef __WIN32__
+#ifdef __epiphany__
+    epiphany_backtrace();
+    returning_abort();
+#elif defined(__WIN32__)
     DebugBreak();
 #else
     abort();
