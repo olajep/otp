@@ -495,8 +495,8 @@ RUN_OBJS = \
 	$(OBJDIR)/io.o			$(OBJDIR)/erl_time_sup.o
 
 OS_OBJS = \
-	$(OBJDIR)/elib_memmove.o \
-	$(OBJDIR)/sys.o
+	$(OBJDIR)/elib_memmove.o	$(OBJDIR)/sys.o \
+	$(OBJDIR)/epiphany.o		$(OBJDIR)/epiphany_io.o
 
 #	$(OBJDIR)/driver_tab.o \
 

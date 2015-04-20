@@ -31,10 +31,13 @@ struct workgroup_dimens {
     char rows, cols;
 };
 
+int epiphany_in_emulator(void);
 int epiphany_coreno(void);
 int epiphany_workgroup_size(void);
 struct workgroup_coords epiphany_workgroup_origin(void);
 struct workgroup_dimens epiphany_workgroup_dimens(void);
+
+void epiphany_backtrace(void);
 
 #ifdef DEBUG
 int epiphany_in_dram(void *);
