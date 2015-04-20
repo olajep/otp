@@ -206,16 +206,16 @@ int epiphany_sane_address(void *addrp) {
     if (epiphany_in_dram(addrp)) return 1;
 
     // In memory space of core in workgroup
-    owning = addr >> (32 - 6);
+    owning = addr >> (32 - 12);
     e_coords_from_coreid(owning, &row, &col);
     min_row = e_group_config.group_row;
     max_row = min_row + e_group_config.group_rows;
     min_col = e_group_config.group_col;
     max_col = min_col + e_group_config.group_cols;
-    if ((row == 0 && col == 0)
+    if (owning == 0
 	|| ((min_row <= row && row < max_row)
 	    && (min_col <= col && col < max_col))) {
-	unsigned corespc = addr & (1024 * 1024);
+	unsigned corespc = addr & (1024 * 1024 - 1);
 	// Local SRAM
 	if (corespc < 32 * 1024) return 1;
 
