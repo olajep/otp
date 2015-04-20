@@ -30,6 +30,7 @@
 #define ETHR_MAX_EPIPHANY_CORECOUNT 16
 
 typedef struct {
+    unsigned magic;
     volatile signed char level[ETHR_MAX_EPIPHANY_CORECOUNT];
     volatile signed char waiting[ETHR_MAX_EPIPHANY_CORECOUNT-1];
     ethr_sint32_t val;

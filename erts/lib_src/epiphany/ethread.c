@@ -40,6 +40,8 @@
 #error Missing configure defines
 #endif
 
+#define HARDDEBUG 0
+
 static ethr_tsd_key ethr_ts_event_key__;
 
 void
@@ -143,14 +145,22 @@ ethr_leave_ts_event(ethr_ts_event *tsep)
 int
 ethr_tsd_key_create(ethr_tsd_key *keyp, char *keyname)
 {
-    void **buf = calloc(epiphany_workgroup_size(), sizeof(void*));
+    void **buf = calloc(epiphany_workgroup_size()+1, sizeof(void*));
+    if (buf) buf[epiphany_workgroup_size()] = keyname;
     *keyp = buf;
+#if HARDDEBUG
+    erts_printf("Creating tsd key %s for %d cores at 0x%x\n", keyname,
+		epiphany_workgroup_size(), buf);
+#endif
     return buf ? 0 : ENOMEM;
 }
 
 int
 ethr_tsd_key_delete(ethr_tsd_key key)
 {
+#if HARDDEBUG
+    erts_printf("Deleting tsd %s\n", key[epiphany_workgroup_size()]);
+#endif
     free(key);
     return 0;
 }
@@ -158,6 +168,10 @@ ethr_tsd_key_delete(ethr_tsd_key key)
 int
 ethr_tsd_set(ethr_tsd_key key, void *value)
 {
+#if HARDDEBUG
+    erts_printf("set tsd %s[%d] = 0x%x\n", key[epiphany_workgroup_size()],
+		epiphany_coreno(), value);
+#endif
     key[epiphany_coreno()] = value;
     return 0;
 }
@@ -165,6 +179,10 @@ ethr_tsd_set(ethr_tsd_key key, void *value)
 void *
 ethr_tsd_get(ethr_tsd_key key)
 {
+#if HARDDEBUG
+    erts_printf("get tsd %s[%d] = 0x%x\n", key[epiphany_workgroup_size()],
+		epiphany_coreno(), key[epiphany_coreno()]);
+#endif
     return key[epiphany_coreno()];
 }
 
@@ -205,6 +223,8 @@ ethr_abort__(void)
 }
 
 /* Atomics */
+#define PETERSON_MAGIC 0xBCBD1264
+
 volatile char epiphany_dram_write_barrier_data[16];
 
 /*
@@ -216,7 +236,12 @@ void
 ethr_native_atomic32_init(ethr_native_atomic32_t *var, ethr_sint32_t val)
 {
     int i;
+#if HARDDEBUG
+    if (!epiphany_in_dram(var))
+	erts_printf("Warning, atomic in SRAM at %x\n", (unsigned)var);
+#endif
     ASSERT(epiphany_sane_address(var));
+    var->magic = PETERSON_MAGIC;
     for (i = 0; i < ETHR_MAX_EPIPHANY_CORECOUNT; i++) var->level[i] = -1;
     for (i = 0; i < ETHR_MAX_EPIPHANY_CORECOUNT - 1; i++) var->waiting[i] = -1;
     var->val = val;
@@ -226,6 +251,12 @@ static void
 lock_peterson(ethr_native_atomic32_t *var) {
     int l, me = epiphany_coreno();
     ASSERT(0 <= me && me < ETHR_MAX_EPIPHANY_CORECOUNT);
+    if (var->magic != PETERSON_MAGIC) {
+	erts_printf("Warning, late initing atomic at 0x%x\n", (unsigned)var);
+	ethr_native_atomic32_init(var, var->val);
+	epiphany_backtrace();
+	returning_abort();
+    }
 
     for (l = 0; l < ETHR_MAX_EPIPHANY_CORECOUNT - 1; l++) {
 	var->level[me] = l;
@@ -258,10 +289,17 @@ ethr_native_atomic32_cmpxchg(ethr_native_atomic32_t *var,
 {
     ethr_sint32_t read_val;
     ASSERT(epiphany_sane_address(var));
+#if HARDDEBUG
+    erts_printf("Locking peterson at %x\n", (unsigned)var);
+#endif
     lock_peterson(var);
     read_val = var->val;
     if (read_val == old_val)
 	var->val = val;
+
+#if HARDDEBUG
+    erts_printf("Unlocking peterson at %x\n", (unsigned)var);
+#endif
     unlock_peterson(var);
     return read_val;
 }
@@ -269,13 +307,45 @@ ethr_native_atomic32_cmpxchg(ethr_native_atomic32_t *var,
 /* Spinlocks */
 #include "epiphany.h"
 
-#define MUTEX_COUNT 8
+#define MUTEX_COUNT 16
 #define MUTEX_UNLOCKED 0
 #define MUTEX_UNUSED -1
 static EPIPHANY_SRAM_DATA e_mutex_t mutexes[MUTEX_COUNT] = {
     [0] = MUTEX_UNLOCKED,
     [1 ... MUTEX_COUNT-1] = MUTEX_UNUSED,
 };
+
+#if defined(DEBUG) || defined(ETHR_DEBUG)
+#  define SANITY_TEST_SPINLOCK(LOCK) sanity_test_spinlock(LOCK)
+
+static int sane_spinlock(ethr_native_spinlock_t *lock) {
+    unsigned origin_row, origin_col, rows, cols;
+    if (!epiphany_sane_address(lock)) return 0;
+    epiphany_workgroup_origin(&origin_row, &origin_col);
+    epiphany_workgroup_dimens(&rows, &cols);
+    if (origin_row > lock->row || lock->row >= origin_row + rows) return 0;
+    if (origin_col > lock->col || lock->col >= origin_col + cols) return 0;
+    if (0 > lock->ix || lock->ix >= MUTEX_COUNT) return 0;
+    return 1;
+}
+
+static void sanity_test_spinlock(ethr_native_spinlock_t *lock) {
+    if (!sane_spinlock(lock)) {
+	if (!epiphany_sane_address(lock)) {
+	    erts_printf("Spinlock at bad address 0x%x!\n", lock);
+	} else {
+	    erts_printf("Spinlock at 0x%x (row=%d, col=%d, ix=%d) fails sanity "
+			"test!\n",
+			lock, (int)lock->row, (int)lock->col, (int)lock->ix);
+	}
+	epiphany_backtrace();
+	returning_abort();
+    }
+}
+
+#else
+#  define SANITY_TEST_SPINLOCK(LOCK)
+#endif
 
 static int
 allocate_on_core(char row, char col)
@@ -301,20 +371,26 @@ ethr_native_spinlock_init(ethr_native_spinlock_t *lock)
     e_coreid_t me = e_get_coreid();
     unsigned myrow, row, mycol, col;
     int i;
-    /*
-     * It is unnecessary to use this allocation scheme if the address is in SRAM
-     * anyway.
-     */
-    ASSERT(epiphany_in_dram(lock));
+#if HARDDEBUG
+    if (!epiphany_in_dram(lock)) {
+	/*
+	 * It is unnecessary to use this allocation scheme if the address is in
+	 * SRAM anyway.
+	 */
+	erts_printf("Warning, initing spinlock at 0x%x\n", lock);
+    }
+#endif
+    ASSERT(epiphany_sane_address(lock));
 
     e_coords_from_coreid(me, &myrow, &mycol);
     col = mycol;
     row = myrow;
     if ((i = allocate_on_core(myrow, mycol)) == -1) {
-	struct workgroup_coords origin = epiphany_workgroup_origin();
-	struct workgroup_dimens dimens = epiphany_workgroup_dimens();
-	for (row = origin.row; row < origin.row + dimens.rows && i == -1; row++) {
-	    for (col = origin.col; col < origin.col + dimens.cols && i == -1; col++) {
+	unsigned origin_row, rows, origin_col, cols;
+	epiphany_workgroup_origin(&origin_row, &origin_col);
+	epiphany_workgroup_dimens(&rows, &cols);
+	for (row = origin_row; row < origin_row + rows && i == -1; row++) {
+	    for (col = origin_col; col < origin_col + cols && i == -1; col++) {
 		if (col == mycol && row == myrow) continue;
 		i = allocate_on_core(row, col);
 	    }
@@ -338,6 +414,7 @@ ethr_native_spinlock_destroy(ethr_native_spinlock_t *lock)
 {
     ethr_native_spinlock_t lockv = *lock;
     volatile e_mutex_t *mtx = e_get_global_address(lockv.row, lockv.col, mutexes + lockv.ix);
+    SANITY_TEST_SPINLOCK(lock);
     ASSERT(*mtx == MUTEX_UNLOCKED);
     *mtx = MUTEX_UNUSED;
     return 0;
@@ -349,8 +426,14 @@ ethr_native_spin_unlock(ethr_native_spinlock_t *lock)
     ethr_native_spinlock_t lockv = *lock;
     volatile e_mutex_t *mtx = e_get_global_address(lockv.row, lockv.col, mutexes + lockv.ix);
     e_coreid_t me = e_get_coreid();
-    ASSERT(*((volatile e_mutex_t*)mtx) == me);
-
+    SANITY_TEST_SPINLOCK(lock);
+#if HARDDEBUG
+    if (*mtx != me) {
+	erts_printf("Unlocking mutex at 0x%x locked by other core %x (me=%x)\n",
+		    lock, *mtx, me);
+	epiphany_backtrace();
+    }
+#endif
     ETHR_MEMBAR(ETHR_LoadLoad|ETHR_LoadStore|ETHR_StoreLoad|ETHR_StoreStore);
     e_mutex_unlock(lockv.row, lockv.col, mutexes + lockv.ix);
     /*
@@ -366,6 +449,7 @@ ethr_native_spin_trylock(ethr_native_spinlock_t *lock)
     ethr_native_spinlock_t lockv = *lock;
 #if defined(DEBUG) || defined(ETHR_DEBUG)
     volatile e_mutex_t *mtx = e_get_global_address(lockv.row, lockv.col, mutexes + lockv.ix);
+    SANITY_TEST_SPINLOCK(lock);
     ASSERT(*((volatile e_mutex_t*)mtx) != MUTEX_UNUSED);
 #endif
     if (e_mutex_trylock(lockv.row, lockv.col, mutexes + lockv.ix)) {
@@ -386,6 +470,7 @@ ethr_native_spin_is_locked(ethr_native_spinlock_t *lock)
 {
     ethr_native_spinlock_t lockv = *lock;
     volatile e_mutex_t *mtx = e_get_global_address(lockv.row, lockv.col, mutexes + lockv.ix);
+    SANITY_TEST_SPINLOCK(lock);
     ASSERT(*mtx != MUTEX_UNUSED);
     return *mtx == MUTEX_UNLOCKED;
 }
@@ -396,7 +481,8 @@ ethr_native_spin_lock(ethr_native_spinlock_t *lock)
     ethr_native_spinlock_t lockv = *lock;
 #if defined(DEBUG) || defined(ETHR_DEBUG)
     volatile e_mutex_t *mtx = e_get_global_address(lockv.row, lockv.col, mutexes + lockv.ix);
-    ASSERT(*((volatile e_mutex_t*)mtx) != MUTEX_UNUSED);
+    SANITY_TEST_SPINLOCK(lock);
+    ASSERT(*mtx != MUTEX_UNUSED);
 #endif
     e_mutex_lock(lockv.row, lockv.col, mutexes + lockv.ix);
     /* We barrier just because consumers might assume a barrier is implied in a lock. */
