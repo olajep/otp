@@ -35,55 +35,52 @@ int
 epiphany_coreno(void)
 {
     e_coreid_t id = e_get_coreid();
-    unsigned row, col;
-    struct workgroup_coords origin = epiphany_workgroup_origin();
-    struct workgroup_dimens dimens = epiphany_workgroup_dimens();
+    unsigned row, col, origin_row, origin_col, rows, cols;
+    epiphany_workgroup_origin(&origin_row, &origin_col);
+    epiphany_workgroup_dimens(&rows, &cols);
     e_coords_from_coreid(id, &row, &col);
-
-    return (row - origin.row) * dimens.cols + (col - origin.col);
+    return (row - origin_row) * cols + (col - origin_col);
 }
 
-struct workgroup_dimens
-epiphany_workgroup_dimens(void)
+void
+epiphany_workgroup_dimens(unsigned *rows, unsigned *cols)
 {
     if (!epiphany_in_emulator()) {
-	struct workgroup_dimens dimens = {
-	    .rows = e_group_config.group_rows,
-	    .cols = e_group_config.group_cols,
-	};
-	return dimens;
+	*rows = e_group_config.group_rows;
+	*cols = e_group_config.group_cols;
     } else {
 	// The emulator does not set e_group_config. Assume a P16 4x4 workgroup.
-	struct workgroup_dimens dimens = { .rows = 4, .cols = 4, };
-	return dimens;
+	*rows = 4;
+	*cols = 4;
     }
 }
 
 int
 epiphany_workgroup_size(void)
 {
-    struct workgroup_dimens dimens = epiphany_workgroup_dimens();
-    return dimens.rows * dimens.cols;
+    unsigned rows, cols;
+    epiphany_workgroup_dimens(&rows, &cols);
+    return rows * cols;
 }
 
 
-struct workgroup_coords
-epiphany_workgroup_origin(void)
+void
+epiphany_workgroup_origin(unsigned *row, unsigned *col)
 {
     if (!epiphany_in_emulator()) {
-	struct workgroup_coords origin = { .row = 0, .col = 0 };
-	return origin;
+	*row = 0;
+	*col = 0;
     } else {
 	// The emulator does not set e_group_config. Assume a P16 4x4 workgroup.
-	struct workgroup_coords origin = { .row = 32, .col = 8 };
 #ifdef DEBUG
 	e_coreid_t id = e_get_coreid();
-	unsigned row, col;
-	e_coords_from_coreid(id, &row, &col);
-	ASSERT(32 <= row && row < 36);
-	ASSERT(8 <= col && col < 12);
+	unsigned myrow, mycol;
+	e_coords_from_coreid(id, &myrow, &mycol);
+	ASSERT(32 <= myrow && myrow < 36);
+	ASSERT(8 <= mycol && mycol < 12);
 #endif
-	return origin;
+	*row = 32;
+	*col = 8;
     }
 }
 
@@ -97,7 +94,7 @@ int
 epiphany_sane_address(void *addrp)
 {
     e_coreid_t owning;
-    unsigned row, col, min_row, min_col, max_row, max_col;
+    unsigned row, col, min_row, min_col, max_row, max_col, rows, cols;
     unsigned addr = (unsigned)addrp;
 
     // Shared DRAM
@@ -106,10 +103,10 @@ epiphany_sane_address(void *addrp)
     // In memory space of core in workgroup
     owning = addr >> (32 - 12);
     e_coords_from_coreid(owning, &row, &col);
-    min_row = e_group_config.group_row;
-    max_row = min_row + e_group_config.group_rows;
-    min_col = e_group_config.group_col;
-    max_col = min_col + e_group_config.group_cols;
+    epiphany_workgroup_origin(&min_row, &min_col);
+    epiphany_workgroup_dimens(&rows, &cols);
+    max_row = min_row + rows;
+    max_col = min_col + cols;
     if (owning == 0
 	|| ((min_row <= row && row < max_row)
 	    && (min_col <= col && col < max_col))) {
@@ -123,8 +120,9 @@ epiphany_sane_address(void *addrp)
     return 0;
 }
 
-#define LDR_ANY_MASK  0b00011110000000000001110001111111
-#define LDR_LR_MASK   0b11111110000000001111110001111111
+// Word or Doubleword
+#define LDR_ANY_MASK  0b00011110000000000001110001011111
+#define LDR_LR_MASK   0b11111110000000001111110001011111
 #define LDR_ANY_MATCH 0b00000100000000000001010001001100
 #define LDR_LR_MATCH  0b00100100000000001101010001001100
 
@@ -137,6 +135,8 @@ epiphany_sane_address(void *addrp)
 
 #define IMM11(INSTR) ((((INSTR) >> 13) & (0xff << 3)) | (((INSTR) >> 7) & 0x7))
 #define IMM11_SIGN(INSTR) ((INSTR) & (1 << 24))
+
+#define MEM_SHIFT(INSTR) (((INSTR) >> 5) & 0b11)
 
 // Sign-extend IMM11
 #define SIMM11(INSTR) ((((signed)IMM11(INSTR)) << (32-11)) >> (32-11))
@@ -181,7 +181,7 @@ scan_epilogue(unsigned *__attribute__((packed)) ptr, int *framesize, int *lr_off
 	case 0:
 	    if ((instr & LDR_LR_MASK) == LDR_LR_MATCH) {
 		ASSERT((instr & LDR_ANY_MASK) == LDR_ANY_MATCH);
-		*lr_offset = IMM11(instr) << 2;
+		*lr_offset = IMM11(instr) << MEM_SHIFT(instr);
 		if (IMM11_SIGN(instr)) *lr_offset = -*lr_offset;
 		HDEBUG_PRINTF("%x:\t%x\tldr lr,[sp,%d]\n",
 			      (unsigned)ptr, instr, *lr_offset);
@@ -201,7 +201,9 @@ scan_epilogue(unsigned *__attribute__((packed)) ptr, int *framesize, int *lr_off
 	    } else {
 		HDEBUG_PRINTF("%x:\t%x\tldr ??,[sp,%d]\n",
 			      (unsigned)ptr, instr,
-			      IMM11_SIGN(instr) ? -(IMM11(instr) << 2) : IMM11(instr) << 2);
+			      IMM11_SIGN(instr)
+			      ? -(IMM11(instr) << MEM_SHIFT(instr))
+			      : IMM11(instr) << MEM_SHIFT(instr));
 	    }
 	    break;
 	case 2:
@@ -215,7 +217,9 @@ scan_epilogue(unsigned *__attribute__((packed)) ptr, int *framesize, int *lr_off
 	    } else {
 		HDEBUG_PRINTF("%x:\t%x\tldr ??,[sp,%d]\n",
 			      (unsigned)ptr, instr,
-			      IMM11_SIGN(instr) ? -(IMM11(instr) << 2) : IMM11(instr) << 2);
+			      IMM11_SIGN(instr)
+			      ? -(IMM11(instr) << MEM_SHIFT(instr))
+			      : IMM11(instr) << MEM_SHIFT(instr));
 	    }
 	    break;
 	}
@@ -247,12 +251,20 @@ epiphany_backtrace(void)
     while (16*1024 <= (unsigned)frame && (unsigned)frame < 32*1024
 	   && count++ < 100) {
 	int frame_off, link_off;
+#if HARDDEBUG
+	erts_printf("[0x%x] frame=0x%x\n", (unsigned)link - 4, (unsigned)frame);
+#else
 	erts_printf(" 0x%x", (unsigned)link - 4);
+#endif
 	if (scan_epilogue((unsigned*)link, &frame_off, &link_off)) {
 	    break;
 	}
 	link = frame[link_off >> 2];
 	frame = frame[frame_off >> 2];
     }
-    erts_printf(" 0x%x\n", (unsigned)link - 4);
+#if HARDDEBUG
+	erts_printf("[0x%x] frame=0x%x\n", (unsigned)link - 4, (unsigned)frame);
+#else
+	erts_printf(" 0x%x\n", (unsigned)link - 4);
+#endif
 }

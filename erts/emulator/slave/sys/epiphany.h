@@ -23,19 +23,11 @@
 #define EPIPHANY_SRAM_DATA __attribute__((section(".data_bank0")))
 #define EPIPHANY_SRAM_FUNC __attribute__((section(".data_bank1")))
 
-struct workgroup_coords {
-    char row, col;
-};
-
-struct workgroup_dimens {
-    char rows, cols;
-};
-
 int epiphany_in_emulator(void);
 int epiphany_coreno(void);
 int epiphany_workgroup_size(void);
-struct workgroup_coords epiphany_workgroup_origin(void);
-struct workgroup_dimens epiphany_workgroup_dimens(void);
+void epiphany_workgroup_origin(unsigned *row, unsigned *col);
+void epiphany_workgroup_dimens(unsigned *rows, unsigned *cols);
 
 void epiphany_backtrace(void);
 void returning_abort(void);
