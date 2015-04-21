@@ -97,6 +97,7 @@
 #undef RUNQ_READ_RQ
 #undef RUNQ_SET_RQ
 #define RUNQ_READ_RQ(X) ((ErtsRunQueue *) erts_smp_atomic_read_nob((X)))
+#define RUNQ_INIT_RQ(X, RQ) erts_smp_atomic_init_nob((X), (erts_aint_t) (RQ))
 #define RUNQ_SET_RQ(X, RQ) erts_smp_atomic_set_nob((X), (erts_aint_t) (RQ))
 
 #ifdef DEBUG
@@ -268,10 +269,6 @@ do {							\
 
 erts_sched_stat_t erts_sched_stat;
 
-#ifdef USE_THREADS
-static erts_tsd_key_t sched_data_key;
-#endif
-
 #ifndef ERTS_SMP
 ErtsSchedulerData *erts_scheduler_data;
 #endif
@@ -351,9 +348,6 @@ sched_thread_func(void *vesdp)
 	erts_snprintf(&buf[0], 31, "scheduler %beu", no);
 	erts_lc_set_thread_name(&buf[0]);
     }
-#endif
-#ifdef USE_THREADS
-    erts_tsd_set(sched_data_key, vesdp);
 #endif
 #ifdef ERTS_SMP
 #if HAVE_ERTS_MSEG
@@ -572,7 +566,7 @@ void erts_init_empty_process(Process *p)
     p->pending_exit.bp = NULL;
     erts_proc_lock_init(p);
     erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
-    RUNQ_SET_RQ(&p->run_queue, ERTS_RUNQ_IX(0));
+    RUNQ_INIT_RQ(&p->run_queue, ERTS_RUNQ_IX(0));
 #endif
 
 #if !defined(NO_FPE_SIGNALS) || defined(HIPE)
@@ -627,11 +621,12 @@ alloc_process(ErtsRunQueue *rq, erts_aint32_t state)
 
     ASSERT(((char *) p) == ((char *) &p->common));
 
-    p->common.id = 8|3;
+    p->common.id = 16|3;
     erts_smp_atomic32_init_relb(&p->state, state);
 
 #ifdef ERTS_SMP
     erts_proc_lock_init(p); /* All locks locked */
+    erts_smp_atomic32_init_nob(&p->common.refc, 1);
 #endif
 
     ASSERT(internal_pid_serial(p->common.id) <= ERTS_MAX_PID_SERIAL);
@@ -1016,9 +1011,6 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 	ErtsSchedulerData *esdp;
 	esdp = ERTS_SCHEDULER_IX(0);
 	erts_scheduler_data = esdp;
-#ifdef USE_THREADS
-	erts_tsd_set(sched_data_key, (void *) esdp);
-#endif
     }
     erts_no_schedulers = 1;
 #ifdef ERTS_DIRTY_SCHEDULERS

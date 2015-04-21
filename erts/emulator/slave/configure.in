@@ -1710,8 +1710,9 @@ AH_BOTTOM([
 # endif
 #endif
 
-#if defined(DEBUG) && defined(USE_THREADS) && !defined(ERTS_ENABLE_LOCK_CHECK)
-#define ERTS_ENABLE_LOCK_CHECK 1
+/* Lock checking does not currently work with the slave emulator. */
+#if defined(ERTS_ENABLE_LOCK_CHECK)
+#undef ERTS_ENABLE_LOCK_CHECK
 #endif
 ])
 
