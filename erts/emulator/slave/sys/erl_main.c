@@ -43,7 +43,7 @@ static int is_leader() {
 }
 
 #ifdef ERTS_SMP
-static int slave_flag = 0;
+static volatile int slave_flag = 0;
 #endif
 
 static volatile int start_barrier __attribute__((section(".data_bank0")));

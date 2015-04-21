@@ -760,6 +760,15 @@ ETHR_INLINE_FUNC_NAME_(ethr_leave_ts_event)(ethr_ts_event *tsep)
 
 #endif
 
+#elif defined(ETHR_EPIPHANY)
+
+#if defined(ETHR_TRY_INLINE_FUNCS) || defined(ETHREAD_IMPL__)
+
+ethr_ts_event *ethr_get_ts_event(void);
+void ethr_leave_ts_event(ethr_ts_event *);
+
+#endif
+
 #endif
 
 #include "ethr_mutex.h" /* Need atomic declarations and tse */

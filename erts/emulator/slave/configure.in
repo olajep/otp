@@ -336,6 +336,7 @@ if test "X$ETHR_LIB_NAME" = "X"; then
     # We provide our own
     ETHR_DEFS="-DUSE_THREADS -DETHR_EPIPHANY $ETHR_DEFS"
     ETHR_THR_LIB_BASE_DIR=epiphany
+    ETHR_LIB_NAME=epiphany
 fi
 
 ERTS_BUILD_SMP_EMU=$enable_smp_support
@@ -439,6 +440,7 @@ else
 	EMU_THR_X_LIBS=$ETHR_X_LIBS
 	EMU_THR_LIBS=$ETHR_LIBS
 	EMU_THR_DEFS=$ETHR_DEFS
+	EMU_THR_LIB_NAME=$ETHR_LIB_NAME
 	ENABLE_ALLOC_TYPE_VARS="$ENABLE_ALLOC_TYPE_VARS threads"
 	AC_MSG_CHECKING(whether lock checking should be enabled)
 	AC_MSG_RESULT($enable_lock_check)
@@ -454,6 +456,7 @@ else
 fi
 
 AC_SUBST(EMU_THR_DEFS)
+AC_SUBST(EMU_THR_LIB_NAME)
 
 if test "x$enable_lock_check" = "xno"; then
     EMU_LOCK_CHECKING=no

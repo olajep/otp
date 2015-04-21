@@ -742,8 +742,8 @@ erl_start(int argc, char **argv)
 #else
     erts_thr_set_main_status(1, 1);
 #if ERTS_USE_ASYNC_READY_Q
-    erts_get_scheduler_data()->aux_work_data.async_ready.queue
-	= erts_get_async_ready_queue(1);
+    /* erts_get_scheduler_data()->aux_work_data.async_ready.queue */
+    /* 	= erts_get_async_ready_queue(1); */
 #endif
     set_main_stack_size();
     process_main();

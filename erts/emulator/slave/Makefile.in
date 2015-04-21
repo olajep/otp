@@ -51,6 +51,7 @@ CONFIGURE_CFLAGS = @CFLAGS@
 #
 DEFS=@DEFS@ -DDISABLE_CHILD_WAITER_THREAD
 THR_DEFS=@EMU_THR_DEFS@
+THR_LIB_NAME=@EMU_THR_LIB_NAME@
 CREATE_DIRS=
 
 LDFLAGS=@LDFLAGS@
@@ -251,12 +252,16 @@ ETHR_THR_LIB_BASE_DIR=@ETHR_THR_LIB_BASE_DIR@
 ERTS_INTERNAL_LIB_OBJS = \
 	$(OBJDIR)/erl_printf_format.o \
 	$(OBJDIR)/erl_printf.o \
-	$(OBJDIR)/erl_misc_utils.o \
+	$(OBJDIR)/erl_misc_utils.o
+
+ifneq ($(strip $(THR_LIB_NAME)),)
+ERTS_INTERNAL_LIB_OBJS += \
 	$(OBJDIR)/ethread.o \
 	$(OBJDIR)/ethr_atomics.o \
 	$(OBJDIR)/ethr_aux.o \
 	$(OBJDIR)/ethr_mutex.o \
 	$(OBJDIR)/ethr_event.o
+endif
 
 TTF_DIR=$(TARGET)/$(TYPE)/$(FLAVOR)
 CREATE_DIRS += $(TTF_DIR)

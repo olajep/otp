@@ -84,6 +84,7 @@ epiphany_workgroup_origin(unsigned *row, unsigned *col)
     }
 }
 
+#ifdef DEBUG
 int
 epiphany_in_dram(void *addr)
 {
@@ -119,6 +120,7 @@ epiphany_sane_address(void *addrp)
     }
     return 0;
 }
+#endif
 
 // Word or Doubleword
 #define LDR_ANY_MASK  0b00011110000000000001110001011111

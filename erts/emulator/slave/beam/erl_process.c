@@ -943,6 +943,7 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 
     n = no_schedulers;
     erts_no_run_queues = n;
+    erts_no_schedulers = n;
 
     /* Create and initialize scheduler specific data */
     erts_aligned_scheduler_data =
@@ -1021,9 +1022,9 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 
 #ifndef ERTS_SMP
 #ifdef ERTS_DO_VERIFY_UNUSED_TEMP_ALLOC
-    erts_scheduler_data->verify_unused_temp_alloc
-	= erts_alloc_get_verify_unused_temp_alloc(
-	    &erts_scheduler_data->verify_unused_temp_alloc_data);
+    erts_scheduler_data->verify_unused_temp_alloc = NULL;
+    /*	   = erts_alloc_get_verify_unused_temp_alloc( */
+    /*	       &erts_scheduler_data->verify_unused_temp_alloc_data); */
     ERTS_VERIFY_UNUSED_TEMP_ALLOC(NULL);
 #endif
 #endif
@@ -1033,7 +1034,7 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 #endif
 }
 
-#ifdef ERTS_SMP
+#ifdef USE_THREADS
 
 ErtsSchedulerData *
 erts_get_scheduler_data(void)

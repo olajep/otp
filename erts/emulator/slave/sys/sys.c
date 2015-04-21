@@ -463,11 +463,7 @@ static RETSIGTYPE request_break(void)
 static RETSIGTYPE request_break(int signum)
 #endif
 {
-#ifdef ERTS_SMP
-    smp_sig_notify('I');
-#else
-    break_requested();
-#endif
+    erl_exit(1, "Break!\n");
 }
 
 #ifdef ETHR_UNUSABLE_SIGUSRX
@@ -482,11 +478,7 @@ static RETSIGTYPE user_signal1(void)
 static RETSIGTYPE user_signal1(int signum)
 #endif
 {
-#ifdef ERTS_SMP
-   smp_sig_notify('1');
-#else
-   sigusr1_exit();
-#endif
+    erl_exit(1, "USR1!\n");
 }
 
 #ifdef QUANTIFY
@@ -505,6 +497,14 @@ static RETSIGTYPE user_signal2(int signum)
 #endif
 
 #endif /* #ifndef ETHR_UNUSABLE_SIGUSRX */
+
+#ifndef ERTS_SMP
+static void
+quit_requested(void)
+{
+    erl_exit(ERTS_INTR_EXIT, "");
+}
+#endif
 
 #if (defined(SIG_SIGSET) || defined(SIG_SIGNAL))
 static RETSIGTYPE do_quit(void)

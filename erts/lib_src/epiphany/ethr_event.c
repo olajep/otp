@@ -20,6 +20,12 @@
 #define ETHR_INLINE_FUNC_NAME_(X) X ## __
 #define ETHR_EVENT_IMPL__
 
+/* We need the prototypes to include sys.h properly */
+#ifndef DEBUG
+#  define ETHR_NEED_SPINLOCK_PROTOTYPES__
+#  define ETHR_NEED_RWSPINLOCK_PROTOTYPES__
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
