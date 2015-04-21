@@ -1034,7 +1034,15 @@ void process_main(void)
 
     Eterm pt_arity;		/* Used by do_put_tuple */
 
+#pragma GCC diagnostic push
+    /*
+     * Although all uses of the bits state have been stubbed out, we don't want
+     * to remove the places or opcodes that set it, in case we later reintroduce
+     * the bits opcodes.
+     */
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
     ERL_BITS_DECLARE_STATEP; /* Has to be last declaration */
+#pragma GCC diagnostic pop
 
 
     /*
