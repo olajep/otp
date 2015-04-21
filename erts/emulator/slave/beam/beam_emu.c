@@ -3746,7 +3746,9 @@ get_map_elements_fail:
  }
 
  OpCase(bad_op):
-     erl_exit(1, "bad op %d\n", I-demo_prog);
+     erts_printf("bad op %d\n", I-demo_prog);
+     while(1) asm volatile("idle");
+     erl_exit(1, "bad op");
 
 #ifdef ERTS_OPCODE_COUNTER_SUPPORT
     DEFINE_COUNTING_LABELS;
