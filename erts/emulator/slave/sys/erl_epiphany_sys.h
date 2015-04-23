@@ -355,10 +355,13 @@ extern int exit_async(void);
 
 #define ERTS_EXIT_AFTER_DUMP _exit
 
-void sys_epiphany_stub(const char* name) __attribute__ ((__noreturn__));
+void sys_epiphany_stub(const char* file, int line, const char* fun)
+    __attribute__ ((__noreturn__));
+void sys_epiphany_bt_stub(const char* name);
 
-#define EPIPHANY_STUB(NAME) sys_epiphany_stub(#NAME)
-#define EPIPHANY_STUB_FUN() sys_epiphany_stub(__FUNCTION__)
+#define EPIPHANY_STUB(NAME) sys_epiphany_stub(__FILE__, __LINE__, #NAME)
+#define EPIPHANY_STUB_FUN() sys_epiphany_stub(__FILE__, __LINE__, __FUNCTION__)
+#define EPIPHANY_STUB_BT() sys_epiphany_bt_stub(__FUNCTION__)
 
 #endif /* #ifndef _ERL_EPIPHANY_SYS_H */
 

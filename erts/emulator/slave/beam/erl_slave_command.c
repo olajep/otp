@@ -32,17 +32,17 @@ EPIPHANY_SRAM_DATA struct slave_command_buffers *volatile slave_command_buffers;
 static void send_command(enum master_command code, void *data, size_t size);
 
 void
-erts_master_ready(void)
+erts_master_setup(void)
 {
     extern BeamInstr *demo_prog;
-    struct master_command_ready cmd = {
+    struct master_command_setup cmd = {
 	.demo_prog = demo_prog,
     };
 #ifndef NO_JUMP_TABLE
     extern void **beam_ops;
     cmd.beam_ops = beam_ops;
 #endif
-    send_command(MASTER_COMMAND_READY, &cmd, sizeof(cmd));
+    send_command(MASTER_COMMAND_SETUP, &cmd, sizeof(cmd));
 }
 
 static void
@@ -58,9 +58,11 @@ send_command(enum master_command code, void *data, size_t size)
 void
 erts_master_await_run(struct slave_command_run *cmd)
 {
+    struct master_command_ready ready_cmd;
     enum slave_command code;
     erts_printf("Awaiting program from master\n");
     while (slave_command_buffers == NULL);
+    send_command(MASTER_COMMAND_READY, &ready_cmd, sizeof(ready_cmd));
     erts_fifo_read_blocking(&slave_command_buffers->slave, &code, sizeof(code));
     ASSERT(code == SLAVE_COMMAND_RUN);
     erts_fifo_read_blocking(&slave_command_buffers->slave, cmd,

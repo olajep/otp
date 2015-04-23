@@ -3069,7 +3069,13 @@ get_map_elements_fail:
     Next(1);
 
  OpCase(normal_exit): {
-        EPIPHANY_STUB(OpCase(normal_exit));
+     SWAPOUT;
+     c_p->freason = EXC_NORMAL;
+     c_p->arity = 0;		/* In case this process will ever be garbed again. */
+     ERTS_SMP_UNREQ_PROC_MAIN_LOCK(c_p);
+     erts_do_exit_process(c_p, am_normal);
+     ERTS_SMP_REQ_PROC_MAIN_LOCK(c_p);
+     goto do_schedule;
  }
 
  OpCase(continue_exit): {
@@ -3909,7 +3915,7 @@ get_map_elements_fail:
 	 *(ptr++) = (BeamInstr)OpCode(i_write);
 	 *(ptr++) = (BeamInstr)make_rreg();
 
-	 *(ptr++) = (BeamInstr)OpCode(bad_op);
+	 *(ptr++) = (BeamInstr)OpCode(normal_exit);
      }
 
      return;

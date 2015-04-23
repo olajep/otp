@@ -149,14 +149,22 @@ erts_dispatch_slave_commands(void)
 	erts_fifo_peek(fifo, &cmd, sizeof(enum master_command));
 	available -= sizeof(enum master_command);
 	switch (cmd) {
+	case MASTER_COMMAND_SETUP: {
+	    struct master_command_setup msg;
+	    if (available < sizeof(struct master_command_setup)) break;
+	    erts_fifo_skip(fifo, sizeof(enum master_command));
+	    erts_fifo_read_blocking(fifo, &msg, sizeof(struct master_command_setup));
+	    slave_beam_ops = msg.beam_ops;
+	    slave_demo_prog = msg.demo_prog;
+	    dispatched++;
+	    break;
+        }
 	case MASTER_COMMAND_READY: {
 	    struct master_command_ready msg;
 	    if (available < sizeof(struct master_command_ready)) break;
 	    erts_fifo_skip(fifo, sizeof(enum master_command));
 	    erts_fifo_read_blocking(fifo, &msg, sizeof(struct master_command_ready));
 	    slaves[i].available = 1;
-	    slave_beam_ops = msg.beam_ops;
-	    slave_demo_prog = msg.demo_prog;
 	    dispatched++;
 	    break;
 	}

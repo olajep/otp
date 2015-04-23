@@ -77,6 +77,8 @@ static erts_smp_rwmtx_t environ_rwmtx;
 #include "erl_check_io.h"
 #include "erl_cpu_topology.h"
 
+#include "epiphany.h"
+
 #ifndef DISABLE_VFORK
 #define DISABLE_VFORK 0
 #endif
@@ -1076,9 +1078,15 @@ long __attribute__((weak)) sysconf(int __attribute__((unused)) name)
     return -1;
 }
 
-void sys_epiphany_stub(const char* name)
+void sys_epiphany_stub(const char* file, int line, const char* fun)
 {
-    erts_fprintf(stderr, "%s is a stub!\n", name);
+    erts_fprintf(stderr, "%s:%d:%s is a stub!\n", file, line, fun);
     while(1) asm("idle");
-    erl_exit(1, "%s is a stub!\n", name);
+}
+
+void sys_epiphany_bt_stub(const char* fun)
+{
+    erts_fprintf(stderr, "%s is a stub!\n", fun);
+    epiphany_backtrace();
+    returning_abort();
 }

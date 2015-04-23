@@ -164,8 +164,8 @@ erts_milli_sleep(long ms)
 #elif defined(__OSE__)
 	delay(ms);
 #elif defined(__epiphany__)
-        void sys_epiphany_stub(const char* name) __attribute__ ((__noreturn__));
-        sys_epiphany_stub("erts_milli_sleep");
+        void sys_epiphany_bt_stub(const char* name);
+        sys_epiphany_bt_stub("erts_milli_sleep");
 #else
 	struct timeval tv;
 	tv.tv_sec = ms / 1000;

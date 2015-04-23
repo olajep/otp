@@ -655,19 +655,19 @@ ERTS_GLB_INLINE void erts_smp_reset_max_len(ErtsRunQueue *rq, ErtsRunQueueInfo *
 ERTS_GLB_INLINE void
 erts_smp_inc_runq_len(ErtsRunQueue *rq, ErtsRunQueueInfo *rqi, int prio)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_dec_runq_len(ErtsRunQueue *rq, ErtsRunQueueInfo *rqi, int prio)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 ERTS_GLB_INLINE void
 erts_smp_reset_max_len(ErtsRunQueue *rq, ErtsRunQueueInfo *rqi)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 #endif /* ERTS_GLB_INLINE_INCL_FUNC_DEF */
@@ -1666,7 +1666,7 @@ ERTS_GLB_INLINE void erts_proc_notify_new_message(Process *p, ErtsProcLocks lock
 ERTS_GLB_INLINE void
 erts_proc_notify_new_message(Process *p, ErtsProcLocks locks)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 #endif
 
@@ -1720,7 +1720,8 @@ erts_psd_get(Process *p, int ix)
 ERTS_GLB_INLINE void *
 erts_psd_set(Process *p, ErtsProcLocks plocks, int ix, void *data)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
+    return NULL;
 }
 
 #endif
@@ -1814,7 +1815,8 @@ ERTS_GLB_INLINE ErtsRunQueue *erts_check_emigration_need(ErtsRunQueue *c_rq,
 ERTS_GLB_INLINE ErtsMigrationPaths *
 erts_get_migration_paths_managed(void)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
+    return NULL;
 }
 
 ERTS_GLB_INLINE ErtsMigrationPaths *
@@ -1984,7 +1986,7 @@ erts_get_runq_current(ErtsSchedulerData *esdp)
 ERTS_GLB_INLINE void
 erts_smp_runq_lock(ErtsRunQueue *rq)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 #ifdef ERTS_ENABLE_LOCK_COUNT
@@ -1996,13 +1998,14 @@ erts_smp_runq_lock(ErtsRunQueue *rq)
 ERTS_GLB_INLINE int
 erts_smp_runq_trylock(ErtsRunQueue *rq)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
+    return 0;
 }
 
 ERTS_GLB_INLINE void
 erts_smp_runq_unlock(ErtsRunQueue *rq)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 #ifdef ERTS_ENABLE_LOCK_COUNT
@@ -2034,7 +2037,7 @@ ERTS_GLB_INLINE void
 erts_smp_xrunq_lock(ErtsRunQueue *rq, ErtsRunQueue *xrq)
 {
 #ifdef ERTS_SMP
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 #endif
 }
 
@@ -2044,7 +2047,7 @@ ERTS_GLB_INLINE void
 erts_smp_xrunq_unlock(ErtsRunQueue *rq, ErtsRunQueue *xrq)
 {
 #ifdef ERTS_SMP
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 #endif
 }
 
@@ -2052,7 +2055,7 @@ ERTS_GLB_INLINE void
 erts_smp_runqs_lock(ErtsRunQueue *rq1, ErtsRunQueue *rq2)
 {
 #ifdef ERTS_SMP
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 #endif
 }
 
@@ -2060,7 +2063,7 @@ ERTS_GLB_INLINE void
 erts_smp_runqs_unlock(ErtsRunQueue *rq1, ErtsRunQueue *rq2)
 {
 #ifdef ERTS_SMP
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 #endif
 }
 
@@ -2134,7 +2137,7 @@ ERTS_GLB_INLINE void erts_sched_poke(ErtsSchedulerSleepInfo *ssi);
 ERTS_GLB_INLINE void
 erts_sched_poke(ErtsSchedulerSleepInfo *ssi)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 

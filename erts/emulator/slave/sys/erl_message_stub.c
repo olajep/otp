@@ -45,29 +45,30 @@
 
 void init_message(void)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 void free_message(ErlMessage *m)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 ErlHeapFragment* new_message_buffer(Uint u)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
+    return NULL;
 }
 
 ErlHeapFragment* erts_resize_message_buffer(ErlHeapFragment *, Uint,
 					    Eterm *, Uint);
 void free_message_buffer(ErlHeapFragment *f)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 void erts_queue_dist_message(Process *p, ErtsProcLocks *l, ErtsDistExternal *d, Eterm t)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 void erts_queue_message(Process *p, ErtsProcLocks *l, ErlHeapFragment *f, Eterm t, Eterm t2
@@ -76,22 +77,23 @@ void erts_queue_message(Process *p, ErtsProcLocks *l, ErlHeapFragment *f, Eterm 
 #endif
 )
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 void erts_deliver_exit_message(Eterm t, Process* p, ErtsProcLocks *l, Eterm t2, Eterm t3)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 Sint erts_send_message(Process *p, Process *p2, ErtsProcLocks *l, Eterm t, unsigned u)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
+    return 0;
 }
 
 void erts_link_mbuf_to_proc(Process *proc, ErlHeapFragment *bp)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 /*
@@ -100,27 +102,29 @@ void erts_link_mbuf_to_proc(Process *proc, ErlHeapFragment *bp)
  */
 void erts_move_msg_mbuf_to_heap(Eterm** hpp, ErlOffHeap* off_heap, ErlMessage *msg)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 Uint erts_msg_attached_data_size_aux(ErlMessage *msg)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
+    return 0;
 }
 
 void erts_move_msg_attached_data_to_heap(Eterm **t, ErlOffHeap *o, ErlMessage *m)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }
 
 
 Eterm erts_msg_distext2heap(Process *p, ErtsProcLocks *l, ErlHeapFragment **f,
 			    Eterm *t, ErtsDistExternal *d)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
+    return THE_NON_VALUE;
 }
 
 void erts_cleanup_offheap(ErlOffHeap *offheap)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
 }

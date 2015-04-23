@@ -48,18 +48,22 @@ struct slave_command_buffers {
 };
 
 enum master_command {
-    MASTER_COMMAND_READY
+    MASTER_COMMAND_SETUP,
+    MASTER_COMMAND_READY,
 };
 
-struct master_command_ready {
+struct master_command_setup {
 #ifndef NO_JUMP_TABLE
     void** beam_ops;
 #endif
     BeamInstr *demo_prog;
 };
 
+struct master_command_ready {
+};
+
 enum slave_command {
-    SLAVE_COMMAND_RUN
+    SLAVE_COMMAND_RUN,
 };
 
 struct slave_command_run {
@@ -68,7 +72,7 @@ struct slave_command_run {
 };
 
 #ifdef ERTS_SLAVE
-void erts_master_ready(void);
+void erts_master_setup(void);
 void erts_master_await_run(struct slave_command_run*);
 #endif
 

@@ -731,12 +731,6 @@ ETHR_INLINE_MTX_FUNC_NAME_(ethr_mutex_unlock)(ethr_mutex *mtx)
 
 #if defined(ETHR_TRY_INLINE_FUNCS) || defined(ETHR_MUTEX_IMPL__)
 
-/* FIXME: include from somewhere instead */
-void sys_epiphany_stub(const char* name) __attribute__ ((__noreturn__));
-
-#define EPIPHANY_STUB(NAME) sys_epiphany_stub(#NAME)
-#define EPIPHANY_STUB_FUN() sys_epiphany_stub(__FUNCTION__)
-
 static ETHR_INLINE int
 ETHR_INLINE_MTX_FUNC_NAME_(ethr_mutex_trylock)(ethr_mutex *mtx)
 {
