@@ -24,8 +24,8 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_printf_format.h"
+#include "erl_slave_io.h"
 #include "epiphany.h"
-#include "epiphany_io.h"
 #include <e-lib.h>
 
 static int is_leader(void);
@@ -72,7 +72,7 @@ main(int argc, char **argv)
     // Dram behaves strangely until all cores have started
     grab_barrier();
 
-    epiphany_init_io();
+    erts_init_slave_io();
 
     erts_printf("Hi from epiphany\n");
     e_irq_attach(E_SYNC, handl);

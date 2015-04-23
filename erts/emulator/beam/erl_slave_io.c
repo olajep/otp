@@ -22,22 +22,24 @@
 #  include "config.h"
 #endif
 
-#include <stdlib.h>
+/*
+ * E-Hal is compiled without large file support, and makes use of off_t for
+ * memory offsets. We compile the files that interface with e-hal without it.
+ *
+ * Beware: off_t might be a different size in these file compared than all other
+ * files.
+ */
+#ifdef _FILE_OFFSET_BITS
+#  undef _FILE_OFFSET_BITS
+#endif
+
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <assert.h>
 #include <sys/mman.h>
-#include <time.h>
-
-// These cause warnings with -Wstrict-prototypes
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-prototypes"
-#include <e-hal.h>
-#include <e-loader.h>
-#pragma GCC diagnostic pop
 
 #include "sys.h"
+#include "erl_fifo.h"
 #include "slave_syms.h"
 #include "erl_slave_io.h"
 
@@ -47,46 +49,31 @@ static int start_pump_thread(void);
 static void *pump_thread_loop(void *);
 static int pump_output(void);
 
-#define OUTBUF_SZ 1024
-static char * const outbuf = (char*) SLAVE_SYM_outbuf;
-static char * volatile * const out_start = (char * volatile *)SLAVE_SYM_out_start;
-static char * volatile * const out_end = (char * volatile *)SLAVE_SYM_out_end;
+static struct erl_fifo * const slave_io_fifo = (void*)SLAVE_SYM_slave_io_fifo;
 
-/* Copies data from the log output ringbuffer to stdout.
+/*
+ * Copies data from the log output ringbuffer to stdout.
  * Returns the number of bytes copied, or -1 if an error occurred.
  */
 static int pump_output(void) {
-    int pumped = 0;
+    size_t to_pump = erts_fifo_available(slave_io_fifo);
+    char buffer[to_pump];
     ssize_t written;
 
-    char *captured_start = *out_start;
-    char *captured_end = *out_end;
-    ASSERT(outbuf <= captured_start && captured_start < outbuf + OUTBUF_SZ);
-    ASSERT(outbuf <= captured_end && captured_end < outbuf + OUTBUF_SZ);
-    ETHR_MEMBAR(ETHR_LoadLoad); /* out_end -> outbuf */
-
-    if (captured_start > captured_end) {
-	written = write(STDOUT_FILENO, captured_start, (outbuf + OUTBUF_SZ) - captured_start);
-	if (written == -1) goto write_error;
-	pumped += written;
-	captured_start += written;
-	if (captured_start == outbuf + OUTBUF_SZ) captured_start = outbuf;
+    erts_fifo_read_blocking(slave_io_fifo, buffer, to_pump);
+    written = write(STDOUT_FILENO, buffer, to_pump);
+    if (written == -1) {
+	perror("write");
+	return -1;
     }
-    written = write(STDOUT_FILENO, captured_start, captured_end - captured_start);
-    if (written == -1) goto write_error;
-    pumped += written;
-    ETHR_MEMBAR(ETHR_LoadStore); /* outbuf -> out_start */
-    *out_start = captured_start + written;
-    return pumped;
-
- write_error:
-    perror("write");
-    return -1;
+    ASSERT((ssize_t)to_pump == written);
+    return written;
 }
 
 static int memfd = 0;
 
-/* Maps the memory area shared with the epiphany chip to the same address as the
+/*
+ * Maps the memory area shared with the epiphany chip to the same address as the
  * chip sees it at.
  * Returns 0 on success and -1 on failure.
  */

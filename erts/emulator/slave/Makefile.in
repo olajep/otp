@@ -79,7 +79,7 @@ ifeq ($(TYPE),quantify)
 PURIFY = quantify $(QUANTIFY_BUILD_OPTIONS)
 TYPEMARKER = .quantify
 ENABLE_ALLOC_TYPE_VARS += quantify
-  TYPE_FLAGS = @CFLAGS@ -g -O2 -DQUANTIFY -DNO_JUMP_TABLE
+TYPE_FLAGS = @CFLAGS@ -g -O2 -DQUANTIFY -DNO_JUMP_TABLE
 else
 
 ifeq ($(TYPE),purecov)
@@ -153,7 +153,6 @@ space+=
 
 ifeq ($(FLAVOR),smp)
 FLAVOR_MARKER=.smp
-# ETODO: Fix SMP build
 FLAVOR_FLAGS=-DERTS_SMP
 ENABLE_ALLOC_TYPE_VARS += smp nofrag
 else
@@ -185,6 +184,8 @@ darwinCFLAGS=-DDARWIN
 noopsysCFLAGS=
 OPSYSCFLAGS=$($(OPSYS)CFLAGS)
 
+SLAVE_FLAGS=-DERTS_SLAVE
+
 #
 #
 #
@@ -193,7 +194,8 @@ CC      = @CC@
 GCC     = @GCC@
 EMU_CC  = @EMU_CC@
 WFLAGS  = @WFLAGS@
-CFLAGS  = @STATIC_CFLAGS@ $(TYPE_FLAGS) $(FLAVOR_FLAGS) $(DEFS) $(WFLAGS) $(THR_DEFS) $(GIT_VSN)
+CFLAGS  = @STATIC_CFLAGS@ $(TYPE_FLAGS) $(FLAVOR_FLAGS) $(SLAVE_FLAGS) $(DEFS) \
+	  $(WFLAGS) $(THR_DEFS) $(GIT_VSN)
 LD      = @LD@
 PERL    = @PERL@
 RM	= @RM@
@@ -497,13 +499,18 @@ RUN_OBJS = \
 
 OS_OBJS = \
 	$(OBJDIR)/elib_memmove.o	$(OBJDIR)/sys.o \
-	$(OBJDIR)/epiphany.o		$(OBJDIR)/epiphany_io.o
+	$(OBJDIR)/epiphany.o
 
 #	$(OBJDIR)/driver_tab.o \
 
+SLAVE_OBJS = \
+	$(OBJDIR)/erl_fifo.o \
+	$(OBJDIR)/erl_slave_io.o
+
+
 OS_OBJS += $(OBJDIR)/sys_float.o
 
-BASE_OBJS = $(RUN_OBJS) $(EMU_OBJS) $(OS_OBJS)
+BASE_OBJS = $(RUN_OBJS) $(EMU_OBJS) $(OS_OBJS) $(SLAVE_OBJS)
 
 OBJS = $(BASE_OBJS) $(ERTS_INTERNAL_LIB_OBJS)
 

@@ -24,7 +24,8 @@
 #include "sys.h"
 #include "erl_printf_format.h"
 #include "epiphany.h"
-#include "epiphany_io.h"
+#include "erl_slave_io.h"
+#include "erl_fifo.h"
 #include <e-lib.h>
 
 // erl_epiphany_sys.h redeclares write(int, const void*, size_t) with the same
@@ -33,43 +34,25 @@ ssize_t internal_write(int, const void*, size_t);
 
 static int sys_epiphany_printf(char*, va_list);
 
-#define OUTBUF_SZ 1024
-char outbuf[OUTBUF_SZ];
-char * volatile out_start = outbuf;
-char * volatile out_end = outbuf;
+static char outbuf_vec[SLAVE_IO_OUTBUF_SZ];
+struct erl_fifo slave_io_fifo = {
+    .size = SLAVE_IO_OUTBUF_SZ,
+    .buffer = outbuf_vec,
+    .start = outbuf_vec,
+    .end = outbuf_vec,
+};
 static EPIPHANY_SRAM_DATA e_mutex_t global_mutex;
 
 ssize_t
 internal_write(int __attribute__((unused)) fildes,
-	       const void *data, const size_t initial_count)
+	       const void *data, const size_t count)
 {
-    size_t count = initial_count;
     if (epiphany_in_emulator()) return write(STDOUT_FILENO, data, count);
 
     e_mutex_lock(0, 0, &global_mutex);
-
-    while (count > 0) {
-	char *captured_end = out_end;
-	char *captured_start = out_start;
-	size_t to_write = count;
-	if (captured_end < captured_start && captured_end + to_write >= captured_start)
-	    to_write = captured_start - captured_end - 1;
-	if (captured_end + to_write > outbuf + OUTBUF_SZ)
-	    to_write = (outbuf + OUTBUF_SZ) - captured_end;
-	if (captured_end + to_write == outbuf + OUTBUF_SZ
-	    && captured_start == outbuf)
-	    to_write -= 1;
-	memcpy(captured_end, data, to_write);
-	captured_end += to_write;
-	data += to_write;
-	count -= to_write;
-	if (captured_end == outbuf + OUTBUF_SZ)
-	    captured_end = outbuf;
-	out_end = captured_end;
-    }
-
+    erts_fifo_write_blocking(&slave_io_fifo, data, count);
     e_mutex_unlock(0, 0, &global_mutex);
-    return initial_count;
+    return count;
 }
 
 EPIPHANY_SRAM_DATA static char in_line;
@@ -92,7 +75,7 @@ static int sys_epiphany_printf(char *format, va_list args) {
     if (!in_line) {
 	buf.count +=
             snprintf(buf.buffer + buf.count, sizeof(buf.buffer) - buf.count,
-		     "[%d] ", epiphany_coreno());
+		     "[%.2d] ", epiphany_coreno());
     }
     // We mustn't hold the lock while calling complex functions like
     // erts_printf_format, since they might rely on printing or stubbed
@@ -105,7 +88,7 @@ static int sys_epiphany_printf(char *format, va_list args) {
 }
 
 void
-epiphany_init_io(void)
+erts_init_slave_io(void)
 {
     erts_printf_stdout_func = sys_epiphany_printf;
     erts_printf_stderr_func = sys_epiphany_printf;

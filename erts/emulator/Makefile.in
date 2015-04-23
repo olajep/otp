@@ -956,6 +956,7 @@ endif
 
 ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
 SLAVE_OBJS = \
+	$(OBJDIR)/erl_fifo.o \
 	$(OBJDIR)/erl_slave_io.o
 
 EXTRA_BASE_OBJS += $(SLAVE_OBJS)
