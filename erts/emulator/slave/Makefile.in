@@ -506,7 +506,8 @@ OS_OBJS = \
 
 SLAVE_OBJS = \
 	$(OBJDIR)/erl_fifo.o \
-	$(OBJDIR)/erl_slave_io.o
+	$(OBJDIR)/erl_slave_io.o \
+	$(OBJDIR)/erl_slave_command.o
 
 
 OS_OBJS += $(OBJDIR)/sys_float.o

@@ -35,6 +35,10 @@
 #define SLAVE_IO_OUTBUF_SZ 1024
 
 void erts_init_slave_io(void);
+
+#ifndef ERTS_SLAVE
 void erts_stop_slave_io(void);
+extern e_epiphany_t slave_workgroup;
+#endif
 
 #endif /* ERL_SLAVE_IO_H__ */

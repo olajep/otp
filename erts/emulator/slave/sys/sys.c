@@ -1079,6 +1079,6 @@ long __attribute__((weak)) sysconf(int __attribute__((unused)) name)
 void sys_epiphany_stub(const char* name)
 {
     erts_fprintf(stderr, "%s is a stub!\n", name);
-    asm("idle");
+    while(1) asm("idle");
     erl_exit(1, "%s is a stub!\n", name);
 }

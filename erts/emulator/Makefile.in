@@ -602,12 +602,15 @@ $(TTF_DIR)/driver_tab.c: Makefile.in utils/make_driver_tab
 	$(gen_verbose)LANG=C $(PERL) utils/make_driver_tab -o $@ -nifs $(STATIC_NIF_LIBS) -drivers $(DRV_OBJS) $(STATIC_DRIVER_LIBS)
 
 ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
+# Poor mans cross-architecture linking; we generate a header file that, for each
+# symbol [symbol] in the slave emulator, defines SLAVE_SYM_[symbol] to a numeric
+# literal of the address of [symbol].
 $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 # Note: the $(GREP) literals contain the tab (\t) character
 	$(gen_verbose)$(SLAVE_OBJDUMP) -t $< \
-		| $(GREP) -e '.bss	' -e '.data	' -e '.text	' \
+		| $(GREP) -e '.bss	' -e '.data	' -e '.data_bank0	' -e '.text	' \
 		| $(EGREP) '^[0-9a-f]{8} g.* [^ .]+$$' \
-		| $(SED) 's/^\([^ ]*\)[^_]* \([^ ]*\)$$/#define SLAVE_SYM\2 0x\1/g' \
+		| $(SED) 's/^\([^ ]*\).* \([^ ]*\)$$/#define SLAVE_SYM\2 0x\1/g' \
 		> $@
 
 # We don't make GENERATE depend on slave_syms.h because it causes too many
@@ -957,7 +960,8 @@ endif
 ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
 SLAVE_OBJS = \
 	$(OBJDIR)/erl_fifo.o \
-	$(OBJDIR)/erl_slave_io.o
+	$(OBJDIR)/erl_slave_io.o \
+	$(OBJDIR)/erl_slave_command.o
 
 EXTRA_BASE_OBJS += $(SLAVE_OBJS)
 $(SLAVE_OBJS): $(TTF_DIR)/slave_syms.h

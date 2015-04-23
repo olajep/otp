@@ -177,6 +177,7 @@ cleanup_tse(void)
 	erts_tse_return(tse);
 }
 
+#include "epiphany.h"
 /*
  * erts_proc_lock_failed() is called when erts_smp_proc_lock()
  * wasn't able to lock all locks. We may need to transfer locks
@@ -192,7 +193,11 @@ erts_proc_lock_failed(Process *p,
 		      ErtsProcLocks locks,
 		      ErtsProcLocks old_lflgs)
 {
-    EPIPHANY_STUB_FUN();
+    erts_printf("Contention to lock of process %#x (id=%#x), old_lflgs=%#x\n",
+		p, p->common.id, old_lflgs);
+    epiphany_backtrace();
+    returning_abort();
+    // EPIPHANY_STUB_FUN();
 }
 
 /*

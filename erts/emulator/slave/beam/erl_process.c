@@ -28,6 +28,7 @@
 #include "global.h"
 #include "erl_process_lock.h"
 #include "epiphany.h"
+#include "erl_slave_command.h"
 
 
 #define ERTS_DELAYED_WAKEUP_INFINITY (~(Uint64) 0)
@@ -390,6 +391,8 @@ sched_thread_func(void *vesdp)
     /*         &esdp->verify_unused_temp_alloc_data); */
     /* ERTS_VERIFY_UNUSED_TEMP_ALLOC(NULL); */
 #endif
+
+    erts_master_ready();
 
     process_main();
     /* No schedulers should *ever* terminate */
@@ -1046,11 +1049,11 @@ erts_get_scheduler_data(void)
 
 Process *schedule(Process *p, int calls)
 {
-    extern BeamInstr *demo_prog;
     if (p) {
         p->reds += calls;
         return p;
     } else {
+	struct slave_command_run cmd;
 	ErlSpawnOpts so;
 	Process parent;
 	erts_init_empty_process(&parent);
@@ -1058,10 +1061,13 @@ Process *schedule(Process *p, int calls)
 	p = erl_create_process_ptr(&parent, am_false, am_start, NIL, &so);
 	ASSERT(epiphany_in_dram(p));
 	erts_cleanup_empty_process(&parent);
-	p->i = demo_prog;
+	erts_master_await_run(&cmd);
+	p->i = cmd.entry;
 	// Should last a while
 	p->fcalls = 100000;
 
+	erts_printf("Running program %#x with process %#x(id=%#x)\n",
+		    cmd.entry, p, p->common.id);
 #ifndef ERTS_SMP
 	erts_scheduler_data = calloc(1, sizeof(ErtsSchedulerData));
 	ASSERT(epiphany_in_dram(erts_scheduler_data));

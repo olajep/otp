@@ -42,6 +42,7 @@
 #include "erl_fifo.h"
 #include "slave_syms.h"
 #include "erl_slave_io.h"
+#include "erl_slave_command.h"
 
 static int map_shm(void);
 static int spoof_mmap(void);
@@ -144,18 +145,24 @@ static int start_pump_thread(void) {
 }
 
 static int slave_emu_online = 0;
-static e_epiphany_t workgroup;
+e_epiphany_t slave_workgroup;
 
-#define ROWS 1
-#define COLS 1
-static void *pump_thread_loop(void *arg) {
+#define ROWS 2
+#define COLS 2
+static void *pump_thread_loop(void __attribute__((unused)) *arg) {
     char *binary;
+    e_platform_t platform;
     erts_printf("Hi from pump thread\n");
 
-    e_set_host_verbosity(H_D1);
-    e_set_loader_verbosity(L_D1);
     if (e_init(NULL) != E_OK) { return NULL; }
     slave_emu_online = 1;
+
+    if (e_get_platform_info(&platform) != E_OK) {
+	perror("Not loading slave emulator: e_get_platform_info");
+	erts_stop_slave_io();
+	return NULL;
+    }
+    erts_printf("Running e-hal platform ver %#x\n", platform.hal_ver);
 
     if (e_reset_system() != E_OK) {
 	perror("Not loading slave emulator: e_reset_system");
@@ -163,7 +170,7 @@ static void *pump_thread_loop(void *arg) {
 	return NULL;
     }
     printf("Opening %dx%d workgroup\n", ROWS, COLS);
-    if (e_open(&workgroup, 0, 0, ROWS, COLS) != E_OK) {
+    if (e_open(&slave_workgroup, 0, 0, ROWS, COLS) != E_OK) {
 	perror("Not loading slave emulator: e_open");
 	erts_stop_slave_io();
 	return NULL;
@@ -177,18 +184,18 @@ static void *pump_thread_loop(void *arg) {
     }
 
     printf("Loading and starting program\n");
-    if (e_load_group(binary, &workgroup, 0, 0, ROWS, COLS, E_TRUE) != E_OK) {
+    if (e_load_group(binary, &slave_workgroup, 0, 0, ROWS, COLS, E_TRUE) != E_OK) {
 	perror("Not loading slave emulator: e_load");
 	erts_stop_slave_io();
 	return NULL;
     }
 
     printf("Slave emulator online\n");
+    erts_init_slave_command();
 
     while(1) {
-	if (pump_output() == 0) {
-	    struct timespec ms = {0, 1000};
-	    nanosleep(&ms, NULL);
+	if (pump_output() == 0 && erts_dispatch_slave_commands() == 0) {
+	    erts_milli_sleep(1);
 	}
     }
     return NULL;
@@ -203,11 +210,8 @@ void erts_init_slave_io(void) {
     }
 
     if (start_pump_thread()) {
-	fprintf(stderr, "Could not spin up pump thread, killing slaves\n");
-	if (e_reset_system() != E_OK)
-	    perror("Could not stop slave: e_reset_system");
+	fprintf(stderr, "Could not spin up pump thread\n");
 	erts_stop_slave_io();
-	return;
     }
 }
 
@@ -219,7 +223,7 @@ void erts_stop_slave_io(void) {
         ret = munmap((void*)ephy_base, size);
 	if (ret != 0) perror("munmap");
 	ret = close(memfd);
-	if (ret != 0) perror("free: memfd");
+	if (ret != 0) perror("close: memfd");
         spoof_mmap();
     }
     

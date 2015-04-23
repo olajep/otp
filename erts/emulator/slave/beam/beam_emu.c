@@ -1058,10 +1058,8 @@ void process_main(void)
         * process is running. I.e. there is no race for init_done.
         */
 	init_done = 1;
-	erts_printf("Initialising BEAM\n");
 	goto init_emulator;
     }
-    erts_printf("Running BEAM (stack=%x)\n", (unsigned)&pt_arity);
 
     c_p = NULL;
     reds_used = 0;
@@ -3722,10 +3720,6 @@ get_map_elements_fail:
     c_p->freason = SYSTEM_LIMIT;
     goto lb_Cl_error;
 
- OpCase(i_hello_world):
-    erts_printf("Hello world from BEAM!\n");
-    Next(0);
-
  OpCase(i_write): {
      Eterm value;
      GetArg1(0, value);
@@ -3893,49 +3887,9 @@ get_map_elements_fail:
 
 	 BeamInstr *ptr = demo_prog = calloc(100, sizeof(BeamInstr));
 
-	 *(ptr++) = (BeamInstr)OpCode(i_hello_world);
-
 	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
-	 *(ptr++) = (BeamInstr)make_small(0);
+	 *(ptr++) = (BeamInstr)make_small(16);
 	 *(ptr++) = (BeamInstr)fib;
-	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
-	 *(ptr++) = (BeamInstr)make_rreg();
-	 *(ptr++) = (BeamInstr)"fib(0)";
-
-	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
-	 *(ptr++) = (BeamInstr)make_small(1);
-	 *(ptr++) = (BeamInstr)fib;
-	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
-	 *(ptr++) = (BeamInstr)make_rreg();
-	 *(ptr++) = (BeamInstr)"fib(1)";
-
-	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
-	 *(ptr++) = (BeamInstr)make_small(2);
-	 *(ptr++) = (BeamInstr)fib;
-	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
-	 *(ptr++) = (BeamInstr)make_rreg();
-	 *(ptr++) = (BeamInstr)"fib(2)";
-
-	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
-	 *(ptr++) = (BeamInstr)make_small(3);
-	 *(ptr++) = (BeamInstr)fib;
-	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
-	 *(ptr++) = (BeamInstr)make_rreg();
-	 *(ptr++) = (BeamInstr)"fib(3)";
-
-	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
-	 *(ptr++) = (BeamInstr)make_small(5);
-	 *(ptr++) = (BeamInstr)fib;
-	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
-	 *(ptr++) = (BeamInstr)make_rreg();
-	 *(ptr++) = (BeamInstr)"fib(5)";
-
-	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
-	 *(ptr++) = (BeamInstr)make_small(9);
-	 *(ptr++) = (BeamInstr)fib;
-	 *(ptr++) = (BeamInstr)OpCode(i_write_str);
-	 *(ptr++) = (BeamInstr)make_rreg();
-	 *(ptr++) = (BeamInstr)"fib(9)";
 
 	 *(ptr++) = (BeamInstr)OpCode(i_put_tuple_xI);
 	 *(ptr++) = (BeamInstr)(1 * sizeof(Eterm)); // x1 receives the result

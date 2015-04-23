@@ -46,7 +46,11 @@ static int is_leader() {
 static volatile int slave_flag = 0;
 #endif
 
-static volatile int start_barrier __attribute__((section(".data_bank0")));
+/*
+ * The barrier is non-static as it it used by erl_slave_command in the master to
+ * await slave initialisation.
+ */
+volatile int start_barrier __attribute__((section(".data_bank0")));
 static void grab_barrier() {
     int row, col;
     const int rows = e_group_config.group_rows;
@@ -74,7 +78,6 @@ main(int argc, char **argv)
 
     erts_init_slave_io();
 
-    erts_printf("Hi from epiphany\n");
     e_irq_attach(E_SYNC, handl);
     e_irq_attach(E_SW_EXCEPTION, handl);
     e_irq_attach(E_MEM_FAULT, handl);
@@ -99,7 +102,6 @@ main(int argc, char **argv)
 #ifdef ERTS_SMP
 	unsigned sched_no = epiphany_coreno();
         while (slave_flag == 0);
-	erts_printf("Scheduler %d flagged!\n", sched_no);
 	enter_scheduler(sched_no);
 #endif
     }
