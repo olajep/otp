@@ -604,6 +604,12 @@ bif erts_internal:cmp_term/2
 # New in 17.1.
 #
 bif erlang:fun_info_mfa/1
+
+#
+# New in ??
+#
+bif slave:spawn/3
+
 #
 # Obsolete
 #

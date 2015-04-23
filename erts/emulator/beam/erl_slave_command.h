@@ -22,9 +22,13 @@
 #define ERL_SLAVE_COMMAND_H__
 
 #include "erl_term.h"
+#include "erl_process.h"
 #include "erl_fifo.h"
 
 #ifndef ERTS_SLAVE
+extern void **slave_beam_ops;
+extern BeamInstr *slave_demo_prog;
+
 void erts_init_slave_command(void);
 void erts_stop_slave_command(void);
 #endif
@@ -60,6 +64,7 @@ enum slave_command {
 
 struct slave_command_run {
     BeamInstr *entry;
+    Eterm parent;
 };
 
 #ifdef ERTS_SLAVE
@@ -68,7 +73,7 @@ void erts_master_await_run(struct slave_command_run*);
 #endif
 
 #ifndef ERTS_SLAVE
-void erts_slave_run(int, BeamInstr*);
+Eterm erts_slave_run(Process*, BeamInstr*);
 #endif
 
 #endif /* ERL_SLAVE_COMMAND_H__ */

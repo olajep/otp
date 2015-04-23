@@ -47,6 +47,9 @@ static void send_command(struct slave * slave, enum slave_command code,
 			 void *data, size_t size);
 static void* slave_alloc(size_t amount);
 
+void **slave_beam_ops;
+BeamInstr *slave_demo_prog;
+
 static int num_slaves = 0;
 static struct slave *slaves;
 #define SLAVE_COMMAND_BUFFER_SIZE 512
@@ -113,11 +116,18 @@ erts_init_slave_command(void)
     }
 }
 
-void
-erts_slave_run(int slave, BeamInstr *entry)
+Eterm
+erts_slave_run(Process* parent, BeamInstr *entry)
 {
-    struct slave_command_run cmd = { entry };
+    int slave;
+    struct slave_command_run cmd = { entry, parent->common.id };
+    for (slave = 0; slave < num_slaves; slave++)
+	if (slaves[slave].available) break;
+    if (slave == num_slaves) return am_error;
+
     send_command(slaves + slave, SLAVE_COMMAND_RUN, &cmd, sizeof(cmd));
+    slaves[slave].available = 0;
+    return parent->common.id;
 }
 
 static void
@@ -144,9 +154,9 @@ erts_dispatch_slave_commands(void)
 	    if (available < sizeof(struct master_command_ready)) break;
 	    erts_fifo_skip(fifo, sizeof(enum master_command));
 	    erts_fifo_read_blocking(fifo, &msg, sizeof(struct master_command_ready));
-	    erts_printf("Received READY from %d (beam_ops=%#x, demo_prog=%#x)\n",
-			i, msg.beam_ops, msg.demo_prog);
-	    erts_slave_run(i, msg.demo_prog);
+	    slaves[i].available = 1;
+	    slave_beam_ops = msg.beam_ops;
+	    slave_demo_prog = msg.demo_prog;
 	    dispatched++;
 	    break;
 	}

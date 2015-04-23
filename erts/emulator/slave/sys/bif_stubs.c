@@ -39,6 +39,12 @@
 #include "erl_bif_list.h"
 #undef BIF_LIST
 
+Eterm
+erts_bif_trace(int bif_index, Process* p, Eterm* args, BeamInstr* I)
+{
+    EPIPHANY_STUB_FUN();
+}
+
 Eterm __attribute__((weak))
 erts_gc_mixed_plus(Process* p, Eterm* reg, Uint live)
 {

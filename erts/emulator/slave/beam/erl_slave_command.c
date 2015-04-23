@@ -65,5 +65,4 @@ erts_master_await_run(struct slave_command_run *cmd)
     ASSERT(code == SLAVE_COMMAND_RUN);
     erts_fifo_read_blocking(&slave_command_buffers->slave, cmd,
 			    sizeof(struct slave_command_run));
-    erts_printf("Got %#x\n", cmd->entry);
 }

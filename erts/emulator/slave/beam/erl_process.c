@@ -645,7 +645,7 @@ alloc_process(ErtsRunQueue *rq, erts_aint32_t state)
 }
 
 static Process *
-erl_create_process_ptr(Process* parent, /* Parent of process (default group leader). */
+erl_create_process_ptr(Eterm parent, /* Parent of process (default group leader). */
 		       Eterm mod,	/* Tagged atom for module. */
 		       Eterm func,	/* Tagged atom for function. */
 		       Eterm args,	/* Arguments for function (must be well-formed list). */
@@ -661,7 +661,7 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     erts_aint32_t prio = (erts_aint32_t) PRIORITY_NORMAL;
 
 #ifdef ERTS_SMP
-    erts_smp_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
+    //erts_smp_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
 #endif
 
     /*
@@ -679,8 +679,8 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     p = alloc_process(NULL, state); /* All proc locks are locked by this thread
 				     on success */
     if (!p) {
-	erts_send_error_to_logger_str(parent->group_leader,
-				      "Too many processes\n");
+	/* erts_send_error_to_logger_str(parent->group_leader, */
+	/* 			      "Too many processes\n"); */
 	so->error_code = SYSTEM_LIMIT;
 	goto error;
     }
@@ -719,8 +719,8 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     p->off_heap.first = NULL;
     p->off_heap.overhead = 0;
 
-    heap_need +=
-	IS_CONST(parent->group_leader) ? 0 : NC_HEAP_SIZE(parent->group_leader);
+    /* heap_need += */
+    /* 	IS_CONST(parent->group_leader) ? 0 : NC_HEAP_SIZE(parent->group_leader); */
 
     if (heap_need < p->min_heap_size) {
 	sz = heap_need = p->min_heap_size;
@@ -763,7 +763,7 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     p->arg_reg[0] = mod;
     p->arg_reg[1] = func;
     BM_STOP_TIMER(system);
-    BM_MESSAGE(args,p,parent);
+    // BM_MESSAGE(args,p,parent);
     BM_START_TIMER(system);
     BM_SWAP_TIMER(system,copy);
     p->arg_reg[2] = copy_struct(args, arg_size, &p->htop, &p->off_heap);
@@ -788,17 +788,17 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     p->nodes_monitors = NULL;
     p->suspend_monitors = NULL;
 
-    ASSERT(is_pid(parent->group_leader));
+    /* ASSERT(is_pid(parent->group_leader)); */
 
-    if (parent->group_leader == ERTS_INVALID_PID)
+    /* if (parent->group_leader == ERTS_INVALID_PID) */
 	p->group_leader = p->common.id;
-    else {
-	/* Needs to be done after the heap has been set up */
-	p->group_leader =
-	    IS_CONST(parent->group_leader)
-	    ? parent->group_leader
-	    : STORE_NC(&p->htop, &p->off_heap, parent->group_leader);
-    }
+    /* else { */
+    /* 	/\* Needs to be done after the heap has been set up *\/ */
+    /* 	p->group_leader = */
+    /* 	    IS_CONST(parent->group_leader) */
+    /* 	    ? parent->group_leader */
+    /* 	    : STORE_NC(&p->htop, &p->off_heap, parent->group_leader); */
+    /* } */
 
     p->msg.first = NULL;
     p->msg.last = &p->msg.first;
@@ -821,9 +821,7 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
     DT_UTAG(p) = NIL;
     DT_UTAG_FLAGS(p) = 0;
 #endif
-    p->parent = (parent->common.id == ERTS_INVALID_PID
-		 ? NIL
-		 : parent->common.id);
+    p->parent = parent;
 
     INIT_HOLE_CHECK(p);
 #ifdef DEBUG
@@ -834,19 +832,19 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
      * Check if this process should be initially linked to its parent.
      */
 
-    if (so->flags & SPO_LINK) {
-	if (IS_TRACED(parent)) {
-	    if (ERTS_TRACE_FLAGS(parent) & (F_TRACE_SOL|F_TRACE_SOL1)) {
-		ERTS_TRACE_FLAGS(p) |= (ERTS_TRACE_FLAGS(parent)&TRACEE_FLAGS);
-		ERTS_TRACER_PROC(p) = ERTS_TRACER_PROC(parent); /*maybe steal*/
+    /* if (so->flags & SPO_LINK) { */
+    /* 	if (IS_TRACED(parent)) { */
+    /* 	    if (ERTS_TRACE_FLAGS(parent) & (F_TRACE_SOL|F_TRACE_SOL1)) { */
+    /* 		ERTS_TRACE_FLAGS(p) |= (ERTS_TRACE_FLAGS(parent)&TRACEE_FLAGS); */
+    /* 		ERTS_TRACER_PROC(p) = ERTS_TRACER_PROC(parent); /\*maybe steal*\/ */
 
-		if (ERTS_TRACE_FLAGS(parent) & F_TRACE_SOL1) {/*maybe override*/
-		    ERTS_TRACE_FLAGS(p) &= ~(F_TRACE_SOL1 | F_TRACE_SOL);
-		    ERTS_TRACE_FLAGS(parent) &= ~(F_TRACE_SOL1 | F_TRACE_SOL);
-		}
-	    }
-	}
-    }
+    /* 		if (ERTS_TRACE_FLAGS(parent) & F_TRACE_SOL1) {/\*maybe override*\/ */
+    /* 		    ERTS_TRACE_FLAGS(p) &= ~(F_TRACE_SOL1 | F_TRACE_SOL); */
+    /* 		    ERTS_TRACE_FLAGS(parent) &= ~(F_TRACE_SOL1 | F_TRACE_SOL); */
+    /* 		} */
+    /* 	    } */
+    /* 	} */
+    /* } */
 
 #ifdef ERTS_SMP
     p->scheduler_data = NULL;
@@ -878,7 +876,7 @@ erl_create_process_ptr(Process* parent, /* Parent of process (default group lead
 
  error:
 
-    erts_smp_proc_unlock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
+    // erts_smp_proc_unlock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
 
    return res;
 }
@@ -1055,13 +1053,10 @@ Process *schedule(Process *p, int calls)
     } else {
 	struct slave_command_run cmd;
 	ErlSpawnOpts so;
-	Process parent;
-	erts_init_empty_process(&parent);
 	so.flags = 0;
-	p = erl_create_process_ptr(&parent, am_false, am_start, NIL, &so);
-	ASSERT(epiphany_in_dram(p));
-	erts_cleanup_empty_process(&parent);
 	erts_master_await_run(&cmd);
+	p = erl_create_process_ptr(cmd.parent, am_false, am_start, NIL, &so);
+	ASSERT(epiphany_in_dram(p));
 	p->i = cmd.entry;
 	// Should last a while
 	p->fcalls = 100000;
