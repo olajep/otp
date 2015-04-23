@@ -24,8 +24,9 @@
 #ifndef _ERL_EPIPHANY_SYS_H
 #define _ERL_EPIPHANY_SYS_H
 
-#include <stdio.h>
+#include "epiphany_alloc_redirect.h"
 #include "epiphany_io_redirect.h"
+#include <stdio.h>
 #include <math.h>
 #include <limits.h>
 #include <stdlib.h>

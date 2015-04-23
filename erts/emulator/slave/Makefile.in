@@ -415,9 +415,10 @@ endif
 
 CFLAGS += -MMD -MP
 
-# We don't want any stray printf's breaking things, but we don't want to include
-# "sys.h" or otherwise mess with portability.
-INTERNAL_LIB_CFLAGS = $(CFLAGS) -include epiphany_io_redirect.h
+# We don't want any stray printfs or mallocs breaking things, but we don't want
+# to include "sys.h" or otherwise mess with portability.
+INTERNAL_LIB_CFLAGS = $(CFLAGS) -include epiphany_alloc_redirect.h \
+	-include epiphany_io_redirect.h
 
 # ----------------------------------------------------------------------
 # Pattern rules
@@ -499,7 +500,7 @@ RUN_OBJS = \
 
 OS_OBJS = \
 	$(OBJDIR)/elib_memmove.o	$(OBJDIR)/sys.o \
-	$(OBJDIR)/epiphany.o
+	$(OBJDIR)/epiphany.o		$(OBJDIR)/sys_alloc.o
 
 #	$(OBJDIR)/driver_tab.o \
 

@@ -216,10 +216,29 @@ void *erts_alloc_permanent_cache_aligned(ErtsAlcType_t type, Uint size);
 #if ERTS_ALC_DO_INLINE || defined(ERTS_ALC_INTERNAL__)
 
 ERTS_ALC_INLINE
+void *erts_alloc_fnf(ErtsAlcType_t __attribute__((unused)) type, Uint size)
+{
+    return internal_malloc(size);
+}
+
+
+ERTS_ALC_INLINE
+void *erts_realloc_fnf(ErtsAlcType_t __attribute__((unused)) type, void *ptr, Uint size)
+{
+    return realloc(ptr, size);
+}
+
+ERTS_ALC_INLINE
+void erts_free(ErtsAlcType_t __attribute__((unused)) type, void *ptr)
+{
+    internal_free(ptr);
+}
+
+ERTS_ALC_INLINE
 void *erts_alloc(ErtsAlcType_t type, Uint size)
 {
     void *res;
-    res = malloc(size);
+    res = erts_alloc_fnf(type, size);
     if (!res)
 	erts_alloc_n_enomem(ERTS_ALC_T2N(type), size);
     return res;
@@ -229,30 +248,10 @@ ERTS_ALC_INLINE
 void *erts_realloc(ErtsAlcType_t type, void *ptr, Uint size)
 {
     void *res;
-    res = realloc(ptr, size);
+    res = erts_realloc_fnf(type, ptr, size);
     if (!res)
 	erts_realloc_n_enomem(ERTS_ALC_T2N(type), ptr, size);
     return res;
-}
-
-ERTS_ALC_INLINE
-void erts_free(ErtsAlcType_t __attribute__((unused)) type, void *ptr)
-{
-    free(ptr);
-}
-
-
-ERTS_ALC_INLINE
-void *erts_alloc_fnf(ErtsAlcType_t __attribute__((unused)) type, Uint size)
-{
-    return malloc(size);
-}
-
-
-ERTS_ALC_INLINE
-void *erts_realloc_fnf(ErtsAlcType_t __attribute__((unused)) type, void *ptr, Uint size)
-{
-    return realloc(ptr, size);
 }
 
 #endif /* #if ERTS_ALC_DO_INLINE || defined(ERTS_ALC_INTERNAL__) */
