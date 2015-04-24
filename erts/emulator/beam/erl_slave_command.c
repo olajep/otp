@@ -37,6 +37,7 @@
 #include "slave_syms.h"
 #include "erl_slave_io.h"
 #include "erl_slave_command.h"
+#include "erl_slave_alloc.h"
 
 struct slave {
     struct slave_command_buffers *buffers;
@@ -45,7 +46,6 @@ struct slave {
 
 static void send_command(struct slave * slave, enum slave_command code,
 			 void *data, size_t size);
-static void* slave_alloc(size_t amount);
 
 void **slave_beam_ops;
 BeamInstr *slave_demo_prog;
@@ -55,14 +55,14 @@ static struct slave *slaves;
 #define SLAVE_COMMAND_BUFFER_SIZE 512
 
 static void alloc_slave_buffer(struct erl_fifo *buffer) {
-    void *data = slave_alloc(SLAVE_COMMAND_BUFFER_SIZE);
+    void *data = erl_slave_malloc(SLAVE_COMMAND_BUFFER_SIZE);
     ASSERT(data);
     erts_fifo_init(buffer, data, SLAVE_COMMAND_BUFFER_SIZE);
 }
 
 static struct slave_command_buffers *alloc_slave_buffers(void) {
     struct slave_command_buffers *buffers
-	= slave_alloc(sizeof(struct slave_command_buffers));
+	= erl_slave_malloc(sizeof(struct slave_command_buffers));
     ASSERT(buffers);
     buffers->master.size = buffers->slave.size = SLAVE_COMMAND_BUFFER_SIZE;
     alloc_slave_buffer(&buffers->master);
@@ -176,16 +176,4 @@ erts_dispatch_slave_commands(void)
 
     }
     return dispatched;
-}
-
-#define SLAVE_HEAP_START (void*)0x8e100000
-#define SLAVE_HEAP_END   (void*)0x8f000000
-static void *slave_alloc_next = SLAVE_HEAP_START;
-
-static void* slave_alloc(size_t amount) {
-    const int alignment = 16;
-    amount = ((amount + alignment - 1) / alignment) * alignment;
-    if (slave_alloc_next + amount >= SLAVE_HEAP_END) return NULL;
-    slave_alloc_next += amount;
-    return slave_alloc_next - amount;
 }

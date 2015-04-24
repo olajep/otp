@@ -43,6 +43,7 @@
 #include "slave_syms.h"
 #include "erl_slave_io.h"
 #include "erl_slave_command.h"
+#include "erl_slave_alloc.h"
 
 static int map_shm(void);
 static int spoof_mmap(void);
@@ -85,6 +86,8 @@ static int map_shm(void) {
     unsigned phy_base  = 0x3e000000;
     unsigned size      = 0x02000000;
     unsigned ephy_base = 0x8e000000;
+    unsigned slave_static_sz = 0x00100000;
+    unsigned slave_heap_sz =   0x00100000;
 
     // The old way, for devices without the Epiphany kernel driver
     memfd = open("/dev/mem", O_RDWR | O_SYNC);
@@ -108,6 +111,8 @@ static int map_shm(void) {
 		(unsigned)ephy_base, (unsigned)ret);
 	return -1;
     }
+    erl_slave_alloc_submit((void*)(ephy_base + slave_static_sz),
+			   size - slave_static_sz - slave_heap_sz);
     return 0;
 }
 
