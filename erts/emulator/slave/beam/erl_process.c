@@ -465,7 +465,7 @@ sched_thread_func(void *vesdp)
 ** Allocate process and find out where to place next process.
 */
 static Process*
-alloc_process(ErtsRunQueue *rq, erts_aint32_t state)
+alloc_process(Eterm id, erts_aint32_t state)
 {
     Process *p;
 
@@ -477,7 +477,7 @@ alloc_process(ErtsRunQueue *rq, erts_aint32_t state)
 
     ASSERT(((char *) p) == ((char *) &p->common));
 
-    p->common.id = 16|3;
+    p->common.id = id;
     erts_smp_atomic32_init_relb(&p->state, state);
 
 #ifdef ERTS_SMP
@@ -522,8 +522,8 @@ erl_create_process_ptr(const struct slave_command_run *cmd, ErlSpawnOpts *so)
     state |= (((prio & ERTS_PSFLGS_PRIO_MASK) << ERTS_PSFLGS_ACT_PRIO_OFFSET)
 	      | ((prio & ERTS_PSFLGS_PRIO_MASK) << ERTS_PSFLGS_USR_PRIO_OFFSET));
 
-    p = alloc_process(NULL, state); /* All proc locks are locked by this thread
-				     on success */
+    p = alloc_process(cmd->id, state); /* All proc locks are locked by this thread
+					* on success */
     if (!p) {
 	/* erts_send_error_to_logger_str(parent->group_leader, */
 	/* 			      "Too many processes\n"); */
@@ -1232,7 +1232,7 @@ Process *schedule(Process *p, int calls)
 	// Should last a while
 	p->fcalls = 100000;
 
-	erts_printf("Running program %#x with process %#x(id=%#x)\n",
+	erts_printf("Running program %#x with process %#x(id=%T)\n",
 		    cmd.entry, p, p->common.id);
 #ifndef ERTS_SMP
 	erts_scheduler_data = calloc(1, sizeof(ErtsSchedulerData));
