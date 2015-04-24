@@ -75,7 +75,7 @@ static int sys_epiphany_printf(char *format, va_list args) {
     if (!in_line) {
 	buf.count +=
             snprintf(buf.buffer + buf.count, sizeof(buf.buffer) - buf.count,
-		     "[%.2d] ", epiphany_coreno());
+		     "[%2d] ", epiphany_coreno());
     }
     // We mustn't hold the lock while calling complex functions like
     // erts_printf_format, since they might rely on printing or stubbed

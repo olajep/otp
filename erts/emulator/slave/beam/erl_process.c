@@ -498,17 +498,10 @@ alloc_process(ErtsRunQueue *rq, erts_aint32_t state)
 }
 
 static Process *
-erl_create_process_ptr(Eterm parent, /* Parent of process (default group leader). */
-		       Eterm mod,	/* Tagged atom for module. */
-		       Eterm func,	/* Tagged atom for function. */
-		       Eterm args,	/* Arguments for function (must be well-formed list). */
-		       ErlSpawnOpts* so) /* Options for spawn. */
+erl_create_process_ptr(const struct slave_command_run *cmd, ErlSpawnOpts *so)
 {
     Process *p;
     Sint arity;			/* Number of arguments. */
-    Uint arg_size;		/* Size of arguments. */
-    Uint sz;			/* Needed words on heap. */
-    Uint heap_need;		/* Size needed on heap. */
     Process *res = NULL;
     erts_aint32_t state = 0;
     erts_aint32_t prio = (erts_aint32_t) PRIORITY_NORMAL;
@@ -521,7 +514,7 @@ erl_create_process_ptr(Eterm parent, /* Parent of process (default group leader)
      * Check for errors.
      */
 
-    if (is_not_atom(mod) || is_not_atom(func) || ((arity = erts_list_length(args)) < 0)) {
+    if (is_not_atom(cmd->mod) || is_not_atom(cmd->func) || ((arity = erts_list_length(cmd->args)) < 0)) {
 	so->error_code = BADARG;
 	goto error;
     }
@@ -543,11 +536,6 @@ erl_create_process_ptr(Eterm parent, /* Parent of process (default group leader)
 #endif
     BM_COUNT(processes_spawned);
 
-    BM_SWAP_TIMER(system,size);
-    arg_size = size_object(args);
-    BM_SWAP_TIMER(size,system);
-    heap_need = arg_size;
-
     p->flags = erts_default_process_flags;
 
     if (so->flags & SPO_USE_ARGS) {
@@ -562,25 +550,9 @@ erl_create_process_ptr(Eterm parent, /* Parent of process (default group leader)
     p->schedule_count = 0;
     // ASSERT(p->min_heap_size == erts_next_heap_size(p->min_heap_size, 0));
     
-    p->initial[INITIAL_MOD] = mod;
-    p->initial[INITIAL_FUN] = func;
+    p->initial[INITIAL_MOD] = cmd->mod;
+    p->initial[INITIAL_FUN] = cmd->func;
     p->initial[INITIAL_ARI] = (Uint) arity;
-
-    /*
-     * Must initialize binary lists here before copying binaries to process.
-     */
-    p->off_heap.first = NULL;
-    p->off_heap.overhead = 0;
-
-    /* heap_need += */
-    /* 	IS_CONST(parent->group_leader) ? 0 : NC_HEAP_SIZE(parent->group_leader); */
-
-    if (heap_need < p->min_heap_size) {
-	sz = heap_need = p->min_heap_size;
-    } else {
-	sz = MAX(1024, heap_need);
-	// sz = erts_next_heap_size(heap_need, 0);
-    }
 
 #ifdef HIPE
     hipe_init_process(&p->hipe);
@@ -588,13 +560,13 @@ erl_create_process_ptr(Eterm parent, /* Parent of process (default group leader)
     hipe_init_process_smp(&p->hipe_smp);
 #endif
 #endif
-    p->heap = (Eterm *) ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP, sizeof(Eterm)*sz);
+    p->heap = cmd->heap;
     p->old_hend = p->old_htop = p->old_heap = NULL;
     p->high_water = p->heap;
     p->gen_gcs = 0;
-    p->stop = p->hend = p->heap + sz;
-    p->htop = p->heap;
-    p->heap_sz = sz;
+    p->stop = p->hend = cmd->stop;
+    p->htop = cmd->htop;
+    p->heap_sz = cmd->stop - cmd->heap;
     p->catches = 0;
 
     p->bin_vheap_sz     = p->min_vheap_size;
@@ -613,15 +585,12 @@ erl_create_process_ptr(Eterm parent, /* Parent of process (default group leader)
 
     p->arg_reg = p->def_arg_reg;
     p->max_arg_reg = sizeof(p->def_arg_reg)/sizeof(p->def_arg_reg[0]);
-    p->arg_reg[0] = mod;
-    p->arg_reg[1] = func;
+    p->arg_reg[0] = cmd->mod;
+    p->arg_reg[1] = cmd->func;
     BM_STOP_TIMER(system);
     // BM_MESSAGE(args,p,parent);
     BM_START_TIMER(system);
-    BM_SWAP_TIMER(system,copy);
-    p->arg_reg[2] = copy_struct(args, arg_size, &p->htop, &p->off_heap);
-    BM_MESSAGE_COPIED(arg_size);
-    BM_SWAP_TIMER(copy,system);
+    p->arg_reg[2] = cmd->args;
     p->arity = 3;
 
     p->fvalue = NIL;
@@ -674,7 +643,7 @@ erl_create_process_ptr(Eterm parent, /* Parent of process (default group leader)
     DT_UTAG(p) = NIL;
     DT_UTAG_FLAGS(p) = 0;
 #endif
-    p->parent = parent;
+    p->parent = cmd->parent_id;
 
     INIT_HOLE_CHECK(p);
 #ifdef DEBUG
@@ -987,17 +956,17 @@ delete_process(Process* p)
     hipe_delete_process(&p->hipe);
 #endif
 
-    ERTS_HEAP_FREE(ERTS_ALC_T_HEAP, (void*) p->heap, p->heap_sz*sizeof(Eterm));
-    if (p->old_heap != NULL) {
+/*     ERTS_HEAP_FREE(ERTS_ALC_T_HEAP, (void*) p->heap, p->heap_sz*sizeof(Eterm)); */
+/*     if (p->old_heap != NULL) { */
 
-#ifdef DEBUG
-	sys_memset(p->old_heap, DEBUG_BAD_BYTE,
-                   (p->old_hend-p->old_heap)*sizeof(Eterm));
-#endif
-	ERTS_HEAP_FREE(ERTS_ALC_T_OLD_HEAP,
-		       p->old_heap,
-		       (p->old_hend-p->old_heap)*sizeof(Eterm));
-    }
+/* #ifdef DEBUG */
+/* 	sys_memset(p->old_heap, DEBUG_BAD_BYTE, */
+/*                    (p->old_hend-p->old_heap)*sizeof(Eterm)); */
+/* #endif */
+/* 	ERTS_HEAP_FREE(ERTS_ALC_T_OLD_HEAP, */
+/* 		       p->old_heap, */
+/* 		       (p->old_hend-p->old_heap)*sizeof(Eterm)); */
+/*     } */
 
     /*
      * Free all pending message buffers.
@@ -1223,6 +1192,7 @@ cancel_suspend_of_suspendee(Process *p, ErtsProcLocks p_locks)
 
 Process *schedule(Process *p, int calls)
 {
+    struct master_command_ready ready_cmd;
     ERTS_SMP_LC_ASSERT(!erts_thr_progress_is_blocking());
     if (p) {
 	erts_aint32_t state = erts_smp_atomic32_read_acqb(&p->state);
@@ -1255,8 +1225,8 @@ Process *schedule(Process *p, int calls)
 	ErlSpawnOpts so;
 	ErtsSchedulerData *esdp = erts_get_scheduler_data();
 	so.flags = 0;
-	erts_master_await_run(&cmd);
-	p = erl_create_process_ptr(cmd.parent, am_false, am_start, NIL, &so);
+	erts_master_await_run(&ready_cmd, &cmd);
+	p = erl_create_process_ptr(&cmd, &so);
 	ASSERT(epiphany_in_dram(p));
 	p->i = cmd.entry;
 	// Should last a while

@@ -11110,6 +11110,14 @@ set_proc_exiting(Process *p,
     int enqueue;
     ERTS_SMP_LC_ASSERT(erts_proc_lc_my_proc_locks(p) == ERTS_PROC_LOCKS_ALL);
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (state & ERTS_PSFLG_SLAVE) {
+	erts_printf(__FILE__ ":%d:%s(): Slaves can't be killed yet, sorry!\n",
+		    __LINE__, __FUNCTION__);
+	return;
+    }
+#endif
+
     enqueue = change_proc_schedule_state(p,
 					 ERTS_PSFLG_SUSPENDED|ERTS_PSFLG_PENDING_EXIT,
 					 ERTS_PSFLG_EXITING|ERTS_PSFLG_ACTIVE,

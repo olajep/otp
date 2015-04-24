@@ -29,7 +29,7 @@
 /* Set by the master */
 EPIPHANY_SRAM_DATA struct slave_command_buffers *volatile slave_command_buffers;
 
-static void send_command(enum master_command code, void *data, size_t size);
+static void send_command(enum master_command code, const void *data, size_t size);
 
 void
 erts_master_setup(void)
@@ -46,7 +46,7 @@ erts_master_setup(void)
 }
 
 static void
-send_command(enum master_command code, void *data, size_t size)
+send_command(enum master_command code, const void *data, size_t size)
 {
     if (slave_command_buffers == NULL)
 	erts_printf("Waiting for command buffers to become available\n");
@@ -56,13 +56,12 @@ send_command(enum master_command code, void *data, size_t size)
 }
 
 void
-erts_master_await_run(struct slave_command_run *cmd)
+erts_master_await_run(const struct master_command_ready *ready_cmd, struct slave_command_run *cmd)
 {
-    struct master_command_ready ready_cmd;
     enum slave_command code;
     erts_printf("Awaiting program from master\n");
     while (slave_command_buffers == NULL);
-    send_command(MASTER_COMMAND_READY, &ready_cmd, sizeof(ready_cmd));
+    send_command(MASTER_COMMAND_READY, ready_cmd, sizeof(*ready_cmd));
     erts_fifo_read_blocking(&slave_command_buffers->slave, &code, sizeof(code));
     ASSERT(code == SLAVE_COMMAND_RUN);
     erts_fifo_read_blocking(&slave_command_buffers->slave, cmd,

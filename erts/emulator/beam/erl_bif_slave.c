@@ -28,14 +28,26 @@
 #include "sys.h"
 #include "global.h"
 #include "bif.h"
-#include "erl_slave_command.h"
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#include "erl_slave_process.h"
+#endif
 
 BIF_RETTYPE slave_spawn_3(BIF_ALIST_3)
 {
 #ifdef ERTS_SLAVE_EMU_ENABLED
+    ErlSpawnOpts so;
+    Eterm pid;
+
+    so.flags = 0;
     /* ETODO: Somewhere, synchronisation is missing... */
-    BIF_RET(erts_slave_run(BIF_P, slave_demo_prog));
+    pid = erl_create_slave_process(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3, &so);
+    if (is_non_value(pid)) {
+	BIF_ERROR(BIF_P, so.error_code);
+    } else {
+	BIF_RET(pid);
+    }
 #else
-    return am_undefined;
+    BIF_RET(am_undefined);
 #endif
 }

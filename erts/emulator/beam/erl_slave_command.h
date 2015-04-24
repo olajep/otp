@@ -25,15 +25,11 @@
 #include "erl_process.h"
 #include "erl_fifo.h"
 
-#ifndef ERTS_SLAVE
-extern void **slave_beam_ops;
-extern BeamInstr *slave_demo_prog;
-
-void erts_init_slave_command(void);
-void erts_stop_slave_command(void);
-#endif
-
-int erts_dispatch_slave_commands(void);
+/*
+ * We override the default alignment of structs that are shared between slave
+ * and master.
+ */
+#define SHARED_DATA __attribute__((aligned(8)))
 
 /*
  * We use the shared-memory fifos for command buffers.
@@ -45,6 +41,12 @@ struct slave_command_buffers {
     struct erl_fifo master;
     /* Commands to the slave */
     struct erl_fifo slave;
+} SHARED_DATA;
+
+struct slave {
+    struct slave_command_buffers *buffers;
+    Process *c_p;
+    int available;
 };
 
 enum master_command {
@@ -57,10 +59,10 @@ struct master_command_setup {
     void** beam_ops;
 #endif
     BeamInstr *demo_prog;
-};
+} SHARED_DATA;
 
 struct master_command_ready {
-};
+} SHARED_DATA;
 
 enum slave_command {
     SLAVE_COMMAND_RUN,
@@ -68,16 +70,32 @@ enum slave_command {
 
 struct slave_command_run {
     BeamInstr *entry;
-    Eterm parent;
-};
-
-#ifdef ERTS_SLAVE
-void erts_master_setup(void);
-void erts_master_await_run(struct slave_command_run*);
-#endif
+    Eterm id, parent_id;
+    Eterm mod, func, args;
+    Eterm *heap, *htop, *stop;
+} SHARED_DATA;
 
 #ifndef ERTS_SLAVE
-Eterm erts_slave_run(Process*, BeamInstr*);
+extern void **slave_beam_ops;
+extern BeamInstr *slave_demo_prog;
+
+void erts_init_slave_command(void);
+void erts_stop_slave_command(void);
+
+struct slave* erts_slave_pop_free(void);
+void erts_slave_push_free(struct slave*);
+
+void erts_slave_send_command(struct slave * slave, enum slave_command code,
+			     const void *data, size_t size);
+#else
+
+void erts_master_send_command(struct slave * slave, enum master_command code,
+			      const void *data, size_t size);
+
+void erts_master_setup(void);
+void erts_master_await_run(const struct master_command_ready *, struct slave_command_run*);
 #endif
+
+int erts_dispatch_slave_commands(void);
 
 #endif /* ERL_SLAVE_COMMAND_H__ */

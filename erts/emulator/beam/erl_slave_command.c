@@ -39,14 +39,6 @@
 #include "erl_slave_command.h"
 #include "erl_slave_alloc.h"
 
-struct slave {
-    struct slave_command_buffers *buffers;
-    int available;
-};
-
-static void send_command(struct slave * slave, enum slave_command code,
-			 void *data, size_t size);
-
 void **slave_beam_ops;
 BeamInstr *slave_demo_prog;
 
@@ -116,22 +108,26 @@ erts_init_slave_command(void)
     }
 }
 
-Eterm
-erts_slave_run(Process* parent, BeamInstr *entry)
+struct slave*
+erts_slave_pop_free(void)
 {
     int slave;
-    struct slave_command_run cmd = { entry, parent->common.id };
     for (slave = 0; slave < num_slaves; slave++)
 	if (slaves[slave].available) break;
-    if (slave == num_slaves) return am_error;
-
-    send_command(slaves + slave, SLAVE_COMMAND_RUN, &cmd, sizeof(cmd));
+    if (slave == num_slaves) return NULL;
     slaves[slave].available = 0;
-    return parent->common.id;
+    return slaves + slave;
 }
 
-static void
-send_command(struct slave *slave, enum slave_command code, void *data, size_t size)
+void
+erts_slave_push_free(struct slave *slave)
+{
+    slave->available = 1;
+}
+
+void
+erts_slave_send_command(struct slave *slave, enum slave_command code,
+			const void *data, size_t size)
 {
     erts_fifo_write_blocking(&slave->buffers->slave, &code, sizeof(code));
     erts_fifo_write_blocking(&slave->buffers->slave, data, size);

@@ -963,7 +963,8 @@ SLAVE_OBJS = \
 	$(OBJDIR)/erl_fifo.o \
 	$(OBJDIR)/erl_slave_io.o \
 	$(OBJDIR)/erl_slave_command.o \
-	$(OBJDIR)/erl_slave_alloc.o
+	$(OBJDIR)/erl_slave_alloc.o \
+	$(OBJDIR)/erl_slave_process.o
 
 EXTRA_BASE_OBJS += $(SLAVE_OBJS)
 $(SLAVE_OBJS): $(TTF_DIR)/slave_syms.h

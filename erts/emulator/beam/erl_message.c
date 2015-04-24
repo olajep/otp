@@ -457,6 +457,14 @@ queue_message(Process *c_p,
     else
 	state = erts_smp_atomic32_read_acqb(&receiver->state);
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (state & ERTS_PSFLG_SLAVE) {
+	erts_printf(__FILE__ ":%d:%s(): Slaves can't take messages yet, sorry!\n",
+		    __LINE__, __FUNCTION__);
+	return 0;
+    }
+#endif
+
 #ifdef ERTS_SMP
 
     if (state & (ERTS_PSFLG_EXITING|ERTS_PSFLG_PENDING_EXIT))
