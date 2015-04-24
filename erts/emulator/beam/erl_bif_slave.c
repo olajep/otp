@@ -51,3 +51,9 @@ BIF_RETTYPE slave_spawn_3(BIF_ALIST_3)
     BIF_RET(am_undefined);
 #endif
 }
+
+BIF_RETTYPE slave_print_1(BIF_ALIST_1)
+{
+    erts_printf("slave:print/1: %T\n", BIF_ARG_1);
+    BIF_RET(am_ok);
+}

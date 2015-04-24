@@ -3726,30 +3726,6 @@ get_map_elements_fail:
     c_p->freason = SYSTEM_LIMIT;
     goto lb_Cl_error;
 
- OpCase(i_write): {
-     Eterm value;
-     GetArg1(0, value);
-     switch (beam_reg_tag(Arg(0))) {
-     case R_REG_DEF: erts_printf("x0 = %T\n", value); break;
-     case X_REG_DEF: erts_printf("x%d = %T\n", x_reg_offset(Arg(0)) / sizeof(Eterm), value); break;
-     case Y_REG_DEF: erts_printf("y%d = %T\n", y_reg_offset(Arg(0)) / sizeof(Eterm), value); break;
-     }
-     Next(1);
- }
-
- OpCase(i_write_str): {
-     Eterm value;
-     const char *name = (const char*)Arg(1);
-     GetArg1(0, value);
-     erts_printf("%s = %T\n", name, value);
-     Next(2);
- }
-
- OpCase(bad_op):
-     erts_printf("bad op %d\n", I-demo_prog);
-     while(1) asm volatile("idle");
-     erl_exit(1, "bad op");
-
 #ifdef ERTS_OPCODE_COUNTER_SUPPORT
     DEFINE_COUNTING_LABELS;
 #endif
@@ -3852,8 +3828,8 @@ get_map_elements_fail:
 	     (BeamInstr)OpCode(i_fetch_rc), // x0 = N-1
 	     (BeamInstr)make_small(1),
 	     (BeamInstr)OpCode(i_minus_jId),
-	     (BeamInstr)OpCode(bad_op), // ??
-	     (BeamInstr)OpCode(bad_op), // ??
+	     (BeamInstr)OpCode(int_code_end), // ??
+	     (BeamInstr)OpCode(int_code_end), // ??
 	     (BeamInstr)make_rreg(),
 
 	     (BeamInstr)OpCode(i_call_f), // x0 = fib(N-1)
@@ -3867,8 +3843,8 @@ get_map_elements_fail:
 	     (BeamInstr)(1 * sizeof(Eterm)),
 
 	     (BeamInstr)OpCode(i_minus_jId), // x0 = N-2
-	     (BeamInstr)OpCode(bad_op), // ??
-	     (BeamInstr)OpCode(bad_op), // ??
+	     (BeamInstr)OpCode(int_code_end), // ??
+	     (BeamInstr)OpCode(int_code_end), // ??
 	     (BeamInstr)make_rreg(),
 
 	     (BeamInstr)OpCode(i_call_f), // x0 = fib(N-2)
@@ -3877,8 +3853,8 @@ get_map_elements_fail:
 	     (BeamInstr)OpCode(i_fetch_yr), // x0 = fib(N-1) + fib(N-2)
 	     (BeamInstr)(1 * sizeof(Eterm)),
 	     (BeamInstr)OpCode(i_plus_jId),
-	     (BeamInstr)OpCode(bad_op), // ??
-	     (BeamInstr)OpCode(bad_op), // ??
+	     (BeamInstr)OpCode(int_code_end), // ??
+	     (BeamInstr)OpCode(int_code_end), // ??
 	     (BeamInstr)make_rreg(),
 
 	     (BeamInstr)OpCode(deallocate_return_Q),
@@ -3891,10 +3867,24 @@ get_map_elements_fail:
 	     },
 	 };
 
+	 static Export slave_print_1_export = {
+	     .code = {
+		 [4] = (BeamInstr)slave_print_1,
+	     },
+	 };
+
 	 BeamInstr *ptr = demo_prog = calloc(100, sizeof(BeamInstr));
 
-	 *(ptr++) = (BeamInstr)OpCode(i_move_call_crf);
-	 *(ptr++) = (BeamInstr)make_small(16);
+	 *(ptr++) = (BeamInstr)OpCode(move_xr); // x0 = x2
+	 *(ptr++) = (BeamInstr)(2 * sizeof(Eterm));
+
+	 *(ptr++) = (BeamInstr)OpCode(call_bif_e);
+	 *(ptr++) = (BeamInstr)&slave_print_1_export;
+
+	 *(ptr++) = (BeamInstr)OpCode(get_list_xrx);
+	 *(ptr++) = (BeamInstr)(8 | (4 << BEAM_LOOSE_SHIFT));
+
+	 *(ptr++) = (BeamInstr)OpCode(i_call_f);
 	 *(ptr++) = (BeamInstr)fib;
 
 	 *(ptr++) = (BeamInstr)OpCode(i_put_tuple_xI);
@@ -3903,17 +3893,14 @@ get_map_elements_fail:
 	 *(ptr++) = (BeamInstr)NIL;
 	 *(ptr++) = (BeamInstr)((R_REG_DEF << _TAG_PRIMARY_SIZE) | TAG_PRIMARY_HEADER);
 
-	 *(ptr++) = (BeamInstr)OpCode(i_write);
-	 *(ptr++) = (BeamInstr)make_xreg(1);
-
 	 *(ptr++) = (BeamInstr)OpCode(move_xr); // x0 = x1
 	 *(ptr++) = (BeamInstr)(1 * sizeof(Eterm));
 
 	 *(ptr++) = (BeamInstr)OpCode(call_bif_e);
 	 *(ptr++) = (BeamInstr)&append_element_2_export;
 
-	 *(ptr++) = (BeamInstr)OpCode(i_write);
-	 *(ptr++) = (BeamInstr)make_rreg();
+	 *(ptr++) = (BeamInstr)OpCode(call_bif_e);
+	 *(ptr++) = (BeamInstr)&slave_print_1_export;
 
 	 *(ptr++) = (BeamInstr)OpCode(normal_exit);
      }

@@ -18,7 +18,7 @@
 %%
 -module(slave).
 
--export([spawn/3]).
+-export([spawn/3, print/1]).
 
 %% spawn/3
 -spec spawn(Module, Function, Args) -> pid() when
@@ -26,4 +26,9 @@
       Function :: atom(),
       Args :: [term()].
 spawn(_Module, _Function, _Args) ->
+    erlang:nif_error(undefined).
+
+%% print/1
+-spec print(term()) -> ok.
+print(_Term) ->
     erlang:nif_error(undefined).
