@@ -24,12 +24,21 @@
 #include "erl_term.h"
 #include "erl_process.h"
 #include "erl_fifo.h"
+#include "erl_bif_table.h"
 
 /*
  * We override the default alignment of structs that are shared between slave
  * and master.
  */
 #define SHARED_DATA __attribute__((aligned(8)))
+
+typedef struct {
+    Eterm module;
+    Eterm name;
+    int arity;
+    BifFunction f;
+    BifFunction traced;
+} SHARED_DATA SlaveBifEntry;
 
 /*
  * We use the shared-memory fifos for command buffers.
@@ -55,9 +64,10 @@ enum master_command {
 };
 
 struct master_command_setup {
-#ifndef NO_JUMP_TABLE
-    void** beam_ops;
-#endif
+    LoaderTarget *target;
+    int num_instructions;
+    SlaveBifEntry *bif_table;
+    int bif_size;
     BeamInstr *demo_prog;
 } SHARED_DATA;
 
@@ -76,9 +86,6 @@ struct slave_command_run {
 } SHARED_DATA;
 
 #ifndef ERTS_SLAVE
-extern void **slave_beam_ops;
-extern BeamInstr *slave_demo_prog;
-
 void erts_init_slave_command(void);
 void erts_stop_slave_command(void);
 

@@ -54,7 +54,6 @@ typedef struct {
 #ifndef NO_JUMP_TABLE
     void** beam_ops;
 #endif
-    BeamInstr* em_apply_bif;
 } LoaderTarget;
 
 extern LoaderTarget loader_target_self;

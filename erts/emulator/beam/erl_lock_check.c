@@ -107,6 +107,9 @@ static erts_lc_lock_order_t erts_lock_order[] = {
     {	"sys_tracers",				NULL			},
     {	"module_tab",				NULL			},
     {	"export_tab",				NULL			},
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    {	"slave_export_tab",			NULL			},
+#endif
     {	"fun_tab",				NULL			},
     {	"environ",				NULL			},
 #endif

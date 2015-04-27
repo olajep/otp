@@ -38,9 +38,7 @@
 #include "erl_slave_io.h"
 #include "erl_slave_command.h"
 #include "erl_slave_alloc.h"
-
-void **slave_beam_ops;
-BeamInstr *slave_demo_prog;
+#include "erl_slave_load.h"
 
 static int num_slaves = 0;
 static struct slave *slaves;
@@ -150,8 +148,7 @@ erts_dispatch_slave_commands(void)
 	    if (available < sizeof(struct master_command_setup)) break;
 	    erts_fifo_skip(fifo, sizeof(enum master_command));
 	    erts_fifo_read_blocking(fifo, &msg, sizeof(struct master_command_setup));
-	    slave_beam_ops = msg.beam_ops;
-	    slave_demo_prog = msg.demo_prog;
+	    erts_slave_init_load(&msg);
 	    dispatched++;
 	    break;
         }

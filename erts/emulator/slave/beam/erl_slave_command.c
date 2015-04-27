@@ -24,6 +24,7 @@
 
 #include "sys.h"
 #include "erl_slave_command.h"
+#include "erl_bif_table.h"
 #include "epiphany.h"
 
 /* Set by the master */
@@ -31,17 +32,24 @@ EPIPHANY_SRAM_DATA struct slave_command_buffers *volatile slave_command_buffers;
 
 static void send_command(enum master_command code, const void *data, size_t size);
 
+LoaderTarget loader_target_self;
+
 void
 erts_master_setup(void)
 {
     extern BeamInstr *demo_prog;
     struct master_command_setup cmd = {
+	.target = &loader_target_self,
+	.num_instructions = num_instructions,
+	.bif_table = bif_table,
+	.bif_size = BIF_SIZE,
 	.demo_prog = demo_prog,
     };
+
 #ifndef NO_JUMP_TABLE
-    extern void **beam_ops;
-    cmd.beam_ops = beam_ops;
+    loader_target_self.beam_ops = beam_ops;
 #endif
+
     send_command(MASTER_COMMAND_SETUP, &cmd, sizeof(cmd));
 }
 

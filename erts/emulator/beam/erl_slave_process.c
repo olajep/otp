@@ -42,8 +42,8 @@
 #include "erl_ptab.h"
 
 #include "erl_slave_process.h"
-#include "erl_slave_command.h"
 #include "erl_slave_alloc.h"
+#include "erl_slave_load.h"
 
 typedef struct {
     Process *proc;

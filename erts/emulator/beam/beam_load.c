@@ -561,7 +561,6 @@ void init_load(void)
 #ifndef NO_JUMP_TABLE
     loader_target_self.beam_ops = beam_ops;
 #endif
-    loader_target_self.em_apply_bif = em_apply_bif;
 }
 
 static void
@@ -1307,7 +1306,7 @@ load_import_table(LoaderState* stp)
 	 * the BIF function.
 	 */
 	if ((e = erts_active_export_entry(mod, func, arity)) != NULL) {
-	    if (e->code[3] == (BeamInstr) stp->target->em_apply_bif) {
+	    if (e->code[3] == BeamOpCode(op_apply_bif)) {
 		stp->import[i].bf = (BifFunction) e->code[4];
 		if (func == am_load_nif && mod == am_erlang && arity == 2) {
 		    stp->may_load_nif = 1;
