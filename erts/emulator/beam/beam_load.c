@@ -53,7 +53,7 @@ ErlDrvBinary* erts_gzinflate_buffer(char*, int);
 #ifdef NO_JUMP_TABLE
 #  define BeamOpCode(Op) ((BeamInstr)(Op))
 #else
-#  define BeamOpCode(Op) ((BeamInstr)beam_ops[Op])
+#  define BeamOpCode(Op) ((BeamInstr)stp->target->beam_ops[Op])
 #endif
 
 #if defined(WORDS_BIGENDIAN)
@@ -350,6 +350,11 @@ typedef struct LoaderState {
     Eterm* fname;		/* List of file names */
     int num_fnames;		/* Number of filenames in fname table */
     int loc_size;		/* Size of location info in bytes (2/4) */
+
+    /*
+     * Target definition
+     */
+    LoaderTarget* target;
 } LoaderState;
 
 #define GetTagAndValue(Stp, Tag, Val)					\
@@ -536,6 +541,7 @@ static int safe_mul(UWord a, UWord b, UWord* resp);
 static int must_swap_floats;
 
 Uint erts_total_code_size;
+LoaderTarget loader_target_self;
 /**********************************************************************/
 
 void init_load(void)
@@ -550,6 +556,12 @@ void init_load(void)
     must_swap_floats = (f.fw[0] == 0);
 
     erts_init_ranges();
+
+    ASSERT(em_call_error_handler);
+#ifndef NO_JUMP_TABLE
+    loader_target_self.beam_ops = beam_ops;
+#endif
+    loader_target_self.em_apply_bif = em_apply_bif;
 }
 
 static void
@@ -846,6 +858,7 @@ erts_alloc_loader_state(void)
     stp->line_instr = 0;
     stp->func_line = 0;
     stp->fname = 0;
+    stp->target = &loader_target_self;
     return magic;
 }
 
@@ -1294,7 +1307,7 @@ load_import_table(LoaderState* stp)
 	 * the BIF function.
 	 */
 	if ((e = erts_active_export_entry(mod, func, arity)) != NULL) {
-	    if (e->code[3] == (BeamInstr) em_apply_bif) {
+	    if (e->code[3] == (BeamInstr) stp->target->em_apply_bif) {
 		stp->import[i].bf = (BifFunction) e->code[4];
 		if (func == am_load_nif && mod == am_erlang && arity == 2) {
 		    stp->may_load_nif = 1;
@@ -5558,9 +5571,10 @@ code_module_md5_1(BIF_ALIST_1)
 #define WORDS_PER_FUNCTION 6
 
 static BeamInstr*
-make_stub(BeamInstr* fp, Eterm mod, Eterm func, Uint arity, Uint native, BeamInstr OpCode)
+make_stub(const LoaderState* stp, BeamInstr* fp, Eterm mod, Eterm func,
+	  Uint arity, Uint native, BeamInstr OpCode)
 {
-    fp[0] = (BeamInstr) BeamOp(op_i_func_info_IaaI);
+    fp[0] = (BeamInstr) BeamOpCode(op_i_func_info_IaaI);
     fp[1] = native;
     fp[2] = mod;
     fp[3] = func;
@@ -5999,7 +6013,7 @@ erts_make_stub_module(Process* p, Eterm Mod, Eterm Beam, Eterm Info)
 #else
 	op = (Eterm) BeamOpCode(op_move_return_nr);
 #endif
-	fp = make_stub(fp, Mod, func, arity, (Uint)native_address, op);
+	fp = make_stub(stp, fp, Mod, func, arity, (Uint)native_address, op);
     }
 
     /*
@@ -6007,7 +6021,7 @@ erts_make_stub_module(Process* p, Eterm Mod, Eterm Beam, Eterm Info)
      */
 
     ptrs[i] = (BeamInstr) fp;
-    *fp++ = (BeamInstr) BeamOp(op_int_code_end);
+    *fp++ = (BeamInstr) BeamOpCode(op_int_code_end);
 
     /*
      * Copy attributes and compilation information.

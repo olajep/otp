@@ -38,18 +38,28 @@ typedef struct gen_op_entry {
 
 extern GenOpEntry gen_opc[];
 
-#ifdef NO_JUMP_TABLE 
+#ifdef NO_JUMP_TABLE
 #define BeamOp(Op) (Op)
 #else
 extern void** beam_ops;
 #define BeamOp(Op) beam_ops[(Op)]
 #endif
 
-
 extern BeamInstr beam_debug_apply[];
 extern BeamInstr* em_call_error_handler;
 extern BeamInstr* em_apply_bif;
 extern BeamInstr* em_call_nif;
+
+typedef struct {
+#ifndef NO_JUMP_TABLE
+    void** beam_ops;
+#endif
+    BeamInstr* em_apply_bif;
+} LoaderTarget;
+
+extern LoaderTarget loader_target_self;
+
+#define TARGET(Proc) (&loader_target_self)
 
 /*
  * The following variables keep a sorted list of address ranges for
