@@ -657,6 +657,9 @@ int main(int argc, const char **argv)
 {
     int i;
     int (*do_func_ptr)(FILE *, const char*) = NULL;
+#ifdef DO_C_HEADER_BY_DEFAULT
+    do_func_ptr = &do_c;
+#endif
 
     compute_crc();
     for (i = 1; i < argc; i++) {

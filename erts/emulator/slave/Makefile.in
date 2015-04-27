@@ -36,6 +36,7 @@ OTP_RELEASE = @OTP_RELEASE@
 CROSS_COMPILING = @CROSS_COMPILING@
 
 ENABLE_ALLOC_TYPE_VARS = @ENABLE_ALLOC_TYPE_VARS@
+HIPE_ENABLED=@HIPE_ENABLED@
 USE_VM_PROBES=@USE_VM_PROBES@
 LIBS = @LIBS@
 NO_INLINE_FUNCTIONS=false
@@ -52,6 +53,7 @@ CONFIGURE_CFLAGS = @CFLAGS@
 DEFS=@DEFS@ -DDISABLE_CHILD_WAITER_THREAD
 THR_DEFS=@EMU_THR_DEFS@
 THR_LIB_NAME=@EMU_THR_LIB_NAME@
+M4FLAGS=
 CREATE_DIRS=
 
 LDFLAGS=@LDFLAGS@
@@ -155,6 +157,7 @@ ifeq ($(FLAVOR),smp)
 FLAVOR_MARKER=.smp
 FLAVOR_FLAGS=-DERTS_SMP
 ENABLE_ALLOC_TYPE_VARS += smp nofrag
+M4FLAGS += -DERTS_SMP=1
 else
 
 # If flavor isn't one of the above, it *is* plain flavor...
@@ -162,6 +165,7 @@ override FLAVOR=plain
 FLAVOR_MARKER=
 FLAVOR_FLAGS=
 ENABLE_ALLOC_TYPE_VARS += nofrag
+M4FLAGS +=
 
 endif
 
@@ -327,6 +331,21 @@ _create_dirs := $(shell mkdir -p $(CREATE_DIRS))
 TMPVAR := $(shell LANG=C $(PERL) ../utils/make_compiler_flags -o $(TTF_DIR)/erl_compile_flags.h -f CONFIG_H "$(ERL_TOP)/erts/$(TARGET)/config.h" -v CFLAGS "$(CFLAGS)" -v LDFLAGS "$(LDFLAGS)")
 
 GENERATE =
+HIPE_ASM =
+
+ifdef HIPE_ENABLED
+HIPE_ASM +=	$(TTF_DIR)/hipe_x86_asm.h \
+		$(TTF_DIR)/hipe_amd64_asm.h \
+		$(TTF_DIR)/hipe_sparc_asm.h \
+		$(TTF_DIR)/hipe_ppc_asm.h \
+		$(TTF_DIR)/hipe_arm_asm.h
+
+GENERATE +=	$(HIPE_ASM) \
+		$(TTF_DIR)/hipe_literals.h \
+		$(BINDIR)/hipe_mkliterals$(TF_MARKER)
+
+OPCODE_TABLES += ../hipe/hipe_ops.tab
+endif
 
 $(TTF_DIR)/beam_cold.h \
 $(TTF_DIR)/beam_hot.h \
@@ -347,17 +366,17 @@ GENERATE += $(TTF_DIR)/OPCODES-GENERATED
 ATOMS=	../beam/atom.names
 BIFS =	../beam/bif.tab
 ifdef HIPE_ENABLED
-HIPE_ARCH64_TAB=hipe/hipe_bif64.tab
-HIPE_x86_TAB=hipe/hipe_x86.tab
-HIPE_amd64_TAB=hipe/hipe_amd64.tab $(HIPE_ARCH64_TAB)
-HIPE_ultrasparc_TAB=hipe/hipe_sparc.tab
-HIPE_ppc_TAB=hipe/hipe_ppc.tab
-HIPE_ppc64_TAB=hipe/hipe_ppc64.tab $(HIPE_ARCH64_TAB)
-HIPE_arm_TAB=hipe/hipe_arm.tab
+HIPE_ARCH64_TAB=../hipe/hipe_bif64.tab
+HIPE_x86_TAB=../hipe/hipe_x86.tab
+HIPE_amd64_TAB=../hipe/hipe_amd64.tab $(HIPE_ARCH64_TAB)
+HIPE_ultrasparc_TAB=../hipe/hipe_sparc.tab
+HIPE_ppc_TAB=../hipe/hipe_ppc.tab
+HIPE_ppc64_TAB=../hipe/hipe_ppc64.tab $(HIPE_ARCH64_TAB)
+HIPE_arm_TAB=../hipe/hipe_arm.tab
 HIPE_ARCH_TAB=$(HIPE_$(ARCH)_TAB)
-BIFS += hipe/hipe_bif0.tab hipe/hipe_bif1.tab hipe/hipe_bif2.tab $(HIPE_ARCH_TAB)
+BIFS += ../hipe/hipe_bif0.tab ../hipe/hipe_bif1.tab ../hipe/hipe_bif2.tab $(HIPE_ARCH_TAB)
 ifdef USE_PERFCTR
-BIFS += hipe/hipe_perfctr.tab
+BIFS += ../hipe/hipe_perfctr.tab
 endif
 endif
 
@@ -424,6 +443,7 @@ INTERNAL_LIB_CFLAGS = $(CFLAGS) -include epiphany_alloc_redirect.h \
 # Pattern rules
 #
 COMMON_INCLUDES = -Iinclude -Ibeam -Isys -I../sys/common -I thread -I$(TARGET)
+COMMON_INCLUDES += -I../hipe
 COMMON_INCLUDES += -I../../include -I../../include/$(TARGET)
 COMMON_INCLUDES += -I../../include/internal -I../../include/internal/$(TARGET)
 
@@ -514,12 +534,49 @@ SLAVE_OBJS = \
 
 OS_OBJS += $(OBJDIR)/sys_float.o
 
-BASE_OBJS = $(RUN_OBJS) $(EMU_OBJS) $(OS_OBJS) $(SLAVE_OBJS)
+HIPE_OBJS = $(OBJDIR)/hipe_stub.o
+
+BASE_OBJS = $(RUN_OBJS) $(EMU_OBJS) $(OS_OBJS) $(SLAVE_OBJS) $(HIPE_OBJS)
 
 OBJS = $(BASE_OBJS) $(ERTS_INTERNAL_LIB_OBJS)
 
 $(INIT_OBJS): $(TTF_DIR)/GENERATED
 $(OBJS): $(TTF_DIR)/GENERATED
+
+########################################
+# HiPE section
+
+M4FLAGS += -DTARGET=$(TARGET) -DOPSYS=$(OPSYS) -DARCH=$(ARCH)
+
+$(TTF_DIR)/%.S: ../hipe/%.m4
+	$(m4_verbose)m4 $(M4FLAGS) $< > $@
+
+$(TTF_DIR)/%.h: ../hipe/%.m4
+	$(m4_verbose)m4 $(M4FLAGS) $< > $@
+
+$(OBJDIR)/%.o: $(TTF_DIR)/%.S
+	$(V_CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJDIR)/%.o: ../hipe/%.S
+	$(V_CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJDIR)/%.o: ../hipe/%.c
+	$(V_CC) $(subst O2,O3, $(CFLAGS)) $(INCLUDES) -c $< -o $@
+
+$(BINDIR)/hipe_mkliterals$(TF_MARKER):	$(OBJDIR)/hipe_mkliterals.o
+	$(ld_verbose)$(CC) $(CFLAGS) $(INCLUDES) -o $@ $<
+
+# XXX: This is quite the horrid way of doing it
+$(OBJDIR)/hipe_mkliterals.o: ../hipe/hipe_mkliterals.c $(HIPE_ASM) $(TTF_DIR)/erl_alloc_types.h \
+	$(TTF_DIR)/OPCODES-GENERATED $(TARGET)/TABLES-GENERATED
+	$(V_CC) $(CFLAGS) -DEPIPHANY_NO_WRITE_REDIRECT -DDO_C_HEADER_BY_DEFAULT \
+		$(INCLUDES) -c ../hipe/hipe_mkliterals.c -o $@
+
+$(TTF_DIR)/hipe_literals.h:	$(BINDIR)/hipe_mkliterals$(TF_MARKER)
+	$(gen_verbose)e-run $(BINDIR)/hipe_mkliterals$(TF_MARKER) > $@
+
+# end of HiPE section
+########################################
 
 # ----------------------------------------------------------------------
 # The emulator itself
@@ -536,7 +593,7 @@ $(BINDIR)/$(EMULATOR_EXECUTABLE).srec: $(BINDIR)/$(EMULATOR_EXECUTABLE)
 # ----------------------------------------------------------------------
 # Dependencies
 #
-Makefile: Makefile.in config.status
+Makefile: Makefile.in config.status configure
 	$(gen_verbose) ./config.status --file=Makefile
 
 include/config.h: config.h.in

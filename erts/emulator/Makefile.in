@@ -1103,12 +1103,12 @@ endif
 # ----------------------------------------------------------------------
 # Dependencies
 #
-$(TARGET)/Makefile: Makefile.in ../config.status
+$(TARGET)/Makefile: Makefile.in ../config.status ../configure
 # We don't want to regenreate all the files because that will cause a full rebuild
 	$(gen_verbose) cd .. && ./config.status \
 		--file=emulator/$(TARGET)/Makefile:emulator/Makefile.in
 
-../config.status: ../configure.in
+../configure ../config.status: ../configure.in
 	@echo
 	@echo "configure.in has been updated, please re-run autoreconf and configure"
 	@echo
