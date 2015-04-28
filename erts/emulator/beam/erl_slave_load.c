@@ -35,7 +35,8 @@ const TargetExportTab export_table_slave = {
     slave_export_put,
     slave_active_export_entry,
     slave_staging_code_ix,
-    slave_active_code_ix
+    slave_active_code_ix,
+    slave_bif_export,
 };
 BeamInstr *slave_demo_prog;
 BifEntry slave_bif_table[BIF_SIZE];
@@ -47,8 +48,8 @@ static void
 enter_slave_bifs(struct master_command_setup *cmd)
 {
     int i;
-    ASSERT(BIF_SIZE >= cmd->bif_size);
-    for (i = 0; i < cmd->bif_size; i++) {
+    ASSERT(BIF_SIZE == cmd->bif_size);
+    for (i = 0; i < BIF_SIZE; i++) {
 	SlaveBifEntry *bif = &cmd->bif_table[i];
 	Export *ep = slave_export_put(bif->module,
 				      bif->name,
@@ -57,8 +58,11 @@ enter_slave_bifs(struct master_command_setup *cmd)
 	 * accessible from the Epiphany */
 	ASSERT(0x8e000000 <= (unsigned)ep && (unsigned)ep < 0x90000000);
 
-	ASSERT(is_atom(bif->module) && is_atom(bif->name) &&
-	       0x8e000000 <= (unsigned)bif->f && (unsigned)bif->f < 0x90000000);
+	ASSERT(bif->module == bif_table[i].module);
+	ASSERT(bif->name   == bif_table[i].name);
+	ASSERT(bif->arity  == bif_table[i].arity);
+	ASSERT(0x8e000000 <= (unsigned)bif->f && (unsigned)bif->f < 0x90000000);
+
 	slave_bif_table[i].module = bif->module;
 	slave_bif_table[i].name   = bif->name;
 	slave_bif_table[i].arity  = bif->arity;
@@ -72,8 +76,6 @@ enter_slave_bifs(struct master_command_setup *cmd)
 	ep->fake_op_func_info_for_hipe[0]
 	    = (BeamInstr) SlaveOp(op_i_func_info_IaaI);
     }
-    erts_printf("%d slave bifs loaded (%d host bifs)\n", cmd->bif_size,
-		BIF_SIZE);
 }
 
 static Eterm
@@ -147,6 +149,10 @@ erts_slave_init_load(struct master_command_setup *cmd)
     if (cmd->num_instructions != num_instructions) {
 	erl_exit(1, "Error: Got %d instructions from slave emulator, expected %d\n",
 		 cmd->num_instructions, num_instructions);
+    }
+    if (cmd->bif_size != BIF_SIZE) {
+	erl_exit(1, "Error: Got %d bifs from slave emulator, expected %d\n",
+		 cmd->bif_size, BIF_SIZE);
     }
 
     loader_target_slave = cmd->target;

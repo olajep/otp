@@ -61,6 +61,7 @@ typedef struct {
     Export* (*active_entry)(Eterm mod, Eterm func, unsigned int arity);
     ErtsCodeIndex (*staging_code_ix)(void);
     ErtsCodeIndex (*active_code_ix)(void);
+    Export** bif;
 } TargetExportTab;
 
 extern LoaderTarget loader_target_self;

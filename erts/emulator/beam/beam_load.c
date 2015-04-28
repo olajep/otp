@@ -556,6 +556,7 @@ TargetExportTab export_table_self = {
     erts_active_export_entry,
     erts_staging_code_ix,
     erts_active_code_ix,
+    bif_export,
 };
 /**********************************************************************/
 
@@ -4745,7 +4746,7 @@ transform_engine(LoaderState* st)
 		if (i >= st->num_imports || st->import[i].bf == NULL)
 		    goto restart;
 		if (bif_number != -1 &&
-		    bif_export[bif_number]->code[4] != (BeamInstr) st->import[i].bf) {
+		    st->tgt_export->bif[bif_number]->code[4] != (BeamInstr) st->import[i].bf) {
 		    goto restart;
 		}
 	    }
