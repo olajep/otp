@@ -46,6 +46,7 @@
 /* This is not nice! */
 #ifdef ERTS_SLAVE_EMU_ENABLED
 #  include "slave_syms.h"
+#  include "slave_module.h"
 #endif
 
 ErlDrvBinary* erts_gzinflate_buffer(char*, int);
@@ -557,6 +558,7 @@ TargetExportTab export_table_self = {
     erts_staging_code_ix,
     erts_active_code_ix,
     bif_export,
+    erts_put_module,
 };
 /**********************************************************************/
 
@@ -853,15 +855,15 @@ slave_insert_new_code(Process *c_p, ErtsProcLocks c_p_locks,
     /* 	return retval; */
     /* } */
 
-    /* /\* */
-    /*  * Update module table. */
-    /*  *\/ */
+    /*
+     * Update module table.
+     */
 
-    /* erts_total_code_size += size; */
-    /* modp = erts_put_module(module); */
-    /* modp->curr.code = code; */
-    /* modp->curr.code_length = size; */
-    /* modp->curr.catches = BEAM_CATCHES_NIL; /\* Will be filled in later. *\/ */
+    erts_total_code_size += size;
+    modp = slave_put_module(module);
+    modp->curr.code = code;
+    modp->curr.code_length = size;
+    modp->curr.catches = BEAM_CATCHES_NIL; /* Will be filled in later. */
 
     /* /\* */
     /*  * Update ranges (used for finding a function from a PC value). */
@@ -905,7 +907,7 @@ slave_finish_loading(Binary* magic, Process* c_p,
      */
 
     CHKBLK(stp->code_alc_t,stp->code);
-    // slave_final_touch(stp);
+    final_touch(stp);
 
     /*
      * Loading succeded.
@@ -4538,7 +4540,7 @@ final_touch(LoaderState* stp)
 	code[index+2] = make_catch(catches);
 	index = next;
     }
-    modp = erts_put_module(stp->module);
+    modp = stp->tgt_export->put_module(stp->module);
     modp->curr.catches = catches;
 
     /*
@@ -4595,23 +4597,24 @@ final_touch(LoaderState* stp)
     /*
      * Fix all funs.
      */ 
+    if (stp->target == &loader_target_self) {
+	if (stp->num_lambdas > 0) {
+	    for (i = 0; i < stp->num_lambdas; i++) {
+		unsigned entry_label = stp->lambdas[i].label;
+		ErlFunEntry* fe = stp->lambdas[i].fe;
+		BeamInstr* code_ptr = (BeamInstr *) (stp->code + stp->labels[entry_label].value);
 
-    if (stp->num_lambdas > 0) {
-	for (i = 0; i < stp->num_lambdas; i++) {
-	    unsigned entry_label = stp->lambdas[i].label;
-	    ErlFunEntry* fe = stp->lambdas[i].fe;
-	    BeamInstr* code_ptr = (BeamInstr *) (stp->code + stp->labels[entry_label].value);
-
-	    if (fe->address[0] != 0) {
-		/*
-		 * We are hiding a pointer into older code.
-		 */
-		erts_refc_dec(&fe->refc, 1);
-	    }
-	    fe->address = code_ptr;
+		if (fe->address[0] != 0) {
+		    /*
+		     * We are hiding a pointer into older code.
+		     */
+		    erts_refc_dec(&fe->refc, 1);
+		}
+		fe->address = code_ptr;
 #ifdef HIPE
-	    hipe_set_closure_stub(fe, stp->lambdas[i].num_free);
+		hipe_set_closure_stub(fe, stp->lambdas[i].num_free);
 #endif
+	    }
 	}
     }
 }

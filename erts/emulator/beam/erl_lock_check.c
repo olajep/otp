@@ -84,6 +84,9 @@ static erts_lc_lock_order_t erts_lock_order[] = {
     {	"reg_tab",				NULL			},
     {	"proc_main",				"pid"			},
     {   "old_code",                             "address"               },
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    {	"slave_old_code",			"address"		},
+#endif
 #ifdef HIPE
     {	"hipe_mfait_lock",			NULL			},
 #endif

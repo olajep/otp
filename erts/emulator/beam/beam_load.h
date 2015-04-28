@@ -22,6 +22,7 @@
 
 #include "beam_opcodes.h"
 #include "erl_process.h"
+#include "module.h"
 
 Eterm beam_make_current_old(Process *c_p, ErtsProcLocks c_p_locks,
 			    Eterm module);
@@ -62,6 +63,7 @@ typedef struct {
     ErtsCodeIndex (*staging_code_ix)(void);
     ErtsCodeIndex (*active_code_ix)(void);
     Export** bif;
+    Module* (*put_module)(Eterm mod);
 } TargetExportTab;
 
 extern LoaderTarget loader_target_self;
