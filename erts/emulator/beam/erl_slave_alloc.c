@@ -29,6 +29,7 @@
 #endif
 #include "sys.h"
 #include "erl_slave_alloc.h"
+#include "erl_smp.h"
 
 #define ALIGN(X, A)				\
     ({						\
@@ -47,20 +48,63 @@ struct segment {
 };
 
 static struct segment *first_free;
+static erts_smp_mtx_t alloc_mtx;
 
 static void insert_free(struct segment *);
 static void split_free(struct segment *, size_t);
 static void unlink_free(struct segment *);
 
+#ifdef DEBUG
+static Uint available, used;
+#endif
+
+#define HARDDEBUG 0
+#if HARDDEBUG
+
+static void debug_verify(const char *file, int line, const char *func) {
+    Uint count = 0, die = 0;
+    struct segment *free = first_free, *last = NULL;
+    while(free) {
+	ASSERT(0x8e000000 <= (unsigned)free && (unsigned)free <= 0x90000000);
+	count += free->length + HEADER_SZ;
+	if(free->prev != last) {
+	    die = 1;
+	    erts_fprintf(stderr, "%s:%d:%s(): List consistency broken! "
+			 "%#x->prev = %#x, should be %#x\n", file, line, func,
+			 free, free->prev, last);
+	}
+	last = free;
+	free = free->next;
+    }
+    if (count != (available - used) || die) {
+	erl_exit(1, "%s:%d:%s(): %#x lost! free is %#x (should be %#x) "
+		 "used=%#x avail=%#x\n", file, line, func,
+		 (available-used) - count, count, available-used,
+		 used, available);
+    }
+}
+
+#  define DEBUG_VERIFY() debug_verify(__FILE__, __LINE__, __FUNCTION__)
+#else
+#  define DEBUG_VERIFY() ((void)0)
+#endif
+
 static void
 insert_free(struct segment *seg)
 {
+    ASSERT(seg->prev == NULL);
+    ASSERT(seg->next == NULL);
+    ASSERT(seg->length < 32 * 1024 * 1024);
     seg->prev = NULL;
     seg->next = first_free;
     first_free = seg;
     if (seg->next) {
+	ASSERT(seg->next->prev == NULL);
 	seg->next->prev = seg;
     }
+#ifdef DEBUG
+    used -= seg->length + HEADER_SZ;
+#endif
 }
 
 static void
@@ -70,8 +114,13 @@ split_free(struct segment *seg, size_t size)
     second->length = seg->length - HEADER_SZ - size;
     seg->length = size;
     second->next = seg->next;
+    if (second->next) {
+	ASSERT(second->next->prev = seg);
+	second->next->prev = second;
+    }
     second->prev = seg;
     seg->next = second;
+    DEBUG_VERIFY();
 }
 
 static void
@@ -83,7 +132,13 @@ unlink_free(struct segment *seg)
 	ASSERT(first_free == seg);
 	first_free = seg->next;
     }
+    ASSERT(seg->next);
     seg->next->prev = seg->prev;
+#ifdef DEBUG
+    seg->next = NULL;
+    seg->prev = NULL;
+    used += seg->length + HEADER_SZ;
+#endif
 }
 
 void
@@ -94,39 +149,73 @@ erl_slave_alloc_submit(void *seg, size_t size)
     free = seg;
     sys_memzero(free, HEADER_SZ);
     free->length = size - HEADER_SZ;
+#ifdef DEBUG
+    available += size;
+    used += size;
+#endif
     insert_free(free);
+    DEBUG_VERIFY();
+    erts_smp_mtx_init(&alloc_mtx, "slave_alloc_mtx");
 }
+
+#define LOCK() erts_smp_mtx_lock(&alloc_mtx)
+#define UNLOCK() erts_smp_mtx_unlock(&alloc_mtx)
+
+#define SEGMENT(Ptr) ((struct segment *)((Ptr) - HEADER_SZ))
 
 void *
 erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 {
-    struct segment *free = first_free;
+    struct segment *free;
+#ifdef DEBUG
+    int max = 0, count = 0;
+#endif
+    void *res = NULL;
+    LOCK();
+    free = first_free;
     size = ALIGN(size, 16);
     while(free) {
 	if (free->length >= size) {
 	    if (free->length - size >= SPLIT_THRESHOLD)
 		split_free(free, size);
 	    unlink_free(free);
-	    return ((void*)free) + HEADER_SZ;
+	    res = ((void*)free) + HEADER_SZ;
+	    break;
 	}
+#ifdef DEBUG
+	count ++;
+	max = MAX(max, free->length);
+#endif
 	free = free->next;
     }
-    erts_printf("Failed to allocate %#x bytes shared DRAM!\n", size);
-    return NULL;
+    if (!res) {
+	erts_printf("Failed to allocate %d bytes shared DRAM!\n", size);
+#ifdef DEBUG
+	erts_printf("%d free blocks (largest is %d bytes)\n", count, max);
+	erts_printf("%d / %d used\n", used, available);
+#endif
+    }
+    DEBUG_VERIFY();
+    UNLOCK();
+    return res;
 }
-
-#define SEGMENT(Ptr) ((struct segment *)((Ptr) - HEADER_SZ))
 
 void
 erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
 {
     struct segment *seg = SEGMENT(ptr);
+    LOCK();
     insert_free(seg);
+    DEBUG_VERIFY();
+    UNLOCK();
 }
 
 void *erl_slave_realloc(ErtsAlcType_t t, void *extra, void *block, Uint size) {
     void *newblock = erl_slave_alloc(t, extra, size);
     Uint tocopy = MIN(SEGMENT(block)->length, size);
-    if (newblock) sys_memcpy(newblock, block, tocopy);
+    if (newblock) {
+	sys_memcpy(newblock, block, tocopy);
+	erl_slave_free(t, extra, block);
+    }
     return newblock;
 }
