@@ -98,7 +98,7 @@ erl_slave_alloc_submit(void *seg, size_t size)
 }
 
 void *
-erl_slave_malloc(size_t size)
+erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 {
     struct segment *free = first_free;
     size = ALIGN(size, 16);
@@ -115,10 +115,19 @@ erl_slave_malloc(size_t size)
     return NULL;
 }
 
+#define SEGMENT(Ptr) ((struct segment *)((Ptr) - HEADER_SZ))
+
 void
-erl_slave_free(void *ptr)
+erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
 {
-    struct segment *seg = ptr - HEADER_SZ;
+    struct segment *seg = SEGMENT(ptr);
     erts_printf("Freeing %#x + %#x\n", ptr, seg->length);
     insert_free(seg);
+}
+
+void *erl_slave_realloc(ErtsAlcType_t t, void *extra, void *block, Uint size) {
+    void *newblock = erl_slave_alloc(t, extra, size);
+    Uint tocopy = MIN(SEGMENT(block)->length, size);
+    if (newblock) sys_memcpy(newblock, block, tocopy);
+    return newblock;
 }

@@ -45,6 +45,9 @@
 #if defined(ERTS_ALC_T_DRV_SEL_D_STATE) || defined(ERTS_ALC_T_DRV_EV_D_STATE)
 #include "erl_check_io.h"
 #endif
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "erl_slave_alloc.h"
+#endif
 
 #define GET_ERL_GF_ALLOC_IMPL
 #include "erl_goodfit_alloc.h"
@@ -732,6 +735,14 @@ erts_alloc_init(int *argc, char **argv, ErtsAllocInitOpts *eaiop)
     erts_allctrs[ERTS_ALC_A_SYSTEM].realloc		= erts_sys_realloc;
     erts_allctrs[ERTS_ALC_A_SYSTEM].free		= erts_sys_free;
     erts_allctrs_info[ERTS_ALC_A_SYSTEM].enabled	= 1;
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    erts_allctrs[ERTS_ALC_A_SLAVE].alloc		= erl_slave_alloc;
+    erts_allctrs[ERTS_ALC_A_SLAVE].realloc		= erl_slave_realloc;
+    erts_allctrs[ERTS_ALC_A_SLAVE].free			= erl_slave_free;
+    /* It's enabled later, when it gets memory to manage */
+    erts_allctrs_info[ERTS_ALC_A_SLAVE].enabled		= 0;
+#endif
 
 #if HALFWORD_HEAP
     /* Init low memory variants by cloning */
@@ -2643,16 +2654,17 @@ erts_alloc_util_allocators(void *proc)
     Uint sz;
     int i;
     /*
-     * Currently all allocators except sys_alloc are
+     * Currently all allocators except sys_alloc and slave_alloc are
      * alloc_util allocators.
      */
-    sz = ((ERTS_ALC_A_MAX + 1 - ERTS_ALC_A_MIN) - 1)*2;
+    sz = ((ERTS_ALC_A_MAX + 1 - ERTS_ALC_A_MIN) - 2)*2;
     ASSERT(sz > 0);
     hp = HAlloc((Process *) proc, sz);
     res = NIL;
     for (i = ERTS_ALC_A_MAX; i >= ERTS_ALC_A_MIN; i--) {
 	switch (i) {
 	case ERTS_ALC_A_SYSTEM:
+	case ERTS_ALC_A_SLAVE:
 	    break;
 	default: {
 	    char *alc_str = (char *) ERTS_ALC_A2AD(i);

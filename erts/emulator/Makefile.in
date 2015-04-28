@@ -613,6 +613,7 @@ $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 		| $(SED) 's/^\([^ ]*\).* \([^ ]*\)$$/#define SLAVE_SYM\2 0x\1/g' \
 		> $@
 
+ENABLE_ALLOC_TYPE_VARS += slave
 # We don't make GENERATE depend on slave_syms.h because it causes too many
 # unwanted rebuilds. Instead, we add it as a dependency to the objects we add
 # below.

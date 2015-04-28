@@ -42,7 +42,6 @@
 #include "erl_ptab.h"
 
 #include "erl_slave_process.h"
-#include "erl_slave_alloc.h"
 #include "erl_slave_load.h"
 
 typedef struct {
@@ -192,7 +191,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     hipe_init_process_smp(&p->hipe_smp);
 #endif
 #endif
-    p->heap = (Eterm *) erl_slave_malloc(sizeof(Eterm)*sz);
+    p->heap = (Eterm *) erts_alloc(ERTS_ALC_T_SLAVE_HEAP, sizeof(Eterm)*sz);
     p->old_hend = p->old_htop = p->old_heap = NULL;
     p->high_water = p->heap;
     p->gen_gcs = 0;

@@ -25,7 +25,6 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "slave_export.h"
-#include "erl_slave_alloc.h"
 #include "erl_slave_load.h"
 #include "slave_ix.h"
 #include "hash.h"
@@ -130,7 +129,7 @@ export_alloc(struct export_entry* tmpl_e)
 	Export* tmpl = tmpl_e->ep;
 	Export* obj;
 
-	blob = (struct export_blob*) erl_slave_malloc(sizeof(*blob));
+	blob = (struct export_blob*) erts_alloc(ERTS_ALC_T_SLAVE_EXPORT, sizeof(*blob));
 	erts_smp_atomic_add_nob(&total_entries_bytes, sizeof(*blob));
 	obj = &blob->exp;
 	obj->fake_op_func_info_for_hipe[0] = 0;
@@ -169,7 +168,7 @@ export_free(struct export_entry* obj)
 	    return;
 	}
     }
-    erl_slave_free(blob);
+    erts_free(ERTS_ALC_T_SLAVE_EXPORT, blob);
     erts_smp_atomic_add_nob(&total_entries_bytes, -sizeof(*blob));
 }
 

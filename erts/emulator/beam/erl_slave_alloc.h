@@ -19,10 +19,12 @@
 
 #ifndef ERL_SLAVE_ALLOC_H__
 #define ERL_SLAVE_ALLOC_H__
+#include "erl_alloc.h"
 
 void erl_slave_alloc_submit(void*, size_t);
 
-void *erl_slave_malloc(size_t size);
-void erl_slave_free(void *);
+void *erl_slave_alloc(ErtsAlcType_t, void *, Uint);
+void *erl_slave_realloc(ErtsAlcType_t, void *, void *, Uint);
+void erl_slave_free(ErtsAlcType_t, void *, void *);
 
 #endif /* !defined(ERL_SLAVE_ALLOC_H__) */

@@ -37,7 +37,6 @@
 #include "slave_syms.h"
 #include "erl_slave_io.h"
 #include "erl_slave_command.h"
-#include "erl_slave_alloc.h"
 #include "erl_slave_load.h"
 
 static int num_slaves = 0;
@@ -45,14 +44,16 @@ static struct slave *slaves;
 #define SLAVE_COMMAND_BUFFER_SIZE 512
 
 static void alloc_slave_buffer(struct erl_fifo *buffer) {
-    void *data = erl_slave_malloc(SLAVE_COMMAND_BUFFER_SIZE);
+    void *data = erts_alloc(ERTS_ALC_T_SLAVE_COMMAND,
+			    SLAVE_COMMAND_BUFFER_SIZE);
     ASSERT(data);
     erts_fifo_init(buffer, data, SLAVE_COMMAND_BUFFER_SIZE);
 }
 
 static struct slave_command_buffers *alloc_slave_buffers(void) {
     struct slave_command_buffers *buffers
-	= erl_slave_malloc(sizeof(struct slave_command_buffers));
+	= erts_alloc(ERTS_ALC_T_SLAVE_COMMAND,
+		     sizeof(struct slave_command_buffers));
     ASSERT(buffers);
     buffers->master.size = buffers->slave.size = SLAVE_COMMAND_BUFFER_SIZE;
     alloc_slave_buffer(&buffers->master);
