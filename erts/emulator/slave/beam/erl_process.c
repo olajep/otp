@@ -1229,6 +1229,16 @@ Process *schedule(Process *p, int calls)
 	p = erl_create_process_ptr(&cmd, &so);
 	ASSERT(epiphany_in_dram(p));
 	p->i = cmd.entry;
+	{
+	    int i = 0;
+	    Eterm list = p->arg_reg[2];
+	    ASSERT(p->arity < 6);
+	    while (is_list(list)) {
+		Eterm *val = list_val(list);
+		p->arg_reg[i++] = CAR(val);
+		list = CDR(val);
+	    }
+	}
 	// Should last a while
 	p->fcalls = 100000;
 

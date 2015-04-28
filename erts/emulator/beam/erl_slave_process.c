@@ -43,6 +43,7 @@
 
 #include "erl_slave_process.h"
 #include "erl_slave_load.h"
+#include "slave_export.h"
 
 typedef struct {
     Process *proc;
@@ -363,6 +364,12 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
 
     erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
     res = p->common.id;
+
+    {
+	Export *entry = slave_active_export_entry(mod, func, arity);
+	if (entry) cmd.entry = entry->addressv[0];
+	else erts_printf("No export entry, using default\n");
+    }
 
     cmd.id = p->common.id;
     cmd.heap = p->heap;
