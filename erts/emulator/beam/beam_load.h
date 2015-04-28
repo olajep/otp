@@ -56,7 +56,15 @@ typedef struct {
 #endif
 } LoaderTarget;
 
+typedef struct {
+    Export* (*put)(Eterm mod, Eterm func, unsigned int arity);
+    Export* (*active_entry)(Eterm mod, Eterm func, unsigned int arity);
+    ErtsCodeIndex (*staging_code_ix)(void);
+    ErtsCodeIndex (*active_code_ix)(void);
+} TargetExportTab;
+
 extern LoaderTarget loader_target_self;
+extern TargetExportTab export_table_self;
 
 #define TARGET(Proc) (&loader_target_self)
 

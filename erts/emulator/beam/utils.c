@@ -50,6 +50,12 @@
 #include "erl_ptab.h"
 #include "erl_check_io.h"
 
+/* For the inlines */
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_ix.h"
+#  include "slave_export.h"
+#endif
+
 #undef M_TRIM_THRESHOLD
 #undef M_TOP_PAD
 #undef M_MMAP_THRESHOLD

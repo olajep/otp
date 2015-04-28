@@ -119,7 +119,7 @@ ErtsCodeIndex slave_staging_code_ix(void);
 
 
 
-#if 1 // ERTS_GLB_INLINE_INCL_FUNC_DEF
+#if ERTS_GLB_INLINE_INCL_FUNC_DEF
 
 ERTS_GLB_INLINE ErtsCodeIndex slave_active_code_ix(void)
 {

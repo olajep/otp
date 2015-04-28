@@ -22,11 +22,21 @@
 #endif
 
 #include "sys.h"
+#include "erl_term.h"
+#include "beam_bp.h"
+#include "erl_binary.h"
 #include "beam_load.h"
 #include "slave_export.h"
 #include "erl_slave_load.h"
+#include "slave_ix.h"
 
 const LoaderTarget *loader_target_slave;
+const TargetExportTab export_table_slave = {
+    slave_export_put,
+    slave_active_export_entry,
+    slave_staging_code_ix,
+    slave_active_code_ix
+};
 BeamInstr *slave_demo_prog;
 BifEntry slave_bif_table[BIF_SIZE];
 Export *slave_bif_export[BIF_SIZE];
@@ -59,9 +69,73 @@ enter_slave_bifs(struct master_command_setup *cmd)
 	ep->code[3] = (BeamInstr) SlaveOp(op_apply_bif);
 	ep->code[4] = (BeamInstr) bif->f;
 	/* XXX: set func info for bifs */
-	ep->fake_op_func_info_for_hipe[0] = (BeamInstr) SlaveOp(op_i_func_info_IaaI);
+	ep->fake_op_func_info_for_hipe[0]
+	    = (BeamInstr) SlaveOp(op_i_func_info_IaaI);
     }
-    erts_printf("%d slave bifs loaded (%d host bifs)\n", cmd->bif_size, BIF_SIZE);
+    erts_printf("%d slave bifs loaded (%d host bifs)\n", cmd->bif_size,
+		BIF_SIZE);
+}
+
+static Eterm
+slave_preload_module(Process *c_p,
+		     ErtsProcLocks c_p_locks,
+		     Eterm group_leader, /* Group leader or NIL if none. */
+		     Eterm* modp,	/*
+					 * Module name as an atom (NIL to not check).
+					 * On return, contains the actual module name.
+					 */
+		     byte* code,	/* Points to the code to load */
+		     Uint size)	/* Size of code to load. */
+{
+    Binary* magic = erts_alloc_loader_state();
+    Eterm retval;
+    erts_set_loader_target(magic, loader_target_slave,
+			   &export_table_slave,
+			   ERTS_ALC_T_SLAVE_CODE,
+			   ERTS_ALC_T_SLAVE_PREPARED_CODE);
+
+    retval = erts_prepare_loading(magic, c_p, group_leader, modp,
+				  code, size);
+    if (retval != NIL) {
+	return retval;
+    }
+    return slave_finish_loading(magic, c_p, c_p_locks, modp);
+}
+
+static void
+load_preloaded(void)
+{
+    int i;
+    Eterm res;
+    Preload* preload_p;
+    Eterm module_name;
+    byte* code;
+    char* name;
+    int length;
+
+    if ((preload_p = sys_preloaded()) == NULL) {
+	return;
+    }
+    i = 0;
+    while ((name = preload_p[i].name) != NULL) {
+	length = preload_p[i].size;
+	module_name = erts_atom_put((byte *) name, sys_strlen(name), ERTS_ATOM_ENC_LATIN1, 1);
+	if ((code = sys_preload_begin(&preload_p[i])) == 0)
+	    erl_exit(1, "Failed to find preloaded code for module %s\n",
+		     name);
+	res = slave_preload_module(NULL, 0, NIL, &module_name, code, length);
+	sys_preload_end(&preload_p[i]);
+	if (res != NIL)
+	    erl_exit(1,"Failed loading preloaded module %s (%T)\n",
+		     name, res);
+	i++;
+    }
+}
+
+static void
+bootstrap(void)
+{
+    load_preloaded();
 }
 
 void
@@ -79,6 +153,6 @@ erts_slave_init_load(struct master_command_setup *cmd)
     slave_demo_prog = cmd->demo_prog;
 
     enter_slave_bifs(cmd);
-
+    bootstrap();
     slave_load_initialised = 1;
 }

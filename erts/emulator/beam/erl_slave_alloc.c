@@ -121,7 +121,6 @@ void
 erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
 {
     struct segment *seg = SEGMENT(ptr);
-    erts_printf("Freeing %#x + %#x\n", ptr, seg->length);
     insert_free(seg);
 }
 

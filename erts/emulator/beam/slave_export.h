@@ -35,7 +35,7 @@ typedef struct export Export;
 void slave_init_export_table(void);
 /* void export_info(int, void *); */
 
-/* ERTS_GLB_INLINE Export* slave_active_export_entry(Eterm m, Eterm f, unsigned a); */
+ERTS_GLB_INLINE Export* slave_active_export_entry(Eterm m, Eterm f, unsigned a);
 Export* slave_export_put(Eterm mod, Eterm func, unsigned int arity);
 
 Export* slave_export_get_or_make_stub(Eterm, Eterm, unsigned);
@@ -60,7 +60,7 @@ extern erts_smp_mtx_t slave_export_staging_lock;
 #if ERTS_GLB_INLINE_INCL_FUNC_DEF
 
 ERTS_GLB_INLINE Export*
-erts_active_export_entry(Eterm m, Eterm f, unsigned int a)
+slave_active_export_entry(Eterm m, Eterm f, unsigned int a)
 {
     extern Export* slave_find_export_entry(Eterm m, Eterm f, unsigned a, ErtsCodeIndex);
     return slave_find_export_entry(m, f, a, erts_active_code_ix());
