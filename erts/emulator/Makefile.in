@@ -609,7 +609,7 @@ $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 # Note: the $(GREP) literals contain the tab (\t) character
 	$(gen_verbose)$(SLAVE_OBJDUMP) -t $< \
 		| $(GREP) -e '.bss	' -e '.data	' -e '.data_bank0	' -e '.text	' \
-		| $(EGREP) '^[0-9a-f]{8} g.* [^ .]+$$' \
+		| $(EGREP) '^[0-9a-f]{8} (g | w).* [^ .]+$$' \
 		| $(SED) 's/^\([^ ]*\).* \([^ ]*\)$$/#define SLAVE_SYM\2 0x\1/g' \
 		> $@
 
@@ -971,6 +971,7 @@ SLAVE_OBJS = \
 
 EXTRA_BASE_OBJS += $(SLAVE_OBJS)
 $(SLAVE_OBJS): $(TTF_DIR)/slave_syms.h
+$(OBJDIR)/beam_load.o: $(TTF_DIR)/slave_syms.h
 endif
 
 BASE_OBJS = $(RUN_OBJS) $(EMU_OBJS) $(OS_OBJS) $(EXTRA_BASE_OBJS)

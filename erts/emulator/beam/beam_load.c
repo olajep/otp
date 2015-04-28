@@ -43,6 +43,11 @@
 #include "hipe_arch.h"
 #endif
 
+/* This is not nice! */
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_syms.h"
+#endif
+
 ErlDrvBinary* erts_gzinflate_buffer(char*, int);
 
 #define MAX_OPARGS 8
@@ -1543,7 +1548,7 @@ is_bif(const LoaderState* stp, Eterm mod, Eterm func, unsigned arity)
     if (e == NULL) {
 	return 0;
     }
-    if (e->code[3] != (BeamInstr) em_apply_bif) {
+    if (e->code[3] != BeamOpCode(op_apply_bif)) {
 	return 0;
     }
     if (mod == am_erlang && func == am_apply && arity == 3) {
@@ -3955,7 +3960,30 @@ gen_guard_bif1(LoaderState* stp, GenOpArg Fail, GenOpArg Live, GenOpArg Bif,
 	op->a[1].val = (BeamInstr) (void *) erts_gc_round_1;
     } else if (bf == trunc_1) {
 	op->a[1].val = (BeamInstr) (void *) erts_gc_trunc_1;
-    } else {
+    }
+    /* How could this be made nicer? */
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    else if (bf == (void*)SLAVE_SYM_length_1) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_length_1;
+    } else if (bf == (void*)SLAVE_SYM_size_1) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_size_1;
+    } else if (bf == (void*)SLAVE_SYM_bit_size_1) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_bit_size_1;
+    } else if (bf == (void*)SLAVE_SYM_byte_size_1) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_byte_size_1;
+    } else if (bf == (void*)SLAVE_SYM_map_size_1) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_map_size_1;
+    } else if (bf == (void*)SLAVE_SYM_abs_1) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_abs_1;
+    } else if (bf == (void*)SLAVE_SYM_float_1) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_float_1;
+    } else if (bf == (void*)SLAVE_SYM_round_1) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_round_1;
+    } else if (bf == (void*)SLAVE_SYM_trunc_1) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_trunc_1;
+    }
+#endif
+    else {
 	op->op = genop_unsupported_guard_bif_3;
 	op->arity = 3;
 	op->a[0].type = TAG_a;
@@ -3997,7 +4025,13 @@ gen_guard_bif2(LoaderState* stp, GenOpArg Fail, GenOpArg Live, GenOpArg Bif,
        beam_emu.c:translate_gc_bif for error handling to work properly. */
     if (bf == binary_part_2) {
 	op->a[1].val = (BeamInstr) (void *) erts_gc_binary_part_2;
-    } else {
+    }
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    else if (bf == (void*)SLAVE_SYM_binary_part_2) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_binary_part_2;
+    }
+#endif
+    else {
 	op->op = genop_unsupported_guard_bif_3;
 	op->arity = 3;
 	op->a[0].type = TAG_a;
@@ -4040,7 +4074,13 @@ gen_guard_bif3(LoaderState* stp, GenOpArg Fail, GenOpArg Live, GenOpArg Bif,
        beam_emu.c:translate_gc_bif for error handling to work properly. */
     if (bf == binary_part_3) {
 	op->a[1].val = (BeamInstr) (void *) erts_gc_binary_part_3;
-    } else {
+    }
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    else if (bf == (void*)SLAVE_SYM_binary_part_3) {
+	op->a[1].val = (BeamInstr) (void *) SLAVE_SYM_erts_gc_binary_part_3;
+    }
+#endif
+    else {
 	op->op = genop_unsupported_guard_bif_3;
 	op->arity = 3;
 	op->a[0].type = TAG_a;

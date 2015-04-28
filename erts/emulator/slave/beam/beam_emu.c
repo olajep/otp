@@ -2478,6 +2478,7 @@ get_map_elements_fail:
 	Eterm result;
 	BeamInstr *next;
 
+	ASSERT(epiphany_in_dram(bf));
 	PRE_BIF_SWAPOUT(c_p);
 	c_p->fcalls = FCALLS - 1;
         // ESTUB: No tracing
