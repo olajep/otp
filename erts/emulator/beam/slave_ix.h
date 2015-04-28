@@ -127,7 +127,7 @@ ERTS_GLB_INLINE ErtsCodeIndex slave_active_code_ix(void)
 }
 ERTS_GLB_INLINE ErtsCodeIndex slave_staging_code_ix(void)
 {
-    return 1;
+    return 0;
 }
 
 #endif /* ERTS_GLB_INLINE_INCL_FUNC_DEF */

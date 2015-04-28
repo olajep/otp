@@ -54,7 +54,7 @@ extern erts_smp_mtx_t slave_export_staging_lock;
 
 #include "beam_load.h" /* For em_* extern declarations */
 #define SlaveExportIsBuiltIn(EntryPtr) 			\
-(((EntryPtr)->addressv[erts_active_code_ix()] == (EntryPtr)->code + 3) && \
+(((EntryPtr)->addressv[slave_active_code_ix()] == (EntryPtr)->code + 3) && \
  ((EntryPtr)->code[3] == (BeamInstr) SlaveOp(op_em_apply_bif)))
 
 #if ERTS_GLB_INLINE_INCL_FUNC_DEF
@@ -63,7 +63,7 @@ ERTS_GLB_INLINE Export*
 slave_active_export_entry(Eterm m, Eterm f, unsigned int a)
 {
     extern Export* slave_find_export_entry(Eterm m, Eterm f, unsigned a, ErtsCodeIndex);
-    return slave_find_export_entry(m, f, a, erts_active_code_ix());
+    return slave_find_export_entry(m, f, a, slave_active_code_ix());
 }
 
 #endif /* ERTS_GLB_INLINE_INCL_FUNC_DEF */
