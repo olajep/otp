@@ -29,12 +29,13 @@
 #endif
 
 #include "code_ix.h"
+#include "slave.h"
 
 /*
 ** Export entry
 */
 
-typedef struct export
+typedef struct SLAVE_SHARED_DATA export
 {
     void* addressv[ERTS_NUM_CODE_IX];  /* Pointer to code for function. */
 
