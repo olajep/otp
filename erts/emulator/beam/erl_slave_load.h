@@ -35,4 +35,7 @@ extern BeamInstr *slave_demo_prog;
 
 void erts_slave_init_load(struct master_command_setup*);
 
+/* Caller must hold the code write lock */
+void erts_slave_bootstrap(void);
+
 #endif /* !defined(_ERL_SLAVE_LOAD_H) */

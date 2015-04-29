@@ -31,6 +31,7 @@
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
 #include "erl_slave_process.h"
+#include "erl_slave_load.h"
 #endif
 
 BIF_RETTYPE slave_spawn_3(BIF_ALIST_3)
@@ -56,4 +57,18 @@ BIF_RETTYPE slave_print_1(BIF_ALIST_1)
 {
     erts_printf("slave:print/1: %T\n", BIF_ARG_1);
     BIF_RET(am_ok);
+}
+
+BIF_RETTYPE slave_boot_0(BIF_ALIST_0)
+{
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (!erts_try_seize_code_write_permission(BIF_P)) {
+	ERTS_BIF_YIELD0(bif_export[BIF_slave_boot_0], BIF_P);
+    }
+    erts_slave_bootstrap();
+    erts_release_code_write_permission();
+    BIF_RET(am_ok);
+#else
+    BIF_RET(am_undefined);
+#endif
 }

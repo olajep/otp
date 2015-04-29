@@ -43,6 +43,7 @@ BifEntry slave_bif_table[BIF_SIZE];
 Export *slave_bif_export[BIF_SIZE];
 
 static int slave_load_initialised = 0;
+struct master_command_setup *setup_cmd;
 
 static void
 enter_slave_bifs(struct master_command_setup *cmd)
@@ -134,10 +135,22 @@ load_preloaded(void)
     }
 }
 
-static void
-bootstrap(void)
+void
+erts_slave_bootstrap(void)
 {
+    ASSERT(slave_load_initialised && setup_cmd);
+
+    erts_start_staging_code_ix();
+    enter_slave_bifs(setup_cmd);
+    erts_end_staging_code_ix();
+    erts_commit_staging_code_ix();
+
+    erts_start_staging_code_ix();
     load_preloaded();
+    erts_end_staging_code_ix();
+    erts_commit_staging_code_ix();
+
+    free(setup_cmd);
 }
 
 void
@@ -160,7 +173,8 @@ erts_slave_init_load(struct master_command_setup *cmd)
     loader_target_slave = cmd->target;
     slave_demo_prog = cmd->demo_prog;
 
-    enter_slave_bifs(cmd);
-    bootstrap();
+    setup_cmd = malloc(sizeof(struct master_command_setup));
+    ASSERT(setup_cmd);
+    memcpy(setup_cmd, cmd, sizeof(struct master_command_setup));
     slave_load_initialised = 1;
 }

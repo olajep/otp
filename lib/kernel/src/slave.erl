@@ -18,10 +18,10 @@
 %%
 -module(slave).
 
--export([spawn/3, print/1]).
+-export([spawn/3, print/1, boot/0]).
 
 %% spawn/3
--spec spawn(Module, Function, Args) -> pid() when
+-spec spawn(Module, Function, Args) -> undefined | pid() when
       Module :: module(),
       Function :: atom(),
       Args :: [term()].
@@ -31,4 +31,9 @@ spawn(_Module, _Function, _Args) ->
 %% print/1
 -spec print(term()) -> ok.
 print(_Term) ->
+    erlang:nif_error(undefined).
+
+%% boot/0
+-spec boot() -> undefined | ok.
+boot() ->
     erlang:nif_error(undefined).

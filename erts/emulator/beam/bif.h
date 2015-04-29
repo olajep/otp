@@ -256,7 +256,7 @@ do {							\
     (Proc)->freason = TRAP;				\
 } while (0)
 
-#define BIF_TRAP0(p, Trap_) do {		\
+#define BIF_TRAP0(Trap_, p) do {		\
       (p)->arity = 0;				\
       (p)->i = (BeamInstr*) ((Trap_)->addressv[erts_active_code_ix()]);	\
       (p)->freason = TRAP;			\
