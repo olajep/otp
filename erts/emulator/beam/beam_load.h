@@ -60,8 +60,6 @@ typedef struct {
 typedef struct {
     Export* (*put)(Eterm mod, Eterm func, unsigned int arity);
     Export* (*active_entry)(Eterm mod, Eterm func, unsigned int arity);
-    ErtsCodeIndex (*staging_code_ix)(void);
-    ErtsCodeIndex (*active_code_ix)(void);
     Export** bif;
     Module* (*put_module)(Eterm mod);
 } TargetExportTab;

@@ -25,7 +25,11 @@
 #include "global.h"
 #include "beam_catches.h"
 
-
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_ix.h"
+#  include "slave_module.h"
+#  include "slave_export.h"
+#endif
 
 #if 0
 # define CIX_TRACE(text) erts_fprintf(stderr, "CIX_TRACE: " text " act=%u load=%u\r\n", erts_active_code_ix(), erts_staging_code_ix())
@@ -70,6 +74,11 @@ void erts_start_staging_code_ix(void)
     export_start_staging();
     module_start_staging();
     erts_start_staging_ranges();
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    /* ETODO: catches/ranges? */
+    slave_export_start_staging();
+    slave_module_start_staging();
+#endif
     CIX_TRACE("start");
 }
 
@@ -80,6 +89,10 @@ void erts_end_staging_code_ix(void)
     export_end_staging(1);
     module_end_staging(1);
     erts_end_staging_ranges(1);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    slave_export_end_staging(1);
+    slave_module_end_staging(1);
+#endif
     CIX_TRACE("end");
 }
 
@@ -92,6 +105,9 @@ void erts_commit_staging_code_ix(void)
     erts_smp_atomic32_set_nob(&the_active_code_index, ix);
     ix = (ix + 1) % ERTS_NUM_CODE_IX;
     erts_smp_atomic32_set_nob(&the_staging_code_index, ix);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    slave_code_ix_update();
+#endif
     export_staging_unlock();
     CIX_TRACE("activate");
 }
@@ -102,6 +118,10 @@ void erts_abort_staging_code_ix(void)
     export_end_staging(0);
     module_end_staging(0);
     erts_end_staging_ranges(0);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    slave_export_end_staging(0);
+    slave_module_end_staging(0);
+#endif
     CIX_TRACE("abort");
 }
 

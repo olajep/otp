@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2012-2015. All Rights Reserved.
+ * Copyright Ericsson AB 2015. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -17,22 +17,31 @@
  * %CopyrightEnd%
  */
 
-/* Description:
- *	The slave_ix module makes sure that the slave emulator code_ix stays in
- *	lock-step with the master code_ix.
- */
+#ifdef HAVE_CONFIG_H
+#  include "config.h"
+#endif
 
-#ifndef __SLAVE_IX_H__
-#define __SLAVE_IX_H__
+#include "slave_ix.h"
+#include "slave_syms.h"
 
-#include "code_ix.h"
+static ErtsCodeIndex *const slave_active_ix =
+    (void*)SLAVE_SYM_the_active_code_index;
+static ErtsCodeIndex *const slave_staging_ix =
+    (void*)SLAVE_SYM_the_staging_code_index;
 
-/* Called once at emulator initialization.
- */
-void slave_code_ix_init(void);
+static int initialized = 0;
 
-/* Called by code_ix as it updates the code indices.
- */
-void slave_code_ix_update(void);
+void
+slave_code_ix_init(void)
+{
+    initialized = 1;
+    slave_code_ix_update();
+}
 
-#endif /* !__SLAVE_IX_H__ */
+void
+slave_code_ix_update(void)
+{
+    if (!initialized) return;
+    *slave_active_ix = erts_active_code_ix();
+    *slave_staging_ix = erts_staging_code_ix();
+}

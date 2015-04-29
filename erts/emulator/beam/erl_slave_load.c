@@ -35,8 +35,6 @@ const LoaderTarget *loader_target_slave;
 const TargetExportTab export_table_slave = {
     slave_export_put,
     slave_active_export_entry,
-    slave_staging_code_ix,
-    slave_active_code_ix,
     slave_bif_export,
     slave_put_module,
 };
@@ -148,6 +146,7 @@ erts_slave_init_load(struct master_command_setup *cmd)
     if (slave_load_initialised) return;
     slave_init_export_table();
     slave_init_module_table();
+    slave_code_ix_init();
 
     if (cmd->num_instructions != num_instructions) {
 	erl_exit(1, "Error: Got %d instructions from slave emulator, expected %d\n",

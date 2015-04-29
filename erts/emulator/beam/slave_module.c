@@ -25,7 +25,6 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "slave_module.h"
-#include "slave_ix.h"
 
 #ifdef DEBUG
 #  define IF_DEBUG(x) x
@@ -41,6 +40,8 @@ static IndexTable module_tables[ERTS_NUM_CODE_IX];
 erts_smp_rwmtx_t the_old_code_rwlocks[ERTS_NUM_CODE_IX];
 
 static erts_smp_atomic_t tot_module_bytes;
+
+static int initialized = 0;
 
 /* SMP note: Active module table lookup and current module instance can be
  *           read without any locks. Old module instances are protected by
@@ -107,6 +108,7 @@ void slave_init_module_table(void)
 	erts_smp_rwmtx_init_x(&the_old_code_rwlocks[i], "slave_old_code", make_small(i));
     }
     erts_smp_atomic_init_nob(&tot_module_bytes, 0);
+    initialized = 1;
 }
 
 Module*
@@ -138,10 +140,11 @@ slave_put_module(Eterm mod)
     Module* res;
 
     ASSERT(is_atom(mod));
+    ASSERT(initialized);
     /* ERTS_SMP_LC_ASSERT(erts_initialized == 0 */
     /* 		       || erts_has_code_write_permission()); */
 
-    mod_tab = &module_tables[slave_staging_code_ix()];
+    mod_tab = &module_tables[erts_staging_code_ix()];
     e.module = atom_val(mod);
     oldsz = index_table_sz(mod_tab);
     res = (Module*) index_put_entry(mod_tab, (void*) &e);
@@ -166,18 +169,20 @@ int slave_module_table_sz(void)
 }
 
 #ifdef DEBUG
-static ErtsCodeIndex dbg_load_code_ix = 0;
+static ErtsCodeIndex dbg_load_code_ix = -1;
 #endif
 
 static int entries_at_start_staging = 0;
 
 void slave_module_start_staging(void)
 {
-    IndexTable* src = &module_tables[slave_active_code_ix()];
-    IndexTable* dst = &module_tables[slave_staging_code_ix()];
+    IndexTable* src = &module_tables[erts_active_code_ix()];
+    IndexTable* dst = &module_tables[erts_staging_code_ix()];
     Module* src_mod;
     Module* dst_mod;
     int i, oldsz, newsz;
+
+    if (!initialized) return;
 
     ASSERT(dbg_load_code_ix == -1);
     ASSERT(dst->entries <= src->entries);
@@ -210,15 +215,17 @@ void slave_module_start_staging(void)
     erts_smp_atomic_add_nob(&tot_module_bytes, (newsz - oldsz));
 
     entries_at_start_staging = dst->entries;
-    IF_DEBUG(dbg_load_code_ix = slave_staging_code_ix());
+    IF_DEBUG(dbg_load_code_ix = erts_staging_code_ix());
 }
 
 void slave_module_end_staging(int commit)
 {
-    ASSERT(dbg_load_code_ix == slave_staging_code_ix());
+    if (!initialized) return;
+
+    ASSERT(dbg_load_code_ix == erts_staging_code_ix());
 
     if (!commit) { /* abort */
-	IndexTable* tab = &module_tables[slave_staging_code_ix()];
+	IndexTable* tab = &module_tables[erts_staging_code_ix()];
 	int oldsz, newsz;
 
 	ASSERT(entries_at_start_staging <= tab->entries);

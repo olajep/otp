@@ -26,7 +26,6 @@
 #include "global.h"
 #include "slave_export.h"
 #include "erl_slave_load.h"
-#include "slave_ix.h"
 #include "hash.h"
 
 #define EXPORT_INITIAL_SIZE   4000
@@ -84,6 +83,8 @@ static struct export_blob* entry_to_blob(struct export_entry* ee)
         ((char*)ee->ep - offsetof(struct export_blob,exp));
 }
 
+static int initialized = 0;
+
 /* void */
 /* export_info(int to, void *to_arg) */
 /* { */
@@ -92,8 +93,8 @@ static struct export_blob* entry_to_blob(struct export_entry* ee)
 /*     if (lock) */
 /* 	slave_export_staging_lock(); */
 /* #endif */
-/*     index_info(to, to_arg, &export_tables[slave_active_code_ix()]); */
-/*     hash_info(to, to_arg, &export_tables[slave_staging_code_ix()].htable); */
+/*     index_info(to, to_arg, &export_tables[erts_active_code_ix()]); */
+/*     hash_info(to, to_arg, &export_tables[erts_staging_code_ix()].htable); */
 /* #ifdef ERTS_SMP */
 /*     if (lock) */
 /* 	slave_export_staging_unlock(); */
@@ -180,6 +181,7 @@ slave_init_export_table(void)
 
     erts_smp_mtx_init(&slave_export_staging_lock, "slave_export_tab");
     erts_smp_atomic_init_nob(&total_entries_bytes, 0);
+    initialized = 1;
 
     f.hash = (H_FUN) export_hash;
     f.cmp  = (HCMP_FUN) export_cmp;
@@ -213,6 +215,7 @@ slave_find_export_entry(Eterm m, Eterm f, unsigned int a, ErtsCodeIndex code_ix)
     HashValue hval = EXPORT_HASH((BeamInstr) m, (BeamInstr) f, (BeamInstr) a);
     int ix;
     HashBucket* b;
+    ASSERT(initialized);
 
     ix = hval % export_tables[code_ix].htable.size;
     b = export_tables[code_ix].htable.bucket[ix];
@@ -280,7 +283,7 @@ static struct export_entry* init_template(struct export_templ* templ,
 Export*
 slave_export_put(Eterm mod, Eterm func, unsigned int arity)
 {
-    ErtsCodeIndex code_ix = slave_staging_code_ix();
+    ErtsCodeIndex code_ix = erts_staging_code_ix();
     struct export_templ templ;
     struct export_entry* ee;
 
@@ -312,7 +315,7 @@ slave_export_get_or_make_stub(Eterm mod, Eterm func, unsigned int arity)
     ASSERT(is_atom(func));
 
     do {
-	code_ix = slave_active_code_ix();
+	code_ix = erts_active_code_ix();
 	ep = slave_find_export_entry(mod, func, arity, code_ix);
 	if (ep == 0) {
 	    /*
@@ -320,11 +323,11 @@ slave_export_get_or_make_stub(Eterm mod, Eterm func, unsigned int arity)
 	     * export table, to avoid having to lock the active export table.
 	     */
 	    slave_export_staging_lock();
-	    if (slave_active_code_ix() == code_ix) {
+	    if (erts_active_code_ix() == code_ix) {
 		struct export_templ templ;
 	        struct export_entry* entry;
 
-		IndexTable* tab = &export_tables[slave_staging_code_ix()];
+		IndexTable* tab = &export_tables[erts_staging_code_ix()];
 		init_template(&templ, mod, func, arity);
 		entry = (struct export_entry *) index_put_entry(tab, &templ.entry);
 		ep = entry->ep;
@@ -371,7 +374,7 @@ slave_export_get_or_make_stub(Eterm mod, Eterm func, unsigned int arity)
 /*     struct export_entry* entry; */
 
 /*     ee.ep = e; */
-/*     entry = (struct export_entry*)hash_get(&export_tables[slave_active_code_ix()].htable, &ee); */
+/*     entry = (struct export_entry*)hash_get(&export_tables[erts_active_code_ix()].htable, &ee); */
 /*     return entry ? entry->ep : NULL; */
 /* } */
 
@@ -380,8 +383,8 @@ IF_DEBUG(static ErtsCodeIndex debug_start_load_ix = 0;)
 
 void slave_export_start_staging(void)
 {
-    ErtsCodeIndex dst_ix = slave_staging_code_ix();
-    ErtsCodeIndex src_ix = slave_active_code_ix();
+    ErtsCodeIndex dst_ix = erts_staging_code_ix();
+    ErtsCodeIndex src_ix = erts_active_code_ix();
     IndexTable* dst = &export_tables[dst_ix];
     IndexTable* src = &export_tables[src_ix];
     struct export_entry* src_entry;
@@ -389,6 +392,8 @@ void slave_export_start_staging(void)
     struct export_entry* dst_entry;
 #endif
     int i;
+
+    if (!initialized) return;
 
     ASSERT(dst_ix != src_ix);
     ASSERT(debug_start_load_ix == -1);
@@ -413,6 +418,8 @@ void slave_export_start_staging(void)
 
 void slave_export_end_staging(int commit)
 {
-    ASSERT(debug_start_load_ix == slave_staging_code_ix());
+    if (!initialized) return;
+
+    ASSERT(debug_start_load_ix == erts_staging_code_ix());
     IF_DEBUG(debug_start_load_ix = -1);
 }

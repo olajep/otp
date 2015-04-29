@@ -555,8 +555,6 @@ LoaderTarget loader_target_self;
 TargetExportTab export_table_self = {
     erts_export_put,
     erts_active_export_entry,
-    erts_staging_code_ix,
-    erts_active_code_ix,
     bif_export,
     erts_put_module,
 };
@@ -4558,13 +4556,13 @@ final_touch(LoaderState* stp)
 	ep = stp->tgt_export->put(stp->module, stp->export[i].function,
 				  stp->export[i].arity);
 	if (!on_load) {
-	    ep->addressv[stp->tgt_export->staging_code_ix()] = address;
+	    ep->addressv[erts_staging_code_ix()] = address;
 	} else {
 	    /*
 	     * Don't make any of the exported functions
 	     * callable yet.
 	     */
-	    ep->addressv[stp->tgt_export->staging_code_ix()] = ep->code+3;
+	    ep->addressv[erts_staging_code_ix()] = ep->code+3;
 	    ep->code[4] = (BeamInstr) address;
 	}
     }
@@ -5857,7 +5855,7 @@ stub_final_touch(LoaderState* stp, BeamInstr* fp)
     for (i = 0; i < n; i++) {
 	if (stp->export[i].function == function && stp->export[i].arity == arity) {
 	    Export* ep = stp->tgt_export->put(mod, function, arity);
-	    ep->addressv[stp->tgt_export->staging_code_ix()] = fp+5;
+	    ep->addressv[erts_staging_code_ix()] = fp+5;
 	    return;
 	}
     }
