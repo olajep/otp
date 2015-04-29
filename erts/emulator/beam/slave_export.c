@@ -378,7 +378,7 @@ slave_export_get_or_make_stub(Eterm mod, Eterm func, unsigned int arity)
 /*     return entry ? entry->ep : NULL; */
 /* } */
 
-IF_DEBUG(static ErtsCodeIndex debug_start_load_ix = 0;)
+IF_DEBUG(static ErtsCodeIndex debug_start_load_ix = -1;)
 
 
 void slave_export_start_staging(void)
