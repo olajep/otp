@@ -64,6 +64,17 @@
 #  define OpCode(OpCode)  (&&lb_##OpCode)
 #endif
 
+/* Instruction-by-instruction tracing */
+#define HARDTRACE 0
+#if HARDTRACE
+#  undef OpCase
+#  define OpCase(OpCode) {			\
+    lb_##OpCode:				\
+	erts_printf(" Trace @ " #OpCode "\n");	\
+	goto __lb_##OpCode##_no_print_;		\
+    } __lb_##OpCode##_no_print_
+#endif
+
 #ifdef ERTS_ENABLE_LOCK_CHECK
 #  ifdef ERTS_SMP
 #    define PROCESS_MAIN_CHK_LOCKS(P)					\
