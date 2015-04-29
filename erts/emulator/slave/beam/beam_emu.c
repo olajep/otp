@@ -962,8 +962,6 @@ init_emulator(void)
 
 #endif /* USE_VM_PROBES */
 
-BeamInstr *demo_prog;
-
 /*
  * process_main() is called twice:
  * The first call performs some initialisation, including exporting
@@ -3810,112 +3808,6 @@ get_map_elements_fail:
      /*     /\* XXX: set func info for bifs *\/ */
      /*     ep->fake_op_func_info_for_hipe[0] = (BeamInstr) BeamOp(op_i_func_info_IaaI); */
      /* } */
-
-     {
-	 /* fib(0) -> 0;
-	  * fib(1) -> 1;
-	  * fib(N) -> fib(N-1) + fib(N-2);
-	  */
-	 static BeamInstr fib[] = {
-	     (BeamInstr)OpCode(i_fetch_cr),
-	     (BeamInstr)make_small(0),
-	     (BeamInstr)OpCode(i_is_eq_exact_f),
-	     (BeamInstr)(fib + 5),
-	     (BeamInstr)OpCode(return),
-
-	     /* fib+5: */
-	     (BeamInstr)OpCode(i_fetch_cr),
-	     (BeamInstr)make_small(1),
-	     (BeamInstr)OpCode(i_is_eq_exact_f),
-	     (BeamInstr)(fib + 10),
-	     (BeamInstr)OpCode(return),
-
-	     /* fib+10: */
-	     (BeamInstr)OpCode(allocate_tt),
-	     (BeamInstr)1,
-
-	     (BeamInstr)OpCode(move_ry), // Store N in y1
-	     (BeamInstr)(1 * sizeof(Eterm)),
-
-	     (BeamInstr)OpCode(i_fetch_rc), // x0 = N-1
-	     (BeamInstr)make_small(1),
-	     (BeamInstr)OpCode(i_minus_jId),
-	     (BeamInstr)OpCode(int_code_end), // ??
-	     (BeamInstr)OpCode(int_code_end), // ??
-	     (BeamInstr)make_rreg(),
-
-	     (BeamInstr)OpCode(i_call_f), // x0 = fib(N-1)
-	     (BeamInstr)fib,
-
-	     (BeamInstr)OpCode(i_fetch_yc), // prepare arguments to minus
-	     (BeamInstr)(1 * sizeof(Eterm)),
-	     (BeamInstr)make_small(2),
-
-	     (BeamInstr)OpCode(move_ry), // Store fib(N-1) in y1
-	     (BeamInstr)(1 * sizeof(Eterm)),
-
-	     (BeamInstr)OpCode(i_minus_jId), // x0 = N-2
-	     (BeamInstr)OpCode(int_code_end), // ??
-	     (BeamInstr)OpCode(int_code_end), // ??
-	     (BeamInstr)make_rreg(),
-
-	     (BeamInstr)OpCode(i_call_f), // x0 = fib(N-2)
-	     (BeamInstr)fib,
-
-	     (BeamInstr)OpCode(i_fetch_yr), // x0 = fib(N-1) + fib(N-2)
-	     (BeamInstr)(1 * sizeof(Eterm)),
-	     (BeamInstr)OpCode(i_plus_jId),
-	     (BeamInstr)OpCode(int_code_end), // ??
-	     (BeamInstr)OpCode(int_code_end), // ??
-	     (BeamInstr)make_rreg(),
-
-	     (BeamInstr)OpCode(deallocate_return_Q),
-	     (BeamInstr)(2 * sizeof(Eterm)),
-	 };
-
-	 static Export append_element_2_export = {
-	     .code = {
-		 [4] = (BeamInstr)append_element_2,
-	     },
-	 };
-
-	 static Export slave_print_1_export = {
-	     .code = {
-		 [4] = (BeamInstr)slave_print_1,
-	     },
-	 };
-
-	 BeamInstr *ptr = demo_prog = calloc(100, sizeof(BeamInstr));
-
-	 *(ptr++) = (BeamInstr)OpCode(move_xr); // x0 = x2
-	 *(ptr++) = (BeamInstr)(2 * sizeof(Eterm));
-
-	 *(ptr++) = (BeamInstr)OpCode(call_bif_e);
-	 *(ptr++) = (BeamInstr)&slave_print_1_export;
-
-	 *(ptr++) = (BeamInstr)OpCode(get_list_xrx);
-	 *(ptr++) = (BeamInstr)(8 | (4 << BEAM_LOOSE_SHIFT));
-
-	 *(ptr++) = (BeamInstr)OpCode(i_call_f);
-	 *(ptr++) = (BeamInstr)fib;
-
-	 *(ptr++) = (BeamInstr)OpCode(i_put_tuple_xI);
-	 *(ptr++) = (BeamInstr)(1 * sizeof(Eterm)); // x1 receives the result
-	 *(ptr++) = (BeamInstr)2;
-	 *(ptr++) = (BeamInstr)NIL;
-	 *(ptr++) = (BeamInstr)((R_REG_DEF << _TAG_PRIMARY_SIZE) | TAG_PRIMARY_HEADER);
-
-	 *(ptr++) = (BeamInstr)OpCode(move_xr); // x0 = x1
-	 *(ptr++) = (BeamInstr)(1 * sizeof(Eterm));
-
-	 *(ptr++) = (BeamInstr)OpCode(call_bif_e);
-	 *(ptr++) = (BeamInstr)&append_element_2_export;
-
-	 *(ptr++) = (BeamInstr)OpCode(call_bif_e);
-	 *(ptr++) = (BeamInstr)&slave_print_1_export;
-
-	 *(ptr++) = (BeamInstr)OpCode(normal_exit);
-     }
 
      return;
  }

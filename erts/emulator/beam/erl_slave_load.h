@@ -31,7 +31,6 @@
 extern const LoaderTarget *loader_target_slave;
 extern BifEntry slave_bif_table[];
 extern Export *slave_bif_export[];
-extern BeamInstr *slave_demo_prog;
 
 void erts_slave_init_load(struct master_command_setup*);
 

@@ -1228,10 +1228,10 @@ Process *schedule(Process *p, int calls)
 	erts_master_await_run(&ready_cmd, &cmd);
 	p = erl_create_process_ptr(&cmd, &so);
 	ASSERT(epiphany_in_dram(p));
-	p->i = cmd.entry;
-	{
+	if (cmd.entry) 	{
 	    int i = 0;
 	    Eterm list = p->arg_reg[2];
+	    p->i = cmd.entry;
 	    ASSERT(p->arity < 6);
 	    while (is_list(list)) {
 		Eterm *val = list_val(list);

@@ -38,7 +38,6 @@ const TargetExportTab export_table_slave = {
     slave_bif_export,
     slave_put_module,
 };
-BeamInstr *slave_demo_prog;
 BifEntry slave_bif_table[BIF_SIZE];
 Export *slave_bif_export[BIF_SIZE];
 
@@ -171,7 +170,6 @@ erts_slave_init_load(struct master_command_setup *cmd)
     }
 
     loader_target_slave = cmd->target;
-    slave_demo_prog = cmd->demo_prog;
 
     setup_cmd = malloc(sizeof(struct master_command_setup));
     ASSERT(setup_cmd);

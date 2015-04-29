@@ -37,13 +37,11 @@ LoaderTarget loader_target_self;
 void
 erts_master_setup(void)
 {
-    extern BeamInstr *demo_prog;
     struct master_command_setup cmd = {
 	.target = &loader_target_self,
 	.num_instructions = num_instructions,
 	.bif_table = bif_table,
 	.bif_size = BIF_SIZE,
-	.demo_prog = demo_prog,
     };
 
 #ifndef NO_JUMP_TABLE

@@ -68,7 +68,6 @@ struct master_command_setup {
     int num_instructions;
     SlaveBifEntry *bif_table;
     int bif_size;
-    BeamInstr *demo_prog;
 } SHARED_DATA;
 
 struct master_command_ready {

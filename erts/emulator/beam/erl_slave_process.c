@@ -113,7 +113,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     erts_aint32_t state = 0;
     struct slave *slave;
     struct slave_command_run cmd = {
-	.entry = slave_demo_prog,
+	.entry = NULL,
 	.parent_id = parent->common.id,
 	.mod = mod,
 	.func = func,
