@@ -70,6 +70,43 @@ struct SLAVE_SHARED_DATA export_templ
     Export exp;
 };
 
+static HashValue
+export_hash(struct export_entry* ee)
+{
+    Export* x = ee->ep;
+    return EXPORT_HASH(x->code[0], x->code[1], x->code[2]);
+}
+
+static int
+export_cmp(struct export_entry* tmpl_e, struct export_entry* obj_e)
+{
+    Export* tmpl = tmpl_e->ep;
+    Export* obj = obj_e->ep;
+    return !(tmpl->code[0] == obj->code[0] &&
+	     tmpl->code[1] == obj->code[1] &&
+	     tmpl->code[2] == obj->code[2]);
+}
+
+
+static struct export_entry*
+export_alloc(struct export_entry* tmpl_e)
+{
+    erl_exit(1, "Cannot alloc export entry from slave");
+}
+
+static void
+export_free(struct export_entry* obj)
+{
+    erl_exit(1, "Cannot free export entry from slave");
+}
+
+static HashFunctions fun = {
+    (H_FUN)      export_hash,
+    (HCMP_FUN)   export_cmp,
+    (HALLOC_FUN) export_alloc,
+    (HFREE_FUN)  export_free,
+};
+
 /*
  * Return a pointer to the export entry for the given function,
  * or NULL otherwise.  Notes:
@@ -107,4 +144,42 @@ erts_find_export_entry(Eterm m, Eterm f, unsigned int a, ErtsCodeIndex code_ix)
 	b = b->next;
     }
     return NULL;
+}
+
+static struct export_entry* init_template(struct export_templ* templ,
+					  Eterm m, Eterm f, unsigned a)
+{
+    templ->entry.ep = &templ->exp;
+    templ->entry.slot.index = -1;
+    templ->exp.code[0] = m;
+    templ->exp.code[1] = f;
+    templ->exp.code[2] = a;
+    return &templ->entry;
+}
+
+/*
+ * Find the export entry for a loaded function.
+ * Returns a NULL pointer if the given function is not loaded, or
+ * a pointer to the export entry.
+ *
+ * Note: This function never returns export entries for BIFs
+ * or functions which are not yet loaded.  This makes it suitable
+ * for use by the erlang:function_exported/3 BIF or whenever you
+ * cannot depend on the error_handler.
+ */
+
+Export*
+erts_find_function(Eterm m, Eterm f, unsigned int a, ErtsCodeIndex code_ix)
+{
+    struct export_templ templ;
+    struct export_entry* ee;
+
+    ee = hash_get_ext(&export_tables[code_ix].htable,
+		      init_template(&templ, m, f, a), &fun);
+    if (ee == NULL ||
+	(ee->ep->addressv[code_ix] == ee->ep->code+3 &&
+	 ee->ep->code[3] != (BeamInstr) BeamOp(op_i_generic_breakpoint))) {
+	return NULL;
+    }
+    return ee->ep;
 }

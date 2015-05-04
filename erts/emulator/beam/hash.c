@@ -239,12 +239,22 @@ static void rehash(Hash* h, int grow)
 */
 void* hash_get(Hash* h, void* tmpl)
 {
-    HashValue hval = h->fun.hash(tmpl);
+    return hash_get_ext(h, tmpl, &h->fun);
+}
+
+/*
+** Find an object in a hash table in shared memory, where the function pointers
+** are not callable from this process(or).
+**
+*/
+void* hash_get_ext(Hash* h, void* tmpl, HashFunctions *fun)
+{
+    HashValue hval = fun->hash(tmpl);
     int ix = hval % h->size;
     HashBucket* b = h->bucket[ix];
 	
     while(b != (HashBucket*) 0) {
-	if ((b->hvalue == hval) && (h->fun.cmp(tmpl, (void*)b) == 0))
+	if ((b->hvalue == hval) && (fun->cmp(tmpl, (void*)b) == 0))
 	    return (void*) b;
 	b = b->next;
     }

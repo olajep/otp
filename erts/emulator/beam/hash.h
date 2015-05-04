@@ -89,6 +89,7 @@ void  hash_info(int, void *, Hash*);
 int   hash_table_sz(Hash *);
 
 void* hash_get(Hash*, void*);
+void* hash_get_ext(Hash*, void*, HashFunctions*);
 void* hash_put(Hash*, void*);
 void* hash_erase(Hash*, void*);
 void* hash_remove(Hash*, void*);
