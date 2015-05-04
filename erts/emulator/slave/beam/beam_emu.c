@@ -26,6 +26,7 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_process.h"
+#include "erl_process_lock.h"
 #include "error.h"
 #include "bif.h"
 #include "big.h"
@@ -1697,7 +1698,18 @@ void process_main(void)
 
      if (!msgp) {
 #ifdef ERTS_SMP
-     EPIPHANY_STUB(OpCase(i_loop_rec_fr));
+	 erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+	 /* Make sure messages wont pass exit signals... */
+	 if (ERTS_PROC_PENDING_EXIT(c_p)) {
+	     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+	     SWAPOUT;
+	     goto do_schedule; /* Will be rescheduled for exit */
+	 }
+	 ERTS_SMP_MSGQ_MV_INQ2PRIVQ(c_p);
+	 msgp = PEEK_MESSAGE(c_p);
+	 if (msgp)
+	     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
+	 else
 #endif
 	 {
 	     SET_I((BeamInstr *) Arg(0));
@@ -1736,7 +1748,98 @@ void process_main(void)
   * Remove a (matched) message from the message queue.
   */
  OpCase(remove_message): {
-    EPIPHANY_STUB(OpCase(remove_message));
+     BeamInstr *next;
+     ErlMessage* msgp;
+
+     PROCESS_MAIN_CHK_LOCKS(c_p);
+
+     PreFetch(0, next);
+     msgp = PEEK_MESSAGE(c_p);
+
+     if (ERTS_PROC_GET_SAVED_CALLS_BUF(c_p)) {
+	 /* Tracing */
+	 EPIPHANY_STUB(OpCase(remove_message));
+     }
+     if (ERL_MESSAGE_TOKEN(msgp) == NIL) {
+#ifdef USE_VM_PROBES
+	 if (DT_UTAG(c_p) != NIL) {
+	     if (DT_UTAG_FLAGS(c_p) & DT_UTAG_PERMANENT) {
+		 SEQ_TRACE_TOKEN(c_p) = am_have_dt_utag;
+#ifdef DTRACE_TAG_HARDDEBUG
+		 if (DT_UTAG_FLAGS(c_p) & DT_UTAG_SPREADING) 
+		     erts_fprintf(stderr,
+				  "Dtrace -> (%T) stop spreading "
+				  "tag %T with message %T\r\n",
+				  c_p->common.id,DT_UTAG(c_p),ERL_MESSAGE_TERM(msgp));
+#endif
+	     } else {
+#ifdef DTRACE_TAG_HARDDEBUG
+		 erts_fprintf(stderr,
+			      "Dtrace -> (%T) kill tag %T with "
+			      "message %T\r\n",
+			      c_p->common.id,DT_UTAG(c_p),ERL_MESSAGE_TERM(msgp));
+#endif
+		 DT_UTAG(c_p) = NIL;
+		 SEQ_TRACE_TOKEN(c_p) = NIL;
+	     }
+	 } else {
+#endif
+	     SEQ_TRACE_TOKEN(c_p) = NIL;
+#ifdef USE_VM_PROBES
+	 }
+	 DT_UTAG_FLAGS(c_p) &= ~DT_UTAG_SPREADING;
+#endif
+     } else if (ERL_MESSAGE_TOKEN(msgp) != am_undefined) {
+	 SEQ_TRACE_TOKEN(c_p) = ERL_MESSAGE_TOKEN(msgp);
+#ifdef USE_VM_PROBES
+	 if (ERL_MESSAGE_TOKEN(msgp) == am_have_dt_utag) {
+	     if (DT_UTAG(c_p) == NIL) {
+		 DT_UTAG(c_p) = ERL_MESSAGE_DT_UTAG(msgp);
+	     }
+	     DT_UTAG_FLAGS(c_p) |= DT_UTAG_SPREADING;
+#ifdef DTRACE_TAG_HARDDEBUG
+	     erts_fprintf(stderr,
+			  "Dtrace -> (%T) receive tag (%T) "
+			  "with message %T\r\n",
+			  c_p->common.id, DT_UTAG(c_p), ERL_MESSAGE_TERM(msgp));
+#endif
+	 } else {
+#endif
+	     /* Tracing */
+	     EPIPHANY_STUB(OpCase(remove_message));
+#ifdef USE_VM_PROBES
+	 }
+#endif
+     }
+#ifdef USE_VM_PROBES
+     if (DTRACE_ENABLED(message_receive)) {
+         Eterm token2 = NIL;
+         DTRACE_CHARBUF(receiver_name, DTRACE_TERM_BUF_SIZE);
+         Sint tok_label = 0;
+         Sint tok_lastcnt = 0;
+         Sint tok_serial = 0;
+
+         dtrace_proc_str(c_p, receiver_name);
+         token2 = SEQ_TRACE_TOKEN(c_p);
+         if (token2 != NIL && token2 != am_have_dt_utag) {
+             tok_label = signed_val(SEQ_TRACE_T_LABEL(token2));
+             tok_lastcnt = signed_val(SEQ_TRACE_T_LASTCNT(token2));
+             tok_serial = signed_val(SEQ_TRACE_T_SERIAL(token2));
+         }
+         DTRACE6(message_receive,
+                 receiver_name, size_object(ERL_MESSAGE_TERM(msgp)),
+                 c_p->msg.len - 1, tok_label, tok_lastcnt, tok_serial);
+     }
+#endif
+     UNLINK_MESSAGE(c_p, msgp);
+     JOIN_MESSAGE(c_p);
+     CANCEL_TIMER(c_p);
+     free_message(msgp);
+
+     ERTS_VERIFY_UNUSED_TEMP_ALLOC(c_p);
+     PROCESS_MAIN_CHK_LOCKS(c_p);
+
+     NextPF(0, next);
  }
 
     /*
@@ -1822,12 +1925,12 @@ void process_main(void)
 	     c_p->arity = 0;
 	     erts_smp_atomic32_read_band_relb(&c_p->state, ~ERTS_PSFLG_ACTIVE);
 	     ASSERT(!ERTS_PROC_IS_EXITING(c_p));
-	     EPIPHANY_STUB(OpCase(wait_));
+	     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
 	     c_p->current = NULL;
 	     goto do_schedule;
 	 }
 	 OpCase(wait_unlocked_f): {
-	     EPIPHANY_STUB(OpCase(wait_unlocked_f));
+	     erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
 	     goto wait2;
 	 }
      }

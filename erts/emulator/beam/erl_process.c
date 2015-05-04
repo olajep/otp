@@ -10942,6 +10942,9 @@ void erts_init_empty_process(Process *p)
     p->fp_exception = 0;
 #endif
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    p->slave_host = NULL;
+#endif
 }    
 
 #ifdef DEBUG

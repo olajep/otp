@@ -77,7 +77,7 @@ erts_master_syscall(enum slave_syscall no, void *arg)
 }
 
 int
-erts_dispatch_slave_commands()
+erts_dispatch_slave_commands(Process *c_p)
 {
     struct erl_fifo *fifo;
     enum slave_command cmd;
@@ -91,6 +91,15 @@ erts_dispatch_slave_commands()
     available -= sizeof(enum slave_command);
 
     switch (cmd) {
+    case SLAVE_COMMAND_MESSAGE: {
+	struct slave_command_message msg;
+	if (available < sizeof(msg)) break;
+	erts_fifo_skip(fifo, sizeof(enum slave_command));
+	erts_fifo_read_blocking(fifo, &msg, sizeof(msg));
+	slave_serve_message(c_p, &msg);
+	return 1;
+	break;
+    }
     default:
 	erl_exit(1,
 		 "Cannot pop unrecognized message %d from master fifo\n",

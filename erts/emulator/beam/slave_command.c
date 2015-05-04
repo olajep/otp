@@ -39,6 +39,7 @@
 #include "slave_command.h"
 #include "slave_load.h"
 #include "slave_bif.h"
+#include "slave_process.h"
 
 static int num_slaves = 0;
 static struct slave *slaves;
@@ -238,10 +239,19 @@ dispatch_commands(int slave)
     switch (cmd) {
     case MASTER_COMMAND_SETUP: {
 	struct master_command_setup msg;
-	if (available < sizeof(struct master_command_setup)) break;
+	if (available < sizeof(msg)) break;
 	erts_fifo_skip(fifo, sizeof(enum master_command));
-	erts_fifo_read_blocking(fifo, &msg, sizeof(struct master_command_setup));
+	erts_fifo_read_blocking(fifo, &msg, sizeof(msg));
 	erts_slave_init_load(&msg);
+	return 1;
+	break;
+    }
+    case MASTER_COMMAND_FREE_MESSAGE: {
+	struct master_command_free_message msg;
+	if (available < sizeof(msg)) break;
+	erts_fifo_skip(fifo, sizeof(enum master_command));
+	erts_fifo_read_blocking(fifo, &msg, sizeof(msg));
+	slave_free_message(slaves + slave, msg.m);
 	return 1;
 	break;
     }

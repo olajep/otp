@@ -20,6 +20,8 @@
 #ifndef __ERL_MESSAGE_H__
 #define __ERL_MESSAGE_H__
 
+#include "slave.h"
+
 struct proc_bin;
 struct external_thing_;
 
@@ -35,7 +37,7 @@ struct erl_off_heap_header {
     void* dummy_ptr_padding__;
 #endif
     struct erl_off_heap_header* next;
-};
+} SLAVE_SHARED_DATA;
 
 #define OH_OVERHEAD(oh, size) do { \
     (oh)->overhead += size;        \
@@ -44,7 +46,7 @@ struct erl_off_heap_header {
 typedef struct erl_off_heap {
     struct erl_off_heap_header* first;
     Uint64 overhead;     /* Administrative overhead (used to force GC). */
-} ErlOffHeap;
+} SLAVE_SHARED_DATA ErlOffHeap;
 
 #define ERTS_INIT_OFF_HEAP(OHP)			\
     do {					\
@@ -66,7 +68,7 @@ struct erl_heap_fragment {
     unsigned alloc_size;	/* Size in (half)words of mem */
     unsigned used_size;         /* With terms to be moved to heap by GC */
     Eterm mem[1];		/* Data */
-};
+} SLAVE_SHARED_DATA;
 
 typedef struct erl_mesg {
     struct erl_mesg* next;	/* Next message */
@@ -80,7 +82,7 @@ typedef struct erl_mesg {
 #else
     Eterm m[2];			/* m[0] = message, m[1] = seq trace token */
 #endif
-} ErlMessage;
+} SLAVE_SHARED_DATA ErlMessage;
 
 #define ERL_MESSAGE_TERM(mp) ((mp)->m[0])
 #define ERL_MESSAGE_TOKEN(mp) ((mp)->m[1])

@@ -50,5 +50,15 @@
 #undef ERL_THR_PROGRESS_TSD_TYPE_ONLY
 
 Eterm erl_create_slave_process(Process*, Eterm, Eterm, Eterm, ErlSpawnOpts*);
+Sint erts_slave_queue_message(Process* receiver, ErtsProcLocks *receiver_locks,
+			      ErlHeapFragment* bp, Eterm message,
+			      Eterm seq_trace_token
+#ifdef USE_VM_PROBES
+			      , Eterm dt_utag
+#endif
+			 );
+struct slave;
+void slave_free_message(struct slave *slave, ErlMessage *m);
+
 
 #endif /* !defined(__ERL_SLAVE_PROCESS_H__) */

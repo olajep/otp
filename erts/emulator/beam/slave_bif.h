@@ -32,7 +32,8 @@ struct slave_syscall_bif {
     Eterm args[3];
     /* Bidirectional */
     Eterm *heap, *htop, *hend, *stop;
-    Uint fcalls;
+    Uint heap_sz, freason;
+    Sint fcalls;
     /* To slave */
     Eterm result;
 } SLAVE_SHARED_DATA;
@@ -43,6 +44,8 @@ struct slave_syscall_bif {
     X(htop);					       \
     X(hend);					       \
     X(stop);					       \
+    X(heap_sz);					       \
+    X(freason);					       \
     X(fcalls)
 
 #ifndef ERTS_SLAVE

@@ -32,10 +32,11 @@
 #include "erl_binary.h"
 #include "dtrace-wrapper.h"
 
-/* ERTS_SCHED_PREF_QUICK_ALLOC_IMPL(message, */
-/* 				 ErlMessage, */
-/* 				 ERL_MESSAGE_BUF_SZ, */
-/* 				 ERTS_ALC_T_MSG_REF) */
+#include "slave_command.h"
+
+#ifdef DEBUG
+#  include "epiphany.h"
+#endif
 
 #if defined(DEBUG) && 0
 #define HARD_DEBUG
@@ -45,12 +46,12 @@
 
 void init_message(void)
 {
-    EPIPHANY_STUB_BT();
 }
 
 void free_message(ErlMessage *m)
 {
-    EPIPHANY_STUB_BT();
+    struct master_command_free_message cmd = { m };
+    erts_master_send_command(MASTER_COMMAND_FREE_MESSAGE, &cmd, sizeof(cmd));
 }
 
 ErlHeapFragment* new_message_buffer(Uint u)
@@ -73,7 +74,7 @@ void erts_queue_dist_message(Process *p, ErtsProcLocks *l, ErtsDistExternal *d, 
 
 void erts_queue_message(Process *p, ErtsProcLocks *l, ErlHeapFragment *f, Eterm t, Eterm t2
 #ifdef USE_VM_PROBES
-		   , Eterm dt_utag
+			, Eterm dt_utag
 #endif
 )
 {
@@ -127,4 +128,57 @@ Eterm erts_msg_distext2heap(Process *p, ErtsProcLocks *l, ErlHeapFragment **f,
 void erts_cleanup_offheap(ErlOffHeap *offheap)
 {
     EPIPHANY_STUB_BT();
+}
+
+void
+slave_serve_message(Process *c_p, struct slave_command_message *cmd)
+{
+    ErlMessage *mp = cmd->m;
+    erts_aint_t state;
+
+    ASSERT(epiphany_in_dram(mp));
+    ASSERT(!mp->data.attached || epiphany_in_dram(mp->data.attached));
+
+    if (c_p == NULL || c_p->common.id != cmd->receiver) goto drop;
+
+    state = erts_smp_atomic32_read_acqb(&c_p->state);
+    if (state & (ERTS_PSFLG_EXITING|ERTS_PSFLG_PENDING_EXIT)) goto drop;
+
+    LINK_MESSAGE(c_p, mp);
+
+    /* ETODO: This */
+#ifdef USE_VM_PROBES
+    if (DTRACE_ENABLED(message_queued)) {
+        DTRACE_CHARBUF(receiver_name, DTRACE_TERM_BUF_SIZE);
+        Sint tok_label = 0;
+        Sint tok_lastcnt = 0;
+        Sint tok_serial = 0;
+
+	dtrace_proc_str(c_p, receiver_name);
+        if (seq_trace_token != NIL && is_tuple(seq_trace_token)) {
+            tok_label = signed_val(SEQ_TRACE_T_LABEL(seq_trace_token));
+            tok_lastcnt = signed_val(SEQ_TRACE_T_LASTCNT(seq_trace_token));
+            tok_serial = signed_val(SEQ_TRACE_T_SERIAL(seq_trace_token));
+        }
+        DTRACE6(message_queued,
+		receiver_name, size_object(message), c_p->msg.len,
+                tok_label, tok_lastcnt, tok_serial);
+    }
+#endif
+
+    if (IS_TRACED_FL(c_p, F_TRACE_RECEIVE))
+	EPIPHANY_STUB_BT(); /* Tracing */
+
+#ifndef ERTS_SMP
+    ERTS_HOLE_CHECK(c_p);
+#endif
+    return;
+
+    /* Drop the message */
+ drop: {
+	struct master_command_free_message rep = { cmd->m };
+	erts_printf("Dropping message %T\n", mp->m[0]);
+	erts_master_send_command(MASTER_COMMAND_FREE_MESSAGE, &rep, sizeof(rep));
+	return;
+    }
 }

@@ -511,7 +511,7 @@ RUN_OBJS = \
 	$(OBJDIR)/big.o			$(OBJDIR)/utils.o \
 	$(OBJDIR)/copy.o		$(OBJDIR)/erl_term.o \
 	$(OBJDIR)/erl_bits_stub.o	$(OBJDIR)/erl_process.o \
-	$(OBJDIR)/erl_message_stub.o \
+	$(OBJDIR)/erl_message.o \
 	$(OBJDIR)/erl_init.o		$(OBJDIR)/erl_printf_term.o \
 	$(OBJDIR)/erl_debug.o		$(OBJDIR)/erl_cpu_topology.o \
 	$(OBJDIR)/erl_lock_count.o	$(OBJDIR)/erl_lock_check.o \

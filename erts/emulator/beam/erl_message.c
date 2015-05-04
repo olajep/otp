@@ -32,6 +32,10 @@
 #include "erl_binary.h"
 #include "dtrace-wrapper.h"
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_process.h"
+#endif
+
 ERTS_SCHED_PREF_QUICK_ALLOC_IMPL(message,
 				 ErlMessage,
 				 ERL_MESSAGE_BUF_SZ,
@@ -450,8 +454,6 @@ queue_message(Process *c_p,
 
     ERTS_SMP_LC_ASSERT(*receiver_locks == erts_proc_lc_my_proc_locks(receiver));
 
-    mp = message_alloc();
-
     if (receiver_state)
 	state = *receiver_state;
     else
@@ -459,11 +461,16 @@ queue_message(Process *c_p,
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
     if (state & ERTS_PSFLG_SLAVE) {
-	erts_printf(__FILE__ ":%d:%s(): Slaves can't take messages yet, sorry!\n",
-		    __LINE__, __FUNCTION__);
-	return 0;
+	return erts_slave_queue_message(receiver, receiver_locks, bp, message,
+					seq_trace_token
+#ifdef USE_VM_PROBES
+					, dt_utag
+#endif
+					);
     }
 #endif
+
+    mp = message_alloc();
 
 #ifdef ERTS_SMP
 

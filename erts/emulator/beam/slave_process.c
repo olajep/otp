@@ -359,6 +359,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
 
     erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
     res = p->common.id;
+    p->slave_host = slave;
 
     /*
      * Send command to slave scheduler
@@ -390,4 +391,48 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
  error:
     erts_smp_proc_unlock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
     return res;
+}
+
+Sint
+erts_slave_queue_message(Process* receiver, ErtsProcLocks *receiver_locks,
+			 ErlHeapFragment* bp, Eterm message,
+			 Eterm seq_trace_token
+#ifdef USE_VM_PROBES
+			 , Eterm dt_utag
+#endif
+			 )
+{
+    ErlMessage *mp = erts_alloc(ERTS_ALC_T_SLAVE_MSG_REF, sizeof(*mp));
+    struct slave *slave = receiver->slave_host;
+    struct slave_command_message cmd;
+    erts_aint_t state = erts_smp_atomic32_read_acqb(&receiver->state);
+
+    ASSERT(erts_smp_atomic32_read_acqb(&receiver->state) & ERTS_PSFLG_SLAVE);
+    if (state & (ERTS_PSFLG_EXITING|ERTS_PSFLG_PENDING_EXIT)) {
+	erts_free(ERTS_ALC_T_SLAVE_MSG_REF, mp);
+	return 0;
+    }
+
+    ERL_MESSAGE_TERM(mp) = message;
+    ERL_MESSAGE_TOKEN(mp) = seq_trace_token;
+#ifdef USE_VM_PROBES
+    ERL_MESSAGE_DT_UTAG(mp) = dt_utag;
+#endif
+    mp->next = NULL;
+    mp->data.heap_frag = bp;
+
+    cmd.m = mp;
+    cmd.receiver = receiver->common.id;
+    erts_slave_send_command(slave, SLAVE_COMMAND_MESSAGE, &cmd, sizeof(cmd));
+
+    erts_smp_atomic32_inc_nob(&slave->msgq_len);
+    return erts_smp_atomic32_read_nob(&slave->msgq_len);
+}
+
+void
+slave_free_message(struct slave *slave, ErlMessage *m)
+{
+    /* ETODO: Do we free the heap fragments, too? */
+    erts_free(ERTS_ALC_T_SLAVE_MSG_REF, m);
+    erts_smp_atomic32_dec_nob(&slave->msgq_len);
 }

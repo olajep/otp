@@ -1209,7 +1209,7 @@ Process *schedule(Process *p, int calls)
 	ASSERT(esdp->current_process == p);
 #endif
 	p->reds += calls;
-	while (erts_dispatch_slave_commands() != 0);
+	while (erts_dispatch_slave_commands(p) != 0);
 	if (state & ERTS_PSFLG_FREE) {
 	    ready_arg = erts_alloc(ERTS_ALC_T_TMP,
 				   sizeof(struct slave_syscall_ready));

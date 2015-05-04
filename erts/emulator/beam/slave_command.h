@@ -85,10 +85,12 @@ struct slave {
     ErtsSchedulerData *dummy_esdp;
     int available;
     int pending_syscall;
+    erts_smp_atomic32_t msgq_len;
 };
 
 enum master_command {
     MASTER_COMMAND_SETUP,
+    MASTER_COMMAND_FREE_MESSAGE,
 };
 
 struct master_command_setup {
@@ -98,9 +100,18 @@ struct master_command_setup {
     int bif_size;
 } SHARED_DATA;
 
+struct master_command_free_message {
+    ErlMessage *m;
+} SHARED_DATA;
+
 enum slave_command {
-    SLAVE_COMMAND_PLACEHOLDER, /* No commands yet. */
+    SLAVE_COMMAND_MESSAGE,
 };
+
+struct slave_command_message {
+    ErlMessage *m;
+    Eterm receiver;
+} SHARED_DATA;
 
 #ifndef ERTS_SLAVE
 void erts_init_slave_command(void);
@@ -113,6 +124,8 @@ void erts_slave_send_command(struct slave *slave, enum slave_command code,
 			     const void *data, size_t size);
 void *erts_slave_syscall_arg(struct slave *slave, enum slave_syscall no);
 void erts_slave_finish_syscall(struct slave *slave, enum slave_syscall no);
+
+int erts_dispatch_slave_commands(void);
 #else
 
 void erts_master_send_command(enum master_command code, const void *data,
@@ -120,8 +133,10 @@ void erts_master_send_command(enum master_command code, const void *data,
 void erts_master_syscall(enum slave_syscall no, void *arg);
 
 void erts_master_setup(void);
-#endif
 
-int erts_dispatch_slave_commands(void);
+void slave_serve_message(Process *c_p, struct slave_command_message *cmd);
+
+int erts_dispatch_slave_commands(Process *c_p);
+#endif
 
 #endif /* ERL_SLAVE_COMMAND_H__ */
