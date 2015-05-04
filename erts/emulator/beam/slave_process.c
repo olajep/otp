@@ -112,12 +112,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     Eterm res = THE_NON_VALUE;
     erts_aint32_t state = 0;
     struct slave *slave;
-    struct slave_command_run cmd = {
-	.entry = NULL,
-	.parent_id = parent->common.id,
-	.mod = mod,
-	.func = func,
-    };
+    struct slave_syscall_ready *cmd;
 
 #ifdef ERTS_SMP
     erts_smp_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
@@ -365,19 +360,20 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
     res = p->common.id;
 
-    {
-	Export *entry = slave_active_export_entry(mod, func, arity);
-	if (entry) cmd.entry = entry->addressv[0];
-	else erts_printf("No export entry, using default\n");
-    }
-
-    cmd.id = p->common.id;
-    cmd.heap = p->heap;
-    cmd.htop = p->htop;
-    cmd.stop = p->stop;
-    cmd.args = p->arg_reg[2];
+    /*
+     * Send command to slave scheduler
+     */
+    cmd = erts_slave_syscall_arg(slave, SLAVE_SYSCALL_READY);
+    cmd->parent_id = parent->common.id;
+    cmd->mod = mod;
+    cmd->func = func;
+    cmd->id = p->common.id;
+    cmd->heap = p->heap;
+    cmd->htop = p->htop;
+    cmd->stop = p->stop;
+    cmd->args = p->arg_reg[2];
     slave->c_p = p;
-    erts_slave_send_command(slave, SLAVE_COMMAND_RUN, &cmd, sizeof(cmd));
+    erts_slave_finish_syscall(slave, SLAVE_SYSCALL_READY);
 
     VERBOSE(DEBUG_PROCESSES, ("Created a new process: %T\n",p->common.id));
 

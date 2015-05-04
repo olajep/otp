@@ -54,10 +54,11 @@ static struct slave_command_buffers *alloc_slave_buffers(void) {
     struct slave_command_buffers *buffers
 	= erts_alloc(ERTS_ALC_T_SLAVE_COMMAND,
 		     sizeof(struct slave_command_buffers));
-    ASSERT(buffers);
     buffers->master.size = buffers->slave.size = SLAVE_COMMAND_BUFFER_SIZE;
     alloc_slave_buffer(&buffers->master);
     alloc_slave_buffer(&buffers->slave);
+    buffers->syscall = SLAVE_SYSCALL_NONE;
+    buffers->syscall_arg = NULL;
     return buffers;
 }
 
@@ -132,42 +133,109 @@ erts_slave_send_command(struct slave *slave, enum slave_command code,
     erts_fifo_write_blocking(&slave->buffers->slave, data, size);
 }
 
+void *
+erts_slave_syscall_arg(struct slave *slave, enum slave_syscall no)
+{
+    struct slave_command_buffers *buffers = slave->buffers;
+    enum slave_syscall actual_no = buffers->syscall;
+    ETHR_MEMBAR(ETHR_LoadLoad); /* buffers->syscall -> buffers->syscall_arg */
+
+    if (!slave->pending_syscall || no != actual_no) {
+	erl_exit(1, "Trying to get arg of nonpending syscall %d"
+		 " (%d is pending)", no, actual_no);
+    }
+    return buffers->syscall_arg;
+}
+
+void
+erts_slave_finish_syscall(struct slave *slave, enum slave_syscall no)
+{
+    struct slave_command_buffers *buffers = slave->buffers;
+    enum slave_syscall actual_no = buffers->syscall;
+
+    if (!slave->pending_syscall || no != actual_no) {
+	erl_exit(1, "Trying to get arg of nonpending syscall %d"
+		 " (%d is pending)", no, actual_no);
+    }
+    ETHR_MEMBAR(ETHR_StoreStore); /* *buffers->syscall_arg -> buffers->syscall */
+    buffers->syscall = SLAVE_SYSCALL_NONE;
+}
+
+static int
+serve_ready(int i, struct slave_syscall_ready *arg)
+{
+    erts_slave_push_free(slaves + i);
+    if (slaves[i].c_p) {
+	/* ETODO: Terminate c_p */
+	slaves[i].c_p = NULL;
+    }
+    return 0;
+}
+
+static int
+serve_syscalls(int i)
+{
+    int served = 0;
+    struct slave_command_buffers *buffers = slaves[i].buffers;
+    enum slave_syscall no;
+    void *arg;
+    /* This one is already being served asynchronously */
+    if (slaves[i].pending_syscall) return 0;
+
+    no = buffers->syscall;
+    if (no == SLAVE_SYSCALL_NONE) return 0; /* Avoid the memory barrier */
+    ETHR_MEMBAR(ETHR_LoadLoad); /* buffers->syscall -> buffers->syscall_arg */
+    arg = buffers->syscall_arg;
+
+    switch (buffers->syscall) {
+    case SLAVE_SYSCALL_READY: served = serve_ready(i, arg); break;
+    default:
+	erl_exit(1, "Cannot serve unrecognized syscall %d from slave %d\n",
+		 (int)no, i);
+    }
+
+    if (served) {
+	ETHR_MEMBAR(ETHR_StoreStore); /* *buffers->syscall_arg -> buffers->syscall */
+	buffers->syscall = SLAVE_SYSCALL_NONE;
+    } else {
+	slaves[i].pending_syscall = 1;
+    }
+    return served;
+}
+
+static int
+dispatch_commands(int slave)
+{
+    struct erl_fifo *fifo = &slaves[slave].buffers->master;
+    enum master_command cmd;
+    size_t available = erts_fifo_available(fifo);
+    if (available < sizeof(enum master_command)) return 0;
+    erts_fifo_peek(fifo, &cmd, sizeof(enum master_command));
+    available -= sizeof(enum master_command);
+    switch (cmd) {
+    case MASTER_COMMAND_SETUP: {
+	struct master_command_setup msg;
+	if (available < sizeof(struct master_command_setup)) break;
+	erts_fifo_skip(fifo, sizeof(enum master_command));
+	erts_fifo_read_blocking(fifo, &msg, sizeof(struct master_command_setup));
+	erts_slave_init_load(&msg);
+	return 1;
+	break;
+    }
+    default:
+	erl_exit(1, "Cannot pop unrecognized message %d from slave %d fifo\n",
+		 (int)cmd, slave);
+    }
+    return 0;
+}
+
 int
 erts_dispatch_slave_commands(void)
 {
     int i, dispatched = 0;
     for (i = 0; i < num_slaves; i++) {
-	struct erl_fifo *fifo = &slaves[i].buffers->master;
-	enum master_command cmd;
-	size_t available = erts_fifo_available(fifo);
-	if (available < sizeof(enum master_command)) continue;
-	erts_fifo_peek(fifo, &cmd, sizeof(enum master_command));
-	available -= sizeof(enum master_command);
-	switch (cmd) {
-	case MASTER_COMMAND_SETUP: {
-	    struct master_command_setup msg;
-	    if (available < sizeof(struct master_command_setup)) break;
-	    erts_fifo_skip(fifo, sizeof(enum master_command));
-	    erts_fifo_read_blocking(fifo, &msg, sizeof(struct master_command_setup));
-	    erts_slave_init_load(&msg);
-	    dispatched++;
-	    break;
-        }
-	case MASTER_COMMAND_READY: {
-	    struct master_command_ready msg;
-	    if (available < sizeof(struct master_command_ready)) break;
-	    erts_fifo_skip(fifo, sizeof(enum master_command));
-	    erts_fifo_read_blocking(fifo, &msg, sizeof(struct master_command_ready));
-	    slaves[i].available = 1;
-	    dispatched++;
-	    break;
-	}
-	default:
-	    erl_exit(1,
-		     "Cannot pop unrecognized message %d from slave %d fifo\n",
-		     (int)cmd, i);
-	}
-
+	dispatched += dispatch_commands(i);
+	dispatched += serve_syscalls(i);
     }
     return dispatched;
 }

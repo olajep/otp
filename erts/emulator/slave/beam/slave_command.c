@@ -30,7 +30,13 @@
 /* Set by the master */
 EPIPHANY_SRAM_DATA struct slave_command_buffers *volatile slave_command_buffers;
 
-static void send_command(enum master_command code, const void *data, size_t size);
+static void
+await_command_buffers(void)
+{
+    if (slave_command_buffers == NULL)
+	erts_printf("Waiting for command buffers to become available\n");
+    while (slave_command_buffers == NULL);
+}
 
 LoaderTarget loader_target_self;
 
@@ -48,28 +54,48 @@ erts_master_setup(void)
     loader_target_self.beam_ops = beam_ops;
 #endif
 
-    send_command(MASTER_COMMAND_SETUP, &cmd, sizeof(cmd));
+    erts_master_send_command(MASTER_COMMAND_SETUP, &cmd, sizeof(cmd));
 }
 
-static void
-send_command(enum master_command code, const void *data, size_t size)
+void
+erts_master_send_command(enum master_command code, const void *data, size_t size)
 {
-    if (slave_command_buffers == NULL)
-	erts_printf("Waiting for command buffers to become available\n");
-    while (slave_command_buffers == NULL);
+    await_command_buffers();
     erts_fifo_write_blocking(&slave_command_buffers->master, &code, sizeof(code));
     erts_fifo_write_blocking(&slave_command_buffers->master, data, size);
 }
 
 void
-erts_master_await_run(const struct master_command_ready *ready_cmd, struct slave_command_run *cmd)
+erts_master_syscall(enum slave_syscall no, void *arg)
 {
-    enum slave_command code;
-    erts_printf("Awaiting program from master\n");
-    while (slave_command_buffers == NULL);
-    send_command(MASTER_COMMAND_READY, ready_cmd, sizeof(*ready_cmd));
-    erts_fifo_read_blocking(&slave_command_buffers->slave, &code, sizeof(code));
-    ASSERT(code == SLAVE_COMMAND_RUN);
-    erts_fifo_read_blocking(&slave_command_buffers->slave, cmd,
-			    sizeof(struct slave_command_run));
+    ASSERT(epiphany_in_dram(arg));
+    ASSERT(no > 0);
+    await_command_buffers();
+    slave_command_buffers->syscall_arg = arg;
+    slave_command_buffers->syscall = no;
+    while(slave_command_buffers->syscall != 0);
+}
+
+int
+erts_dispatch_slave_commands()
+{
+    struct erl_fifo *fifo;
+    enum slave_command cmd;
+    size_t available;
+    ASSERT(slave_command_buffers);
+    fifo = &slave_command_buffers->slave;
+
+    available = erts_fifo_available(fifo);
+    if (available < sizeof(enum slave_command)) return 0;
+    erts_fifo_peek(fifo, &cmd, sizeof(enum slave_command));
+    available -= sizeof(enum slave_command);
+
+    switch (cmd) {
+    default:
+	erl_exit(1,
+		 "Cannot pop unrecognized message %d from master fifo\n",
+		 (int)cmd);
+    }
+
+    return 1;
 }

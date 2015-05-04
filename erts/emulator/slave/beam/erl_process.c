@@ -498,7 +498,7 @@ alloc_process(Eterm id, erts_aint32_t state)
 }
 
 static Process *
-erl_create_process_ptr(const struct slave_command_run *cmd, ErlSpawnOpts *so)
+erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
 {
     Process *p;
     Sint arity;			/* Number of arguments. */
@@ -1190,9 +1190,11 @@ cancel_suspend_of_suspendee(Process *p, ErtsProcLocks p_locks)
 
 #endif
 
+#define COMMAND_POLL_REDUCTION_INTERVAL 10000
+
 Process *schedule(Process *p, int calls)
 {
-    struct master_command_ready ready_cmd;
+    struct slave_syscall_ready *ready_arg = 0;
     ERTS_SMP_LC_ASSERT(!erts_thr_progress_is_blocking());
     if (p) {
 	erts_aint32_t state = erts_smp_atomic32_read_acqb(&p->state);
@@ -1207,7 +1209,11 @@ Process *schedule(Process *p, int calls)
 	ASSERT(esdp->current_process == p);
 #endif
 	p->reds += calls;
+	while (erts_dispatch_slave_commands() != 0);
 	if (state & ERTS_PSFLG_FREE) {
+	    ready_arg = erts_alloc(ERTS_ALC_T_TMP,
+				   sizeof(struct slave_syscall_ready));
+
 #ifdef ERTS_SMP
 	    ASSERT(esdp->free_process == p);
 	    esdp->free_process = NULL;
@@ -1215,35 +1221,28 @@ Process *schedule(Process *p, int calls)
 	    state = erts_smp_atomic32_read_nob(&p->state);
 	    ASSERT(!(state & ERTS_PSFLG_IN_RUNQ));
 #endif
-            erts_free_proc(p);
+
+	    erts_free_proc(p);
 	} else {
+	    p->fcalls = COMMAND_POLL_REDUCTION_INTERVAL;
 	    return p;
 	}
     }
     {
-	struct slave_command_run cmd;
 	ErlSpawnOpts so;
 	ErtsSchedulerData *esdp = erts_get_scheduler_data();
+	if (!ready_arg)
+	    ready_arg = erts_alloc(ERTS_ALC_T_TMP,
+				   sizeof(struct slave_syscall_ready));
 	so.flags = 0;
-	erts_master_await_run(&ready_cmd, &cmd);
-	p = erl_create_process_ptr(&cmd, &so);
+	erts_master_syscall(SLAVE_SYSCALL_READY, ready_arg);
+	p = erl_create_process_ptr(ready_arg, &so);
 	ASSERT(epiphany_in_dram(p));
-	if (cmd.entry) 	{
-	    int i = 0;
-	    Eterm list = p->arg_reg[2];
-	    p->i = cmd.entry;
-	    ASSERT(p->arity < 6);
-	    while (is_list(list)) {
-		Eterm *val = list_val(list);
-		p->arg_reg[i++] = CAR(val);
-		list = CDR(val);
-	    }
-	}
-	// Should last a while
-	p->fcalls = 100000;
+	p->fcalls = COMMAND_POLL_REDUCTION_INTERVAL;
 
-	erts_printf("Running program %#x with process %#x(id=%T)\n",
-		    cmd.entry, p, p->common.id);
+	erts_printf("Running program %T:%T%T (entry %#x) with process %#x(id=%T)\n",
+		    ready_arg->mod, ready_arg->func, ready_arg->args, p->i, p,
+		    p->common.id);
 #ifndef ERTS_SMP
 	erts_scheduler_data = calloc(1, sizeof(ErtsSchedulerData));
 	ASSERT(epiphany_in_dram(erts_scheduler_data));
@@ -1256,6 +1255,7 @@ Process *schedule(Process *p, int calls)
 	erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
 #endif
 	erts_smp_atomic32_set_nob(&p->state, erts_smp_atomic32_read_nob(&p->state) | ERTS_PSFLG_RUNNING);
+	erts_free(ERTS_ALC_T_TMP, ready_arg);
 	return p;
     }
 }

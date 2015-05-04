@@ -40,27 +40,50 @@ typedef struct {
     BifFunction traced;
 } SHARED_DATA SlaveBifEntry;
 
+enum slave_syscall {
+    /* 0 must be NONE, which means no syscall is pending */
+    SLAVE_SYSCALL_NONE,
+    SLAVE_SYSCALL_READY,
+};
+
+struct slave_syscall_ready {
+    /* To master */
+
+    /* To slave */
+    Eterm id, parent_id;
+    Eterm mod, func, args;
+    Eterm *heap, *htop, *stop;
+} SHARED_DATA;
+
 /*
  * We use the shared-memory fifos for command buffers.
  *
  * Messages are always a command word, followed by the corresponding struct.
+ *
+ * Syscalls work similarly, but are synchronous. Slaves alocate the appropriate
+ * argument struct from their heap, and set syscall_arg strictly before (in
+ * memory order) syscall. The master polls these fields from it's slave command
+ * thread and serves any pending syscalls.
  */
 struct slave_command_buffers {
     /* Commands to the master */
     struct erl_fifo master;
     /* Commands to the slave */
     struct erl_fifo slave;
+    /* Syscalls */
+    enum slave_syscall volatile syscall;
+    void *volatile syscall_arg;
 } SHARED_DATA;
 
 struct slave {
     struct slave_command_buffers *buffers;
     Process *c_p;
     int available;
+    int pending_syscall;
 };
 
 enum master_command {
     MASTER_COMMAND_SETUP,
-    MASTER_COMMAND_READY,
 };
 
 struct master_command_setup {
@@ -70,19 +93,9 @@ struct master_command_setup {
     int bif_size;
 } SHARED_DATA;
 
-struct master_command_ready {
-} SHARED_DATA;
-
 enum slave_command {
-    SLAVE_COMMAND_RUN,
+    SLAVE_COMMAND_PLACEHOLDER, /* No commands yet. */
 };
-
-struct slave_command_run {
-    BeamInstr *entry;
-    Eterm id, parent_id;
-    Eterm mod, func, args;
-    Eterm *heap, *htop, *stop;
-} SHARED_DATA;
 
 #ifndef ERTS_SLAVE
 void erts_init_slave_command(void);
@@ -91,15 +104,17 @@ void erts_stop_slave_command(void);
 struct slave* erts_slave_pop_free(void);
 void erts_slave_push_free(struct slave*);
 
-void erts_slave_send_command(struct slave * slave, enum slave_command code,
+void erts_slave_send_command(struct slave *slave, enum slave_command code,
 			     const void *data, size_t size);
+void *erts_slave_syscall_arg(struct slave *slave, enum slave_syscall no);
+void erts_slave_finish_syscall(struct slave *slave, enum slave_syscall no);
 #else
 
-void erts_master_send_command(struct slave * slave, enum master_command code,
-			      const void *data, size_t size);
+void erts_master_send_command(enum master_command code, const void *data,
+			      size_t size);
+void erts_master_syscall(enum slave_syscall no, void *arg);
 
 void erts_master_setup(void);
-void erts_master_await_run(const struct master_command_ready *, struct slave_command_run*);
 #endif
 
 int erts_dispatch_slave_commands(void);
