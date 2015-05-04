@@ -44,6 +44,7 @@ enum slave_syscall {
     /* 0 must be NONE, which means no syscall is pending */
     SLAVE_SYSCALL_NONE,
     SLAVE_SYSCALL_READY,
+    SLAVE_SYSCALL_BIF,
 };
 
 struct slave_syscall_ready {
@@ -54,6 +55,9 @@ struct slave_syscall_ready {
     Eterm mod, func, args;
     Eterm *heap, *htop, *stop;
 } SHARED_DATA;
+
+/* Declared in slave_bif.h */
+struct slave_syscall_bif;
 
 /*
  * We use the shared-memory fifos for command buffers.

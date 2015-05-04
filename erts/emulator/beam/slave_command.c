@@ -38,6 +38,7 @@
 #include "slave_io.h"
 #include "slave_command.h"
 #include "slave_load.h"
+#include "slave_bif.h"
 
 static int num_slaves = 0;
 static struct slave *slaves;
@@ -159,6 +160,7 @@ erts_slave_finish_syscall(struct slave *slave, enum slave_syscall no)
     }
     ETHR_MEMBAR(ETHR_StoreStore); /* *buffers->syscall_arg -> buffers->syscall */
     buffers->syscall = SLAVE_SYSCALL_NONE;
+    slave->pending_syscall = 0;
 }
 
 static int
@@ -189,6 +191,10 @@ serve_syscalls(int i)
 
     switch (buffers->syscall) {
     case SLAVE_SYSCALL_READY: served = serve_ready(i, arg); break;
+    case SLAVE_SYSCALL_BIF:
+	erts_slave_serve_bif(slaves + i, arg);
+	served = 1;
+	break;
     default:
 	erl_exit(1, "Cannot serve unrecognized syscall %d from slave %d\n",
 		 (int)no, i);
