@@ -33,7 +33,8 @@
 
 /* This is an "X macro" */
 #define SLAVE_PROXIED_BIFS_DEFINER \
-    X(whereis_1, 1)
+    X(whereis_1, 1) \
+    X(send_2, 2)
 
 static Eterm
 syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
@@ -55,10 +56,10 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 
     cmd->bif_no = bif_no;
     for (i = 0; i < arity; i++) cmd->args[i] = args[i];
-    cmd->heap = p->heap;
-    cmd->htop = p->htop;
-    cmd->hend = p->hend;
-    cmd->stop = p->stop;
+
+#define X(F) cmd->F = p->F
+    SLAVE_BIF_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#undef X
 
     erts_master_syscall(SLAVE_SYSCALL_BIF, cmd);
 
@@ -66,10 +67,10 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     ASSERT(epiphany_in_dram(cmd->htop));
     ASSERT(epiphany_in_dram(cmd->hend));
     ASSERT(epiphany_in_dram(cmd->stop));
-    p->heap = cmd->heap;
-    p->htop = cmd->htop;
-    p->hend = cmd->hend;
-    p->stop = cmd->stop;
+
+#define X(F) p->F = cmd->F
+    SLAVE_BIF_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#undef X
 
     result = cmd->result;
 #if HARDDEBUG

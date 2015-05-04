@@ -32,9 +32,18 @@ struct slave_syscall_bif {
     Eterm args[3];
     /* Bidirectional */
     Eterm *heap, *htop, *hend, *stop;
+    Uint fcalls;
     /* To slave */
     Eterm result;
 } SLAVE_SHARED_DATA;
+
+/* This is an "X macro" */
+#define SLAVE_BIF_VERBATIM_PROXIED_PROC_FIELDS_DEFINER \
+    X(heap);					       \
+    X(htop);					       \
+    X(hend);					       \
+    X(stop);					       \
+    X(fcalls)
 
 #ifndef ERTS_SLAVE
 void erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg);

@@ -44,14 +44,18 @@ static int num_slaves = 0;
 static struct slave *slaves;
 #define SLAVE_COMMAND_BUFFER_SIZE 512
 
-static void alloc_slave_buffer(struct erl_fifo *buffer) {
+static void
+alloc_slave_buffer(struct erl_fifo *buffer)
+{
     void *data = erts_alloc(ERTS_ALC_T_SLAVE_COMMAND,
 			    SLAVE_COMMAND_BUFFER_SIZE);
     ASSERT(data);
     erts_fifo_init(buffer, data, SLAVE_COMMAND_BUFFER_SIZE);
 }
 
-static struct slave_command_buffers *alloc_slave_buffers(void) {
+static struct slave_command_buffers *
+alloc_slave_buffers(void)
+{
     struct slave_command_buffers *buffers
 	= erts_alloc(ERTS_ALC_T_SLAVE_COMMAND,
 		     sizeof(struct slave_command_buffers));
@@ -61,6 +65,17 @@ static struct slave_command_buffers *alloc_slave_buffers(void) {
     buffers->syscall = SLAVE_SYSCALL_NONE;
     buffers->syscall_arg = NULL;
     return buffers;
+}
+
+static ErtsSchedulerData *
+alloc_slave_scheduler_data(void)
+{
+    ErtsSchedulerData *esdp = erts_alloc(ERTS_ALC_T_SCHDLR_DATA,
+					 sizeof(ErtsSchedulerData));
+    memzero(esdp, sizeof(*esdp));
+    esdp->cpu_id = -1;
+
+    return esdp;
 }
 
 static void
@@ -105,6 +120,8 @@ erts_init_slave_command(void)
 		    &buffers, sizeof(buffers));
 	    ASSERT(ret == 4);
 	    slaves[x + y * slave_workgroup.rows].buffers = buffers;
+	    slaves[x + y * slave_workgroup.rows].dummy_esdp
+		= alloc_slave_scheduler_data();
 	}
     }
 }

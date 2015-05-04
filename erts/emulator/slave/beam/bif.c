@@ -437,14 +437,10 @@ BIF_RETTYPE send_3(BIF_ALIST_3)
     EPIPHANY_STUB_FUN();
 }
 
-BIF_RETTYPE send_2(BIF_ALIST_2)
-{
-    return erl_send(BIF_P, BIF_ARG_1, BIF_ARG_2);
-}
-
 Eterm erl_send(Process *p, Eterm to, Eterm msg)
 {
-    EPIPHANY_STUB_FUN();
+    Eterm args[] = {to, msg};
+    return send_2(p, args);
 }
 
 /**********************************************************************/

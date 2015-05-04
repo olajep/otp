@@ -23,6 +23,7 @@
 #endif
 
 #include "sys.h"
+#include "erl_thr_progress.h"
 #include "slave_bif.h"
 
 #define HARDDEBUG 0
@@ -34,6 +35,9 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     erts_aint32_t old_state = 0;
     BifEntry *bif = bif_table + arg->bif_no;
     Eterm (*f)(Process*, Eterm*);
+#ifdef ERTS_SMP
+    ErtsThrPrgrDelayHandle delay;
+#endif
     ASSERT(p);
     ASSERT(arg->bif_no < BIF_SIZE);
     old_state = erts_smp_atomic32_read_acqb(&p->state);
@@ -47,20 +51,21 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     }
 #endif
 
-    p->heap = arg->heap;
-    p->htop = arg->htop;
-    p->hend = arg->hend;
-    p->stop = arg->stop;
+#define X(F) p->F = arg->F
+    SLAVE_BIF_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#undef X
 
 #ifdef ERTS_SMP
     /* Lock the main lock so lc is happy */
     erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
+    delay = erts_thr_progress_unmanaged_delay();
 #endif
 
     f = bif->f;
     arg->result = f(p, arg->args);
 
 #ifdef ERTS_SMP
+    erts_thr_progress_unmanaged_continue(delay);
     erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);
 #endif
 
@@ -70,10 +75,9 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 		 erts_smp_atomic32_read_acqb(&p->state));
     }
 
-    arg->heap = p->heap;
-    arg->htop = p->htop;
-    arg->hend = p->hend;
-    arg->stop = p->stop;
+#define X(F) arg->F = p->F
+    SLAVE_BIF_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#undef X
 
 #if HARDDEBUG
     erts_printf("Replying with result %T\n", arg->result);

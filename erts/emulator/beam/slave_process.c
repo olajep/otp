@@ -346,7 +346,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     }
 
 #ifdef ERTS_SMP
-    p->scheduler_data = NULL;
+    p->scheduler_data = slave->dummy_esdp;
     p->suspendee = NIL;
     p->pending_suspenders = NULL;
     p->pending_exit.reason = THE_NON_VALUE;

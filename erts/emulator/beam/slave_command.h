@@ -82,6 +82,7 @@ struct slave_command_buffers {
 struct slave {
     struct slave_command_buffers *buffers;
     Process *c_p;
+    ErtsSchedulerData *dummy_esdp;
     int available;
     int pending_syscall;
 };
