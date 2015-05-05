@@ -41,6 +41,7 @@ const TargetExportTab export_table_slave = {
 BifEntry slave_bif_table[BIF_SIZE];
 Export *slave_bif_export[BIF_SIZE];
 
+int erts_slave_booted = 0;
 static int slave_load_initialised = 0;
 struct master_command_setup *setup_cmd;
 
@@ -134,10 +135,24 @@ load_preloaded(void)
     }
 }
 
+Eterm
+erts_slave_can_bootstrap(void)
+{
+    if (erts_slave_booted) {
+	ERTS_DECL_AM(already_online);
+	return AM_already_online;
+    }
+    if (!slave_load_initialised) {
+	ERTS_DECL_AM(wait);
+	return AM_wait;
+    }
+    return am_yes;
+}
+
 void
 erts_slave_bootstrap(void)
 {
-    ASSERT(slave_load_initialised && setup_cmd);
+    ASSERT(slave_load_initialised && setup_cmd && !erts_slave_booted);
 
     erts_start_staging_code_ix();
     enter_slave_bifs(setup_cmd);
@@ -150,6 +165,7 @@ erts_slave_bootstrap(void)
     erts_commit_staging_code_ix();
 
     free(setup_cmd);
+    erts_slave_booted = 1;
 }
 
 void

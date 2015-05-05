@@ -32,10 +32,15 @@ extern const LoaderTarget *loader_target_slave;
 extern const TargetExportTab export_table_slave;
 extern BifEntry slave_bif_table[];
 extern Export *slave_bif_export[];
+extern int erts_slave_booted;
 
 void erts_slave_init_load(struct master_command_setup*);
 
-/* Caller must hold the code write lock */
+/*
+ * Caller must hold the code write lock,
+ * erts_slave_can_bootstrap() must have returned 'yes'
+ */
 void erts_slave_bootstrap(void);
+Eterm erts_slave_can_bootstrap(void);
 
 #endif /* !defined(_ERL_SLAVE_LOAD_H) */

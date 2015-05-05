@@ -19,10 +19,10 @@
 -module(slave).
 
 -export([spawn/3, print/1, boot/0, prepare_loading/2, finish_loading/1,
-         load_module/2, load_module/1]).
+         load_module/2, load_module/1, module_loaded/1, host/0, state/0]).
 
 %% spawn/3
--spec spawn(Module, Function, Args) -> undefined | pid() when
+-spec spawn(Module, Function, Args) -> pid() when
       Module :: module(),
       Function :: atom(),
       Args :: [term()].
@@ -35,13 +35,14 @@ print(_Term) ->
     erlang:nif_error(undefined).
 
 %% boot/0
--spec boot() -> undefined | ok.
+-spec boot() -> ok | {error, Error} when
+      Error :: disabled | offline | already_online | wait.
 boot() ->
     erlang:nif_error(undefined).
 
 %% prepare_loading/2
 -spec erlang:prepare_loading(Module, Code)
-                            -> PreparedCode | {error, Reason} | undefined when
+                            -> PreparedCode | {error, Reason} when
       Module :: module(),
       Code :: binary(),
       PreparedCode :: binary(),
@@ -50,7 +51,7 @@ prepare_loading(_Module, _Code) ->
     erlang:nif_error(undefined).
 
 %% finish_loading/1
--spec erlang:finish_loading(PreparedCodeBinaries) -> ok | Error | undefined when
+-spec erlang:finish_loading(PreparedCodeBinaries) -> ok | Error when
       PreparedCodeBinaries :: [PreparedCodeBinary],
       PreparedCodeBinary :: binary(),
       ModuleList :: [module()],
@@ -59,14 +60,12 @@ finish_loading(_List) ->
     erlang:nif_error(undefined).
 
 %% load_module/2
--spec load_module(Module, Binary)
-                 -> {module, Module} | {error, Reason} | undefined when
+-spec load_module(Module, Binary) -> {module, Module} | {error, Reason} when
       Module :: module(),
       Binary :: binary(),
       Reason :: badfile | not_purged | on_load.
 load_module(Mod, Code) ->
     case slave:prepare_loading(Mod, Code) of
-        undefined -> undefined;
 	{error,_}=Error ->
 	    Error;
 	Bin when erlang:is_binary(Bin) ->
@@ -79,8 +78,7 @@ load_module(Mod, Code) ->
     end.
 
 %% load_module/1
--spec load_module(Module)
-                 -> {module, Module} | {error, Reason} | undefined when
+-spec load_module(Module) -> {module, Module} | {error, Reason} when
       Module :: module(),
       Reason :: badfile | not_purged | on_load | nofile.
 load_module(Mod) ->
@@ -93,3 +91,19 @@ load_module(Mod) ->
 		    slave:load_module(Mod, Bin)
 	    end
     end.
+
+%% module_loaded/1
+-spec module_loaded(Module) -> boolean() when
+      Module :: module().
+module_loaded(_Module) ->
+    erlang:nif_error(undefined).
+
+%% host/0
+-spec host() -> master | slave.
+host() ->
+    erlang:nif_error(undefined).
+
+%% state/0
+-spec state() -> offline | booting | online | unavailable.
+state() ->
+    erlang:nif_error(undefined).

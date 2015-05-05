@@ -44,6 +44,7 @@
 #include "slave_process.h"
 #include "slave_load.h"
 #include "slave_export.h"
+#include "slave_io.h" /* for erts_slave_online */
 
 typedef struct {
     Process *proc;
@@ -123,6 +124,15 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
      */
     if (is_not_atom(mod) || is_not_atom(func) || ((arity = erts_list_length(args)) < 0)) {
 	so->error_code = BADARG;
+	goto error;
+    }
+
+    if (!erts_slave_online || !erts_slave_booted) {
+	ERTS_DECL_AM(offline);
+	ERTS_DECL_AM(booting);
+	if (erts_slave_online) parent->fvalue = AM_booting;
+	else parent->fvalue = AM_offline;
+	so->error_code = EXC_ERROR;
 	goto error;
     }
 

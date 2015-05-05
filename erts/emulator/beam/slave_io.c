@@ -149,7 +149,8 @@ static int start_pump_thread(void) {
     return 0;
 }
 
-static int slave_emu_online = 0;
+int erts_slave_online = 0;
+static int ehal_initialised = 0;
 e_epiphany_t slave_workgroup;
 
 #define ROWS 2
@@ -160,7 +161,7 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
     erts_printf("Hi from pump thread\n");
 
     if (e_init(NULL) != E_OK) { return NULL; }
-    slave_emu_online = 1;
+    ehal_initialised = 1;
 
     if (e_get_platform_info(&platform) != E_OK) {
 	perror("Not loading slave emulator: e_get_platform_info");
@@ -214,6 +215,7 @@ void erts_init_slave_io(void) {
 	return;
     }
 
+    erts_slave_online = 1;
     if (start_pump_thread()) {
 	fprintf(stderr, "Could not spin up pump thread\n");
 	erts_stop_slave_io();
@@ -222,6 +224,8 @@ void erts_init_slave_io(void) {
 
 void erts_stop_slave_io(void) {
     int ret;
+    erts_slave_online = 0;
+
     if (memfd > 0) {
         const unsigned size      = 0x02000000;
         const unsigned ephy_base = 0x8e000000;
@@ -231,9 +235,9 @@ void erts_stop_slave_io(void) {
 	if (ret != 0) perror("close: memfd");
         spoof_mmap();
     }
-    
-    if (!slave_emu_online) return;
+
+    if (!ehal_initialised) return;
     ret = e_finalize();
     if (ret != E_OK) perror("e_finalize");
-    slave_emu_online = 0;
+    ehal_initialised = 0;
 }

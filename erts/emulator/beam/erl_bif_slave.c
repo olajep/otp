@@ -28,6 +28,7 @@
 #include "sys.h"
 #include "global.h"
 #include "bif.h"
+#include "atom.h"
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
 #  include "erl_binary.h"
@@ -35,6 +36,8 @@
 
 #  include "slave_process.h"
 #  include "slave_load.h"
+#  include "slave_module.h"
+#  include "slave_io.h" /* For erts_slave_online */
 #endif
 
 BIF_RETTYPE slave_spawn_3(BIF_ALIST_3)
@@ -44,7 +47,6 @@ BIF_RETTYPE slave_spawn_3(BIF_ALIST_3)
     Eterm pid;
 
     so.flags = 0;
-    /* ETODO: Somewhere, synchronisation is missing... */
     pid = erl_create_slave_process(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3, &so);
     if (is_non_value(pid)) {
 	BIF_ERROR(BIF_P, so.error_code);
@@ -52,7 +54,7 @@ BIF_RETTYPE slave_spawn_3(BIF_ALIST_3)
 	BIF_RET(pid);
     }
 #else
-    BIF_RET(am_undefined);
+    BIF_ERROR(BIF_P, EXC_NOTSUP);
 #endif
 }
 
@@ -65,6 +67,17 @@ BIF_RETTYPE slave_print_1(BIF_ALIST_1)
 BIF_RETTYPE slave_boot_0(BIF_ALIST_0)
 {
 #ifdef ERTS_SLAVE_EMU_ENABLED
+    Eterm can;
+    ERTS_DECL_AM(offline);
+
+    if (erts_slave_online) can = erts_slave_can_bootstrap();
+    else can = AM_offline;
+    if (can != am_yes) {
+	Eterm *hp = HAlloc(BIF_P, 3);
+	ASSERT(is_atom(can));
+	return TUPLE2(hp, am_error, can);
+    }
+
     if (!erts_try_seize_code_write_permission(BIF_P)) {
 	ERTS_BIF_YIELD0(bif_export[BIF_slave_boot_0], BIF_P);
     }
@@ -72,7 +85,8 @@ BIF_RETTYPE slave_boot_0(BIF_ALIST_0)
     erts_release_code_write_permission();
     BIF_RET(am_ok);
 #else
-    BIF_RET(am_undefined);
+    Eterm *hp = HAlloc(BIF_P, 3);
+    return TUPLE2(hp, am_error, am_disabled);
 #endif
 }
 
@@ -115,7 +129,7 @@ BIF_RETTYPE slave_prepare_loading_2(BIF_ALIST_2)
     erts_refc_dec(&magic->refc, 1);
     BIF_RET(res);
 #else
-    BIF_RET(am_undefined);
+    BIF_ERROR(BIF_P, EXC_NOTSUP);
 #endif
 }
 
@@ -304,7 +318,7 @@ BIF_RETTYPE slave_finish_loading_1(BIF_ALIST_1)
 done:
     return staging_epilogue(BIF_P, do_commit, res, is_blocking, p, n);
 #else
-    BIF_RET(am_undefined);
+    BIF_ERROR(BIF_P, EXC_NOTSUP);
 #endif
 }
 
@@ -412,3 +426,60 @@ set_default_trace_pattern(Eterm module)
     }
 }
 #endif
+
+BIF_RETTYPE slave_host_0(BIF_ALIST_0)
+{
+#ifdef ERTS_SLAVE
+    BIF_RET(am_slave);
+#else
+    ERTS_DECL_AM(master);
+    BIF_RET(AM_master);
+#endif
+}
+
+BIF_RETTYPE slave_state_0(BIF_ALIST_0)
+{
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    ERTS_DECL_AM(online);
+    ERTS_DECL_AM(offline);
+    ERTS_DECL_AM(booting);
+    if (erts_slave_online) {
+	if (erts_slave_booted) BIF_RET(AM_online);
+	else BIF_RET(AM_booting);
+    } else {
+	BIF_RET(AM_offline);
+    }
+#elif defined(ERTS_SLAVE)
+    /* We can't access the atom table yet; so we can't construct the atom
+     * 'online' */
+    EPIPHANY_STUB_FUN();
+#else
+    ERTS_DECL_AM(unavailable);
+    BIF_RET(AM_unavailable);
+#endif
+}
+
+BIF_RETTYPE slave_module_loaded_1(BIF_ALIST_1)
+{
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    Module* modp;
+    ErtsCodeIndex code_ix;
+    Eterm res = am_false;
+
+    if (is_not_atom(BIF_ARG_1)) {
+	BIF_ERROR(BIF_P, BADARG);
+    }
+    code_ix = erts_active_code_ix();
+    if ((modp = slave_get_module(BIF_ARG_1, code_ix)) != NULL) {
+	if (modp->curr.code != NULL
+	    && modp->curr.code[MI_ON_LOAD_FUNCTION_PTR] == 0) {
+	    res = am_true;
+	}
+    }
+    BIF_RET(res);
+#elif defined(ERTS_SLAVE)
+    EPIPHANY_STUB_FUN();
+#else
+    BIF_RET(am_false);
+#endif
+}
