@@ -114,6 +114,10 @@ crash(Tuple) ->
 %% is handled by init.
 ensure_loaded(Module) ->
     Self = self(),
+    Fun = case slave:host() of
+              slave -> ensure_loaded_slave;
+              _     -> ensure_loaded
+          end,
     case whereis(code_server) of
 	%% Perhaps double fault should be detected in code:ensure_loaded/1 
 	%% instead, since this error handler cannot know whether the 
@@ -125,9 +129,15 @@ ensure_loaded(Module) ->
 		atom_to_list(Module) ++ "'",
 	    halt(Error);
 	Pid when is_pid(Pid) ->
-	    code:ensure_loaded(Module);
-	_ ->
-	    init:ensure_loaded(Module)
+            code:Fun(Module);
+        _ ->
+            case Fun of
+                ensure_loaded -> init:ensure_loaded(Module);
+                ensure_loaded_slave ->
+                    Error = "A slave called the unloaded module `" ++
+                        atom_to_list(Module) ++ "' before code_server was up",
+                    halt(Error)
+            end
     end.
 
 -spec stub_function(atom(), atom(), [_]) -> no_return().

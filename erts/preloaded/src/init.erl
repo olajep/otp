@@ -338,8 +338,10 @@ boot_loop(BootPid, State) ->
 ensure_loaded(Module, Loaded) ->
     File = concat([Module,objfile_extension()]),
     case catch load_mod(Module,File) of
-	{ok, FullName} ->
-	    {{module, Module}, [{Module, FullName}|Loaded]};
+	already_loaded ->
+	    {{module, Module}, Loaded};
+	{ok, FullName, ObjBin} ->
+	    {{module, Module}, [{Module, FullName, ObjBin}|Loaded]};
 	Res ->
 	    {Res, Loaded}
     end.
@@ -855,8 +857,12 @@ eval_script(What,_,_,_,_,_,_,_) ->
 
 load_modules([Mod|Mods]) ->
     File = concat([Mod,objfile_extension()]),
-    {ok,Full} = load_mod(Mod,File),
-    init ! {self(),loaded,{Mod,Full}},  %% Tell init about loaded module
+    case load_mod(Mod,File) of
+	already_loaded -> ok;
+	{ok,Full,ObjBin} ->
+	    %% Tell init about loaded module
+	    init ! {self(),loaded,{Mod,Full,ObjBin}}
+    end,
     load_modules(Mods);
 load_modules([]) ->
     ok.
@@ -882,8 +888,8 @@ par_load_modules(Mods,Init) ->
     Self = self(),
     Fun = fun(Mod, BinCode, FullName) ->
 		  case catch load_mod_code(Mod, BinCode, FullName) of
-		      {ok, _} ->
-			  Init ! {Self,loaded,{Mod,FullName}},
+		      {ok, _, _} ->
+			  Init ! {Self,loaded,{Mod,FullName,BinCode}},
 			  ok;
 		      _EXIT ->
 			  {error, Mod}
@@ -1077,23 +1083,23 @@ load_mod(Mod, File) ->
 		_ ->
 		    exit({'cannot load',Mod,get_file})
 	    end;
-	_ -> % Already loaded.
-	    {ok,File}
+	_ ->
+	    already_loaded
     end.
 
 load_mod_code(Mod, BinCode, FullName) ->
     case erlang:module_loaded(Mod) of
 	false ->
 	    case erlang:load_module(Mod, BinCode) of
-		{module,Mod} -> {ok,FullName};
+		{module,Mod} -> {ok,FullName,BinCode};
 		{error,on_load} ->
 		    ?ON_LOAD_HANDLER ! {loaded,Mod},
-		    {ok,FullName};
+		    {ok,FullName,BinCode};
 		Other ->
 		    exit({'cannot load',Mod,Other})
 	    end;
 	_ -> % Already loaded.
-	    {ok,FullName}
+	    {ok,FullName,BinCode}
     end.
 
 %% --------------------------------------------------------

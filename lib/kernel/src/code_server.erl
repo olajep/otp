@@ -39,6 +39,7 @@
 		path,
 		moddb,
 		namedb,
+		slavedb,
 		cache = no_cache,
 		mode = interactive,
 		on_load = []}).
@@ -67,7 +68,8 @@ init(Ref, Parent, [Root,Mode0]) ->
 		    %% Pre-loaded modules are always sticky.
 		    ets:insert(Db, [{M,preloaded},{{sticky,M},true}])
 	    end, erlang:pre_loaded()),
-    ets:insert(Db, init:fetch_loaded()),
+    InitLoaded = init:fetch_loaded(),
+    ets:insert(Db, lists:map(fun({M,F,_}) -> {M,F} end, InitLoaded)),
 
     Mode = 
 	case Mode0 of
@@ -87,11 +89,22 @@ init(Ref, Parent, [Root,Mode0]) ->
 		[]
 	end,
 
+    SlaveDb =
+	case slave:state() of
+	    No when No =:= unavailable; No =:= offline -> undefined;
+	    _Yes ->
+		Tab = ets:new(code_slave, [private]),
+		ets:insert(Tab, lists:map(fun({M,_,B}) -> {M,B} end,
+					  InitLoaded)),
+		Tab
+	end,
+
     Path = add_loader_path(IPath, Mode),
     State0 = #state{root = Root,
 		    path = Path,
 		    moddb = Db,
 		    namedb = init_namedb(Path),
+		    slavedb = SlaveDb,
 		    mode = Mode},
 
     State =
@@ -346,10 +359,42 @@ handle_call({ensure_loaded,Mod0}, Caller, St0) ->
 	  end,
     do_mod_call(Fun, Mod0, {error,badarg}, St0);
 
+handle_call({ensure_loaded_slave, _}, _, St=#state{slavedb=undefined}) ->
+    {reply, {error, slave:state()}, St};
+handle_call({ensure_loaded_slave,Mod0}, Caller, St0) ->
+    Fun = fun (M, St) ->
+		  case slave:module_loaded(M) of
+		      true ->
+			  {reply,{module,M},St};
+		      false when St#state.mode =:= interactive ->
+			  case ets:lookup(St#state.slavedb, M) of
+			      [{M, Bin}] ->
+				  [{M, File}] = ets:lookup(St#state.moddb, M),
+				  slave_load_binary(M, File, Bin, Caller, St);
+			      [] ->
+				  ets:insert(St#state.slavedb, {M, want}),
+				  case erlang:module_loaded(M) of
+				      %% The module should not be loaded, but we
+				      %% must handle the case that something
+				      %% else than init or code_server has
+				      %% loaded a module.
+				      true ->
+					  slave_load_uncached(M, Caller, St);
+				      false ->
+					  load_file(M, Caller, St)
+				  end
+			  end;
+		      false ->
+			  {reply,{error,embedded},St}
+		  end
+	  end,
+    do_mod_call(Fun, Mod0, {error,badarg}, St0);
+
 handle_call({delete,Mod0}, {_From,_Tag}, S) ->
     Fun = fun (M, St) ->
 		  case catch erlang:delete_module(M) of
 		      true ->
+			  %% ETODO: delete slave module
 			  ets:delete(St#state.moddb, M),
 			  {reply,true,St};
 		      _ -> 
@@ -1214,6 +1259,54 @@ do_load_binary(Module, File, Binary, Caller, St) ->
 	    {reply,{error,badarg},St}
     end.
 
+slave_load_binary(Mod, File, Bin, _Caller, #state{slavedb=SlaveDb}=St) ->
+    case modp(Mod) andalso is_binary(Bin) of
+	true ->
+	    case slave:load_module(Mod, Bin) of
+		{module,Mod} = Module ->
+		    ets:insert(SlaveDb, {Mod,want}),
+		    {reply,Module,St};
+		{error,What} = Error ->
+		    error_msg("Loading of ~ts failed: ~p\n", [File, What]),
+		    {reply,Error,St}
+	    end;
+	false ->
+	    {reply,{error,badarg},St}
+    end.
+
+slave_load_uncached(Mod, From,
+		    #state{path=Path, slavedb=SlaveDb, moddb=Db}=St0) ->
+    case modp(Mod) of
+	true ->
+	    case pending_on_load(Mod, From, St0) of
+		no ->
+		    LoadRes =
+			case ets:lookup(Db, Mod) of
+			    [] ->
+				%% Since the uncached case should be rare, we
+				%% don't mind ignoring the cache to simplify the
+				%% implementation.
+				mod_to_bin(Path, Mod);
+			    [{Mod, File}] ->
+				%% This case should not happen, since we add
+				%% modules to the cache whenever we load them.
+				info_msg("code_server: Loaded module ~p missing"
+					 ++ " from cache\n", [Mod]),
+				erl_prim_loader:get_file(File)
+			end,
+		    case LoadRes of
+			error -> {reply,{error,nofile},St0};
+			{_, Bin, FullName} ->
+			    slave_load_binary(Mod, FullName, Bin, From, St0)
+		    end;
+		{yes,St} ->
+		    ets:insert(SlaveDb, {Mod,want}),
+		    {noreply,St}
+	    end;
+	false ->
+	    {reply,{error,badarg},St0}
+    end.
+
 modp(Atom) when is_atom(Atom) -> true;
 modp(List) when is_list(List) -> int_list(List);
 modp(_)                       -> false.
@@ -1260,15 +1353,15 @@ try_load_module_1(File, Mod, Bin, Caller, #state{moddb=Db}=St) ->
 	    {reply,{error,sticky_directory},St};
 	false ->
 	    case catch load_native_code(Mod, Bin) of
-		{module,Mod} = Module ->
+		{module,Mod} ->
 		    ets:insert(Db, {Mod,File}),
-		    {reply,Module,St};
+		    slave_handle_loaded(Mod, File, Bin, Caller, St);
 		no_native ->
 		    case erlang:load_module(Mod, Bin) of
-			{module,Mod} = Module ->
+			{module,Mod} ->
 			    ets:insert(Db, {Mod,File}),
 			    post_beam_load(Mod),
-			    {reply,Module,St};
+			    slave_handle_loaded(Mod, File, Bin, Caller, St);
 			{error,on_load} ->
 			    handle_on_load(Mod, File, Caller, St);
 			{error,What} = Error ->
@@ -1317,6 +1410,20 @@ post_beam_load(Mod) ->
     case get(?ANY_NATIVE_CODE_LOADED) of
 	true -> hipe_unified_loader:post_beam_load(Mod);
 	false -> ok
+    end.
+
+slave_handle_loaded(Mod, File, Bin, Caller, #state{slavedb=SlaveDb}=St) ->
+    case slave:state() of
+	online ->
+	    case ets:lookup(SlaveDb, Mod) of
+		[{Mod, want}] ->
+		    slave_load_binary(Mod, File, Bin, Caller, St);
+		_ ->
+		    ets:insert(SlaveDb, {Mod, Bin}),
+		    {reply,{module,Mod},St}
+	    end;
+	_ ->
+	    {reply,{module,Mod},St}
     end.
 
 int_list([H|T]) when is_integer(H) -> int_list(T);
