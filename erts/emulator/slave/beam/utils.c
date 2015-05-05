@@ -780,7 +780,11 @@ Uint32 make_broken_hash(Eterm term)
 
 static int do_send_to_logger(Eterm tag, Eterm gleader, char *buf, int len)
 {
-    EPIPHANY_STUB_FUN();
+    /* ESTUB */
+    erts_printf(__FILE__ ":%d:%s(): [%T gleader: %T]:\n", __LINE__, __FUNCTION__,
+		tag, gleader);
+    erts_printf("  %s\n", buf);
+    return 0;
 }
 
 static ERTS_INLINE int
@@ -792,7 +796,7 @@ send_info_to_logger(Eterm gleader, char *buf, int len)
 static ERTS_INLINE int
 send_warning_to_logger(Eterm gleader, char *buf, int len) 
 {
-    EPIPHANY_STUB_FUN();
+    return do_send_to_logger(am_warning, gleader, buf, len);
 }
 
 static ERTS_INLINE int
