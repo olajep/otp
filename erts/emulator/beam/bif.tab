@@ -608,7 +608,7 @@ bif erlang:fun_info_mfa/1
 #
 # New in ??
 #
-bif slave:spawn/3
+bif slave:internal_spawn/3
 bif slave:print/1
 bif slave:boot/0
 bif slave:prepare_loading/2

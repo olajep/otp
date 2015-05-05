@@ -148,6 +148,7 @@ init(safe) ->
     Boot = start_boot_server(),
     DiskLog = start_disk_log(),
     Pg2 = start_pg2(),
+    Slave = start_slave(),
 
     %% Run the on_load handlers for all modules that have been
     %% loaded so far. Running them at this point means that
@@ -155,7 +156,7 @@ init(safe) ->
     %% (and in particular call code:priv_dir/1 or code:lib_dir/1).
     init:run_on_load_handlers(),
 
-    {ok, {SupFlags, Boot ++ DiskLog ++ Pg2}}.
+    {ok, {SupFlags, Boot ++ DiskLog ++ Pg2 ++ Slave}}.
 
 get_code_args() ->
     case init:get_argument(nostick) of
@@ -218,6 +219,15 @@ start_timer() ->
 	      [timer]}];
 	_ ->
 	    []
+    end.
+
+start_slave() ->
+    case slave:state() of
+        booting ->
+            [{slave_server, {slave_server, start_link, []}, permanent, 10000,
+              worker, [slave_server]}];
+        _ ->
+            []
     end.
 
 %%-----------------------------------------------------------------

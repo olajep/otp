@@ -112,6 +112,7 @@ MODULES = \
 	rpc \
 	seq_trace \
 	slave \
+	slave_server \
 	standard_error \
 	user \
 	user_drv \

@@ -40,7 +40,7 @@
 #  include "slave_io.h" /* For erts_slave_online */
 #endif
 
-BIF_RETTYPE slave_spawn_3(BIF_ALIST_3)
+BIF_RETTYPE slave_internal_spawn_3(BIF_ALIST_3)
 {
 #ifdef ERTS_SLAVE_EMU_ENABLED
     ErlSpawnOpts so;

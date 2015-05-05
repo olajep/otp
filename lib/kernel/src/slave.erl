@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1996-2015. All Rights Reserved.
+%% Copyright Ericsson AB 2015. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -18,15 +18,24 @@
 %%
 -module(slave).
 
--export([spawn/3, print/1, boot/0, prepare_loading/2, finish_loading/1,
-         load_module/2, load_module/1, module_loaded/1, host/0, state/0]).
+%% This is the interface module to the slave server. It also contains the
+%% built-in functions that are used to manage the
+
+%% Built-in functions
+-export([internal_spawn/3, print/1, boot/0, prepare_loading/2, finish_loading/1,
+	 module_loaded/1, host/0, state/0]).
+
+-export([load_module/2, load_module/1, spawn/3]).
+
+-define(SERVER, slave_server).
+-define(CALL_TIMEOUT, 10000).
 
 %% spawn/3
--spec spawn(Module, Function, Args) -> pid() when
+-spec internal_spawn(Module, Function, Args) -> pid() when
       Module :: module(),
       Function :: atom(),
       Args :: [term()].
-spawn(_Module, _Function, _Args) ->
+internal_spawn(_Module, _Function, _Args) ->
     erlang:nif_error(undefined).
 
 %% print/1
@@ -42,7 +51,7 @@ boot() ->
 
 %% prepare_loading/2
 -spec erlang:prepare_loading(Module, Code)
-                            -> PreparedCode | {error, Reason} when
+			    -> PreparedCode | {error, Reason} when
       Module :: module(),
       Code :: binary(),
       PreparedCode :: binary(),
@@ -57,6 +66,22 @@ prepare_loading(_Module, _Code) ->
       ModuleList :: [module()],
       Error :: {not_purged,ModuleList} | {on_load,ModuleList}.
 finish_loading(_List) ->
+    erlang:nif_error(undefined).
+
+%% module_loaded/1
+-spec module_loaded(Module) -> boolean() when
+      Module :: module().
+module_loaded(_Module) ->
+    erlang:nif_error(undefined).
+
+%% host/0
+-spec host() -> master | slave.
+host() ->
+    erlang:nif_error(undefined).
+
+%% state/0
+-spec state() -> offline | booting | online | unavailable.
+state() ->
     erlang:nif_error(undefined).
 
 %% load_module/2
@@ -92,18 +117,19 @@ load_module(Mod) ->
 	    end
     end.
 
-%% module_loaded/1
--spec module_loaded(Module) -> boolean() when
-      Module :: module().
-module_loaded(_Module) ->
-    erlang:nif_error(undefined).
+-spec spawn(Module, Function, Args) -> pid() when
+      Module :: module(),
+      Function :: atom(),
+      Args :: [term()].
+spawn(Module, Function, Args) ->
+    call({spawn, Module, Function, Args}).
 
-%% host/0
--spec host() -> master | slave.
-host() ->
-    erlang:nif_error(undefined).
-
-%% state/0
--spec state() -> offline | booting | online | unavailable.
-state() ->
-    erlang:nif_error(undefined).
+-spec call(tuple()) -> term().
+call(Cmd) ->
+    %% We short-circuit here if the slave is offline, since the call will
+    %% timeout in those cases.
+    case slave:state() of
+	offline -> error(offline);
+	unavailable -> error(notsup);
+	_ -> slave_server:call(Cmd)
+    end.
