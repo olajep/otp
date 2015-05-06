@@ -32,9 +32,10 @@
 #define HARDDEBUG 0
 
 /* This is an "X macro" */
-#define SLAVE_PROXIED_BIFS_DEFINER \
-    X(whereis_1, 1) \
-    X(send_2, 2)
+#define SLAVE_PROXIED_BIFS_DEFINER		\
+    X(whereis_1, 1)				\
+    X(send_2, 2)				\
+    X(net_kernel_dflag_unicode_io_1, 1)
 
 static Eterm
 syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
