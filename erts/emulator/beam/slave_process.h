@@ -39,10 +39,7 @@
 #include "external.h"
 #include "erl_mseg.h"
 #include "erl_async.h"
-
-#ifdef HIPE
-#include "hipe_process.h"
-#endif
+#include "slave_command.h"
 
 #undef ERL_THR_PROGRESS_TSD_TYPE_ONLY
 #define ERL_THR_PROGRESS_TSD_TYPE_ONLY
@@ -50,6 +47,7 @@
 #undef ERL_THR_PROGRESS_TSD_TYPE_ONLY
 
 Eterm erl_create_slave_process(Process*, Eterm, Eterm, Eterm, ErlSpawnOpts*);
+int slave_do_exit_process(Process* p, struct slave_syscall_ready *arg);
 Sint erts_slave_queue_message(Process* receiver, ErtsProcLocks *receiver_locks,
 			      ErlHeapFragment* bp, Eterm message,
 			      Eterm seq_trace_token

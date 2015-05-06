@@ -1710,7 +1710,8 @@ void
 erts_alloc_notify_delayed_dealloc(int ix)
 {
     ErtsSchedulerData *esdp = erts_get_scheduler_data();
-    if (esdp && !ERTS_SCHEDULER_IS_DIRTY(esdp))
+    if (esdp && !ERTS_SCHEDULER_IS_DIRTY(esdp)
+	&& !ERTS_SCHEDULER_IS_SLAVE_CMDER(esdp))
 	schedule_aux_work_wakeup(&esdp->aux_work_data,
 				 ix,
 				 ERTS_SSI_AUX_WORK_DD);
@@ -10154,7 +10155,8 @@ int
 erts_set_gc_state(Process *c_p, int enable)
 {
     ErtsProcSysTaskQs *dgc_tsk_qs;
-    ASSERT(c_p == erts_get_current_process());
+    ASSERT(erts_smp_atomic32_read_nob(&c_p->state) & ERTS_PSFLG_SLAVE
+	   || c_p == erts_get_current_process());
     ASSERT((ERTS_PSFLG_RUNNING|ERTS_PSFLG_RUNNING_SYS)
 	   & erts_smp_atomic32_read_nob(&c_p->state));
     ERTS_SMP_LC_ASSERT(ERTS_PROC_LOCK_MAIN == erts_proc_lc_my_proc_locks(c_p));
@@ -11043,6 +11045,7 @@ static void
 delete_process(Process* p)
 {
     ErlMessage* mp;
+    ErtsAlcType_t heap_alc_type = ERTS_ALC_T_HEAP;
 
     VERBOSE(DEBUG_PROCESSES, ("Removing process: %T\n",p->common.id));
 
@@ -11077,7 +11080,13 @@ delete_process(Process* p)
     hipe_delete_process(&p->hipe);
 #endif
 
-    ERTS_HEAP_FREE(ERTS_ALC_T_HEAP, (void*) p->heap, p->heap_sz*sizeof(Eterm));
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    /* ETODO: I probably need a touch-up when GC is implemented */
+    if (erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_SLAVE)
+	heap_alc_type = ERTS_ALC_T_SLAVE_HEAP;
+#endif
+
+    ERTS_HEAP_FREE(heap_alc_type, (void*) p->heap, p->heap_sz*sizeof(Eterm));
     if (p->old_heap != NULL) {
 
 #ifdef DEBUG
@@ -12019,24 +12028,26 @@ erts_continue_exit_process(Process *p)
 
     {
 	/* Do *not* use erts_get_runq_proc() */
-	ErtsRunQueue *rq;
-	rq = erts_get_runq_current(ERTS_GET_SCHEDULER_DATA_FROM_PROC(p));
+	ErtsRunQueue *rq = NULL;
+	if (!(erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_SLAVE)) {
+	    rq = erts_get_runq_current(ERTS_GET_SCHEDULER_DATA_FROM_PROC(p));
 
-	erts_smp_runq_lock(rq);
+	    erts_smp_runq_lock(rq);
 
 #ifdef ERTS_SMP
-	ASSERT(p->scheduler_data);
-	ASSERT(p->scheduler_data->current_process == p);
-	ASSERT(p->scheduler_data->free_process == NULL);
+	    ASSERT(p->scheduler_data);
+	    ASSERT(p->scheduler_data->current_process == p);
+	    ASSERT(p->scheduler_data->free_process == NULL);
 
-	p->scheduler_data->current_process = NULL;
-	p->scheduler_data->free_process = p;
+	    p->scheduler_data->current_process = NULL;
+	    p->scheduler_data->free_process = p;
 #endif
+	}
 
 	/* Time of death! */
 	erts_ptab_delete_element(&erts_proc, &p->common);
 
-	erts_smp_runq_unlock(rq);
+	if (rq) erts_smp_runq_unlock(rq);
     }
 
     /*

@@ -143,7 +143,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
 	goto error;
     }
 
-    state |= ERTS_PSFLG_SLAVE;
+    state |= ERTS_PSFLG_SLAVE | ERTS_PSFLG_RUNNING;
 
     p = alloc_process(state); /* All proc locks are locked by this thread on
 				 success */
@@ -401,6 +401,27 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
  error:
     erts_smp_proc_unlock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
     return res;
+}
+
+int
+slave_do_exit_process(Process* p, struct slave_syscall_ready *arg)
+{
+#ifdef ERTS_SMP
+    /* Lock the main lock so lc is happy */
+    erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
+#endif
+    /* The exit process might yield. If it has, it has set the EXITING flag
+     * first. It sets the FREE flag when it finishes. */
+    if (erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_EXITING) {
+	erts_continue_exit_process(p);
+    } else {
+	erts_do_exit_process(p, arg->exit_reason);
+    }
+#ifdef ERTS_SMP
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);
+#endif
+
+    return !(erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_FREE);
 }
 
 Sint

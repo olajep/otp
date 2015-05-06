@@ -49,7 +49,7 @@ enum slave_syscall {
 
 struct slave_syscall_ready {
     /* To master */
-
+    Eterm exit_reason;
     /* To slave */
     Eterm id, parent_id;
     Eterm mod, func, args;

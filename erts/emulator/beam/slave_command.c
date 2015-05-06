@@ -283,10 +283,12 @@ erts_slave_finish_syscall(struct slave *slave, enum slave_syscall no)
 static int
 serve_ready(int i, struct slave_syscall_ready *arg)
 {
-    erts_slave_push_free(slaves + i);
-    if (slaves[i].c_p) {
-	/* ETODO: Terminate c_p */
+    if (slaves[i].c_p && !slave_do_exit_process(slaves[i].c_p, arg))
 	slaves[i].c_p = NULL;
+
+    if (!slaves[i].c_p) {
+	erts_slave_push_free(slaves + i);
+	slaves[i].pending_syscall = 1;
     }
     return 0;
 }
@@ -320,8 +322,6 @@ serve_syscalls(int i)
     if (served) {
 	ETHR_MEMBAR(ETHR_StoreStore); /* *buffers->syscall_arg -> buffers->syscall */
 	buffers->syscall = SLAVE_SYSCALL_NONE;
-    } else {
-	slaves[i].pending_syscall = 1;
     }
     return served;
 }

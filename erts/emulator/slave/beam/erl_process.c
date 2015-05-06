@@ -944,31 +944,6 @@ delete_process(Process* p)
     }
 
     /*
-     * Release heaps. Clobber contents in DEBUG build.
-     */
-
-
-#ifdef DEBUG
-    sys_memset(p->heap, DEBUG_BAD_BYTE, p->heap_sz*sizeof(Eterm));
-#endif
-
-#ifdef HIPE
-    hipe_delete_process(&p->hipe);
-#endif
-
-/*     ERTS_HEAP_FREE(ERTS_ALC_T_HEAP, (void*) p->heap, p->heap_sz*sizeof(Eterm)); */
-/*     if (p->old_heap != NULL) { */
-
-/* #ifdef DEBUG */
-/* 	sys_memset(p->old_heap, DEBUG_BAD_BYTE, */
-/*                    (p->old_hend-p->old_heap)*sizeof(Eterm)); */
-/* #endif */
-/* 	ERTS_HEAP_FREE(ERTS_ALC_T_OLD_HEAP, */
-/* 		       p->old_heap, */
-/* 		       (p->old_hend-p->old_heap)*sizeof(Eterm)); */
-/*     } */
-
-    /*
      * Free all pending message buffers.
      */
     if (p->mbuf != NULL) {	
@@ -999,8 +974,6 @@ delete_process(Process* p)
 
     ASSERT(!p->nodes_monitors);
     ASSERT(!p->suspend_monitors);
-
-    p->fvalue = NIL;
 }
 
 static void
@@ -1213,6 +1186,7 @@ Process *schedule(Process *p, int calls)
 	if (state & ERTS_PSFLG_FREE) {
 	    ready_arg = erts_alloc(ERTS_ALC_T_TMP,
 				   sizeof(struct slave_syscall_ready));
+	    ready_arg->exit_reason = p->fvalue;
 
 #ifdef ERTS_SMP
 	    ASSERT(esdp->free_process == p);
@@ -1545,44 +1519,6 @@ erts_continue_exit_process(Process *p)
 	/*     erts_deref_dist_entry(dep); */
     }
 
-    /*
-     * Pre-build the EXIT tuple if there are any links.
-     */
-    /* if (lnk) { */
-    /* 	DeclareTmpHeap(tmp_heap,4,p); */
-    /* 	Eterm exit_tuple; */
-    /* 	Uint exit_tuple_sz; */
-    /* 	Eterm* hp; */
-
-    /* 	UseTmpHeap(4,p); */
-    /* 	hp = &tmp_heap[0]; */
-
-    /* 	exit_tuple = TUPLE3(hp, am_EXIT, p->common.id, reason); */
-
-    /* 	exit_tuple_sz = size_object(exit_tuple); */
-
-    /* 	{ */
-    /* 	    ExitLinkContext context = {p, reason, exit_tuple, exit_tuple_sz}; */
-    /* 	    erts_sweep_links(lnk, &doit_exit_link, &context); */
-    /* 	} */
-    /* 	UnUseTmpHeap(4,p); */
-    /* } */
-
-    /* { */
-    /* 	ExitMonitorContext context = {reason, p}; */
-    /* 	erts_sweep_monitors(mon,&doit_exit_monitor,&context); /\* Allocates TmpHeap, but we */
-    /* 								 have none here *\/ */
-    /* } */
-
-    /* if (scb) */
-    /*     erts_free(ERTS_ALC_T_CALLS_BUF, (void *) scb); */
-
-    /* if (pbt) */
-    /*     erts_free(ERTS_ALC_T_BPD, (void *) pbt); */
-
-    /* if (nif_export) */
-    /*     erts_destroy_nif_export(nif_export); */
-
     delete_process(p);
 
 #ifdef ERTS_SMP
@@ -1591,28 +1527,6 @@ erts_continue_exit_process(Process *p)
 #endif
 
     return;
-
-/*  yield: */
-
-/* #ifdef DEBUG */
-/*     ASSERT(yield_allowed); */
-/* #endif */
-
-/*     ERTS_SMP_LC_ASSERT(curr_locks == erts_proc_lc_my_proc_locks(p)); */
-/*     ERTS_SMP_LC_ASSERT(ERTS_PROC_LOCK_MAIN & curr_locks); */
-
-/*     p->i = (BeamInstr *) beam_continue_exit; */
-
-/*     if (!(curr_locks & ERTS_PROC_LOCK_STATUS)) { */
-/* 	erts_smp_proc_lock(p, ERTS_PROC_LOCK_STATUS); */
-/* 	curr_locks |= ERTS_PROC_LOCK_STATUS; */
-/*     } */
-
-/*     if (curr_locks != ERTS_PROC_LOCK_MAIN) */
-/* 	erts_smp_proc_unlock(p, ~ERTS_PROC_LOCK_MAIN & curr_locks); */
-
-/*     ERTS_SMP_LC_ASSERT(ERTS_PROC_LOCK_MAIN == erts_proc_lc_my_proc_locks(p)); */
-
 }
 
 void
