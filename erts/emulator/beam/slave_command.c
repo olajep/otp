@@ -34,6 +34,7 @@
 #endif
 
 #include "sys.h"
+#include "erl_thr_progress.h"
 #include "slave_syms.h"
 #include "slave_io.h"
 #include "slave_command.h"
@@ -95,18 +96,91 @@ erts_await_slave_init(void)
 		       &core_barrier, sizeof(core_barrier));
 		ASSERT(ret == 4);
 		if (core_barrier == 1) break;
+
+		/* Since we're already a managed thread, we're required to
+		 * frequently report progress */
+		if (erts_thr_progress_update(NULL)) {
+		    erts_thr_progress_leader_update(NULL);
+		}
 		erts_milli_sleep(1);
 	    };
 	}
     }
 }
 
-void
-erts_init_slave_command(void)
+static int tpr_wait_flag;
+static erts_smp_mtx_t tpr_mtx;
+static erts_smp_cnd_t tpr_cnd;
+
+static void
+tpr_wakeup(void __attribute__((unused)) *unused)
 {
+    erts_smp_mtx_lock(&tpr_mtx);
+    tpr_wait_flag = 0;
+    erts_smp_cnd_signal(&tpr_cnd);
+    erts_smp_mtx_unlock(&tpr_mtx);
+}
+
+static void
+tpr_prep_wait(void __attribute__((unused)) *unused)
+{
+    erts_smp_mtx_lock(&tpr_mtx);
+    tpr_wait_flag = 1;
+    erts_smp_mtx_unlock(&tpr_mtx);
+}
+
+static void
+tpr_fin_wait(void __attribute__((unused)) *unused)
+{
+    erts_smp_mtx_lock(&tpr_mtx);
+    tpr_wait_flag = 0;
+    erts_smp_mtx_unlock(&tpr_mtx);
+}
+
+static void
+tpr_wait(void __attribute__((unused)) *unused)
+{
+    erts_smp_mtx_lock(&tpr_mtx);
+    while (tpr_wait_flag)
+	erts_smp_cnd_wait(&tpr_cnd, &tpr_mtx);
+    erts_smp_mtx_unlock(&tpr_mtx);
+}
+
+static ErtsSchedulerData command_thead_esd;
+
+static void *
+command_thread_loop(void __attribute__((unused)) *arg)
+{
+    ErtsThrPrgrCallbacks callbacks;
     const off_t buffers_addr = SLAVE_SYM_slave_command_buffers;
     unsigned x, y;
-    /* Since we're paranoid, we make sure all the cores are ready */
+
+    /* We *need* to register as a managed thread immediately, as we are blocking
+     * startup of the emulator */
+    erts_smp_mtx_init(&tpr_mtx, "slave_command_tpr_mtx");
+    erts_smp_cnd_init(&tpr_cnd);
+    callbacks.arg = NULL;
+    callbacks.wakeup = tpr_wakeup;
+    callbacks.prepare_wait = tpr_prep_wait;
+    callbacks.wait = tpr_wait;
+    callbacks.finalize_wait = tpr_fin_wait;
+    memzero(&command_thead_esd, sizeof(command_thead_esd));
+    command_thead_esd.cpu_id = -1;
+    command_thead_esd.ssi
+	= erts_alloc_permanent_cache_aligned(ERTS_ALC_T_SCHDLR_SLP_INFO,
+					     sizeof(ErtsSchedulerSleepInfo));
+#ifdef ERTS_SMP
+    erts_smp_atomic32_init_nob(&command_thead_esd.ssi->flags, 0);
+    command_thead_esd.ssi->event = erts_tse_fetch();
+#endif
+    erts_smp_atomic32_init_nob(&command_thead_esd.ssi->aux_work, 0);
+    erts_thr_progress_register_managed_thread(NULL, &callbacks, 0);
+#ifdef ERTS_ENABLE_LOCK_CHECK
+    erts_lc_set_thread_name("slave command thread");
+#endif
+    erts_proc_register_slave_command_thread(&command_thead_esd);
+
+    /* Since we're paranoid, we make sure all the cores are ready. */
     erts_await_slave_init();
 
     num_slaves = slave_workgroup.num_cores;
@@ -125,6 +199,31 @@ erts_init_slave_command(void)
 		= alloc_slave_scheduler_data();
 	}
     }
+
+    while(1) {
+	if (erts_dispatch_slave_commands() == 0) {
+	    /* ETODO: We might need to limit the number of operations to
+	     * ensure a good rate of thread progress reports. */
+	    if (erts_thr_progress_update(NULL)) {
+		erts_thr_progress_leader_update(NULL);
+	    }
+	    erts_milli_sleep(1);
+	}
+    }
+    erl_exit(1, "Slave commander thread exited");
+    return NULL;
+}
+
+static ethr_tid command_thread_tid;
+
+int
+erts_init_slave_command(void)
+{
+    ethr_thr_opts opts = ETHR_THR_OPTS_DEFAULT_INITER;
+    if (ethr_thr_create(&command_thread_tid, command_thread_loop, NULL, &opts)) {
+	return 1;
+    }
+    return 0;
 }
 
 struct slave*

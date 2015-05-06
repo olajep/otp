@@ -1090,12 +1090,16 @@ early_init(int *argc, char **argv) /*
      * ** Scheduler threads (see erl_process.c)
      * ** Aux thread (see erl_process.c)
      * ** Sys message dispatcher thread (see erl_trace.c)
+     * ** Slave command thread (see slave_command.c)
      *
      * * Unmanaged threads that need to register:
      * ** Async threads (see erl_async.c)
      * ** Dirty scheduler threads
      */
     erts_thr_progress_init(no_schedulers,
+#ifdef ERTS_SLAVE_EMU_ENABLED
+			   1 +
+#endif
 			   no_schedulers+2,
 #ifndef ERTS_DIRTY_SCHEDULERS
 			   erts_async_max_threads

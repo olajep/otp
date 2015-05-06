@@ -81,8 +81,8 @@ static int memfd = 0;
  */
 static int map_shm(void) {
     void *ret;
-    // ETODO: parse the HDF ourselves (we can't use the e_platform symbol or
-    // *very* bad things happens)
+    /* ETODO: parse the HDF ourselves (we can't use the e_platform symbol since
+     * the library is dynamically linked) */
     unsigned phy_base  = 0x3e000000;
     unsigned size      = 0x02000000;
     unsigned ephy_base = 0x8e000000;
@@ -92,11 +92,10 @@ static int map_shm(void) {
     // The old way, for devices without the Epiphany kernel driver
     memfd = open("/dev/mem", O_RDWR | O_SYNC);
     if (memfd == -1) {
-	perror("open: /dev/mem");
+	/* perror("open: /dev/mem"); */
 	return -1;
     }
 
-    printf("Mapping 0x%x+0x%x to 0x%x\n", phy_base, size, ephy_base);
     // We avoid using MAP_FIXED because we'd rather know if there is another
     // mapping in the way than overwrite it.
     ret = mmap((void*)ephy_base, size,
@@ -123,7 +122,6 @@ static int spoof_mmap(void) {
     unsigned size      = 0x02000000;
     unsigned ephy_base = 0x8e000000;
 
-    printf("Reserving 0x%x+0x%x\n", ephy_base, size);
     ret = mmap((void*)ephy_base, size,
 	       PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS,
 	       0, 0);
@@ -158,7 +156,6 @@ e_epiphany_t slave_workgroup;
 static void *pump_thread_loop(void __attribute__((unused)) *arg) {
     char *binary;
     e_platform_t platform;
-    erts_printf("Hi from pump thread\n");
 
     if (e_init(NULL) != E_OK) { return NULL; }
     ehal_initialised = 1;
@@ -186,6 +183,7 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
     if (binary == NULL) {
 	fprintf(stderr, "Not loading slave emulator: "
 		"SLAVE_BINARY environment variable unset\n");
+	erts_stop_slave_io();
 	return NULL;
     }
 
@@ -196,12 +194,17 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
 	return NULL;
     }
 
-    printf("Slave emulator online\n");
-    erts_init_slave_command();
+    if (erts_init_slave_command()) {
+	fprintf(stderr, "Stopping slave emulator: "
+		"SLAVE_BINARY environment variable unset\n");
+	erts_stop_slave_io();
+	return NULL;
+    }
 
     while(1) {
-	if (pump_output() == 0 && erts_dispatch_slave_commands() == 0) {
-	    erts_milli_sleep(1);
+	if (pump_output() == 0) {
+	    /* ETODO: Exponential sleep duration increase */
+	    erts_milli_sleep(10);
 	}
     }
     return NULL;

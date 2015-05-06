@@ -587,6 +587,9 @@ struct ErtsSchedulerData_ {
 #ifdef ERTS_DIRTY_SCHEDULERS
     ErtsDirtySchedId dirty_no;  /* Scheduler number for dirty schedulers */
 #endif
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    int is_slave_commander;
+#endif
     Port *current_port;
     ErtsRunQueue *run_queue;
     int virtual_reds;
@@ -1352,6 +1355,12 @@ extern struct erts_system_profile_flags_t erts_system_profile_flags;
 #define ERTS_SCHEDULER_IS_DIRTY_IO(ESDP) 0
 #endif
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  define ERTS_SCHEDULER_IS_SLAVE_CMDER(EDSP) ((EDSP)->is_slave_commander)
+#else
+#  define ERTS_SCHEDULER_IS_SLAVE_CMDER(EDSP) 0
+#endif
+
 void erts_pre_init_process(void);
 void erts_late_init_process(void);
 void erts_early_init_scheduling(int);
@@ -1627,6 +1636,10 @@ void erts_debug_verify_clean_empty_process(Process* p);
 #endif
 void erts_stack_dump(int to, void *to_arg, Process *);
 void erts_program_counter_info(int to, void *to_arg, Process *);
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void erts_proc_register_slave_command_thread(ErtsSchedulerData *esdp);
+#endif
 
 Eterm erts_get_process_priority(Process *p);
 Eterm erts_set_process_priority(Process *p, Eterm prio);

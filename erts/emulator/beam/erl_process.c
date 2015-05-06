@@ -5312,6 +5312,9 @@ init_scheduler_data(ErtsSchedulerData* esdp, int num,
 #else
     esdp->no = (Uint) num;
 #endif
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    esdp->is_slave_commander = 0;
+#endif
     esdp->ssi = ssi;
     esdp->current_process = NULL;
     esdp->current_port = NULL;
@@ -7881,6 +7884,15 @@ sched_dirty_io_thread_func(void *vesdp)
     return NULL;
 }
 #endif
+#endif
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void
+erts_proc_register_slave_command_thread(ErtsSchedulerData *esdp)
+{
+    erts_tsd_set(sched_data_key, esdp);
+    esdp->is_slave_commander = 1;
+}
 #endif
 
 static ethr_tid aux_tid;

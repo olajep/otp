@@ -161,6 +161,7 @@ static erts_lc_lock_order_t erts_lock_order[] = {
     {	"instr",				NULL			},
     {	"alcu_allocator",			"index"			},
 #ifdef ERTS_SLAVE_EMU_ENABLED
+    {	"slave_command_tpr_mtx",		NULL			},
     {	"slave_alloc_mtx",			NULL			},
 #endif
     {	"mseg",					NULL			},
