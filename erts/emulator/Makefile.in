@@ -614,9 +614,7 @@ $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 		> $@
 
 ENABLE_ALLOC_TYPE_VARS += slave
-# We don't make GENERATE depend on slave_syms.h because it causes too many
-# unwanted rebuilds. Instead, we add it as a dependency to the objects we add
-# below.
+GENERATE += $(TTF_DIR)/slave_syms.h
 endif
 
 
@@ -654,6 +652,9 @@ $(PRELOAD_SRC): $(ERL_TOP)/erts/preloaded/ebin/otp_ring0.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/erts_internal.beam
 	$(gen_verbose)LANG=C $(PERL) utils/make_preload -old $^ > $@
 endif
+
+# Regenerate when configure changes
+$(GENERATE): ../configure
 
 .PHONY : generate
 ifdef VOID_EMULATOR
@@ -973,8 +974,6 @@ SLAVE_OBJS = \
 	$(OBJDIR)/slave_process.o
 
 EXTRA_BASE_OBJS += $(SLAVE_OBJS)
-$(SLAVE_OBJS): $(TTF_DIR)/slave_syms.h
-$(OBJDIR)/beam_load.o: $(TTF_DIR)/slave_syms.h
 endif
 
 BASE_OBJS = $(RUN_OBJS) $(EMU_OBJS) $(OS_OBJS) $(EXTRA_BASE_OBJS)
@@ -992,8 +991,12 @@ endif
 
 OBJS = $(before_DTrace_OBJS) $(DTRACE_OBJS)
 
-$(INIT_OBJS): $(TTF_DIR)/GENERATED
-$(OBJS): $(TTF_DIR)/GENERATED
+# Objects we've already built have .d-files, so they do not need to rely on
+# GENERATED
+BUILT_DEPS := $(wildcard $(OBJDIR)/*.o)
+UNBUILT_OBJS := $(filter-out $(BUILT_DEPS:.d=.o),$(OBJS) $(INIT_OBJS) )
+
+$(UNBUILT_OBJS): $(TTF_DIR)/GENERATED
 
 ########################################
 # HiPE section

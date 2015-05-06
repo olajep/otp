@@ -421,6 +421,9 @@ $(PRELOAD_SRC): $(ERL_TOP)/erts/preloaded/ebin/otp_ring0.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/erts_internal.beam
 	$(gen_verbose)LANG=C $(PERL) ../utils/make_preload -old $^ > $@
 
+# Regenerate when configure changes
+$(GENERATE): configure
+
 .PHONY : generate
 ifdef VOID_EMULATOR
 generate:
@@ -542,8 +545,12 @@ BASE_OBJS = $(RUN_OBJS) $(EMU_OBJS) $(OS_OBJS) $(SLAVE_OBJS) $(HIPE_OBJS)
 
 OBJS = $(BASE_OBJS) $(ERTS_INTERNAL_LIB_OBJS)
 
-$(INIT_OBJS): $(TTF_DIR)/GENERATED
-$(OBJS): $(TTF_DIR)/GENERATED
+# Objects we've already built have .d-files, so they do not need to rely on
+# GENERATED
+BUILT_DEPS := $(wildcard $(OBJDIR)/*.o)
+UNBUILT_OBJS := $(filter-out $(BUILT_DEPS:.d=.o),$(OBJS) $(INIT_OBJS) )
+
+$(UNBUILT_OBJS): $(TTF_DIR)/GENERATED
 
 ########################################
 # HiPE section
