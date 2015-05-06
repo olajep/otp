@@ -4517,7 +4517,48 @@ build_stacktrace(Process* c_p, Eterm exc) {
 static BeamInstr*
 call_error_handler(Process* p, BeamInstr* fi, Eterm* reg, Eterm func)
 {
-    EPIPHANY_STUB(call_error_handler);
+    Eterm* hp;
+    Export* ep;
+    int arity;
+    Eterm args;
+    Uint sz;
+    int i;
+
+    /*
+     * Search for the error_handler module.
+     */
+    ep = erts_find_function(erts_proc_get_error_handler(p), func, 3,
+			    erts_active_code_ix());
+    if (ep == NULL) {		/* No error handler */
+	p->current = fi;
+	p->freason = EXC_UNDEF;
+	return 0;
+    }
+
+    /*
+     * Create a list with all arguments in the x registers.
+     */
+
+    arity = fi[2];
+    sz = 2 * arity;
+    if (HeapWordsLeft(p) < sz) {
+	erts_garbage_collect(p, sz, reg, arity);
+    }
+    hp = HEAP_TOP(p);
+    HEAP_TOP(p) += sz;
+    args = NIL;
+    for (i = arity-1; i >= 0; i--) {
+	args = CONS(hp, reg[i], args);
+	hp += 2;
+    }
+
+    /*
+     * Set up registers for call to error_handler:<func>/3.
+     */
+    reg[0] = fi[0];
+    reg[1] = fi[1];
+    reg[2] = args;
+    return ep->addressv[erts_active_code_ix()];
 }
 
 static Export*
