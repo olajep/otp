@@ -21,6 +21,7 @@
 #define __ERL_TERM_H
 
 #include "sys.h" /* defines HALFWORD_HEAP */
+#include "slave.h"
 
 typedef UWord Wterm;  /* Full word terms */
 
@@ -738,7 +739,7 @@ typedef struct {
 	Uint32 ui32[ERTS_REF_32BIT_WORDS];
 	Uint   ui[ERTS_REF_WORDS];
     } data;
-} RefThing;
+} SLAVE_SHARED_DATA RefThing;
 
 #define REF_THING_SIZE (sizeof(RefThing)/sizeof(Uint))
 #define REF_THING_HEAD_SIZE (sizeof(Eterm)/sizeof(Uint))
@@ -873,7 +874,7 @@ typedef struct external_thing_ {
 	Uint32              ui32[1];
 	Uint                ui[1];
     } data;
-} ExternalThing;
+} SLAVE_SHARED_DATA ExternalThing;
 
 #define EXTERNAL_THING_HEAD_SIZE (sizeof(ExternalThing)/sizeof(Uint) - 1)
 
