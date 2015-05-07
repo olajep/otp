@@ -1203,9 +1203,6 @@ Process *schedule(Process *p, int calls)
 	ASSERT(epiphany_in_dram(p));
 	p->fcalls = COMMAND_POLL_REDUCTION_INTERVAL;
 
-	erts_printf("Running program %T:%T%T with process %#x(id=%T)\n",
-		    ready_arg->mod, ready_arg->func, ready_arg->args, p,
-		    p->common.id);
 #ifndef ERTS_SMP
 	erts_scheduler_data = calloc(1, sizeof(ErtsSchedulerData));
 	ASSERT(epiphany_in_dram(erts_scheduler_data));
