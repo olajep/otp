@@ -610,18 +610,6 @@ erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
     p->nodes_monitors = NULL;
     p->suspend_monitors = NULL;
 
-    /* ASSERT(is_pid(parent->group_leader)); */
-
-    /* if (parent->group_leader == ERTS_INVALID_PID) */
-	p->group_leader = p->common.id;
-    /* else { */
-    /* 	/\* Needs to be done after the heap has been set up *\/ */
-    /* 	p->group_leader = */
-    /* 	    IS_CONST(parent->group_leader) */
-    /* 	    ? parent->group_leader */
-    /* 	    : STORE_NC(&p->htop, &p->off_heap, parent->group_leader); */
-    /* } */
-
     p->msg.first = NULL;
     p->msg.last = &p->msg.first;
     p->msg.save = &p->msg.first;
@@ -644,6 +632,7 @@ erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
     DT_UTAG_FLAGS(p) = 0;
 #endif
     p->parent = cmd->parent_id;
+    p->group_leader = cmd->group_leader;
 
     INIT_HOLE_CHECK(p);
 #ifdef DEBUG

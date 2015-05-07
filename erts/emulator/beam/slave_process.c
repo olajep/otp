@@ -376,6 +376,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
      */
     cmd = erts_slave_syscall_arg(slave, SLAVE_SYSCALL_READY);
     cmd->parent_id = parent->common.id;
+    cmd->group_leader = p->group_leader;
     cmd->mod = mod;
     cmd->func = func;
     cmd->id = p->common.id;

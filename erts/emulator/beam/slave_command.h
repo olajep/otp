@@ -51,7 +51,7 @@ struct slave_syscall_ready {
     /* To master */
     Eterm exit_reason;
     /* To slave */
-    Eterm id, parent_id;
+    Eterm id, parent_id, group_leader;
     Eterm mod, func, args;
     Eterm *heap, *htop, *stop;
 } SHARED_DATA;
