@@ -450,6 +450,7 @@ type	CON_VPRINTF_BUF	TEMPORARY	SYSTEM		con_vprintf_buf
 +if slave
 type	SLAVE_COMMAND	SLAVE		SYSTEM		slave_command
 type	SLAVE_HEAP	SLAVE		PROCESSES	slave_heap
+type	SLAVE_HEAP_FRAG	SLAVE		PROCESSES	slave_heap_frag
 type	SLAVE_EXPORT	SLAVE		CODE		slave_export_entry
 type	SLAVE_CODE	SLAVE		CODE		slave_code_data
 type	SLAVE_PREPARED_CODE	SLAVE	CODE		slave_prepared_code

@@ -31,12 +31,6 @@
 
 #define HARDDEBUG 0
 
-/* This is an "X macro" */
-#define SLAVE_PROXIED_BIFS_DEFINER		\
-    X(whereis_1, 1)				\
-    X(send_2, 2)				\
-    X(net_kernel_dflag_unicode_io_1, 1)
-
 static Eterm
 syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 {
@@ -81,10 +75,19 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     return result;
 }
 
-#define X(NAME, ARITY) \
-    Eterm \
-    NAME(Process *p, Eterm *args) \
-    { \
+/* This is the "X macro" pattern */
+#define SLAVE_PROXIED_BIFS_DEFINER		\
+    X(demonitor_1, 1)				\
+    X(demonitor_2, 2)				\
+    X(monitor_2, 2)				\
+    X(net_kernel_dflag_unicode_io_1, 1)		\
+    X(send_2, 2)				\
+    X(whereis_1, 1)
+
+#define X(NAME, ARITY)					\
+    Eterm						\
+    NAME(Process *p, Eterm *args)			\
+    {							\
 	return syscall_bif(BIF_##NAME, p, args, ARITY);	\
     }
 SLAVE_PROXIED_BIFS_DEFINER

@@ -44,6 +44,13 @@
 #undef HARD_DEBUG
 #endif
 
+#ifdef DEBUG
+static ERTS_INLINE int in_heapfrag(const Eterm* ptr, const ErlHeapFragment *bp)
+{
+    return ((unsigned)(ptr - bp->mem) < bp->used_size);
+}
+#endif
+
 void init_message(void)
 {
 }
@@ -99,11 +106,142 @@ void erts_link_mbuf_to_proc(Process *proc, ErlHeapFragment *bp)
 
 /*
  * Moves content of message buffer attached to a message into a heap.
- * The message buffer is deallocated.
+ * The message buffer is *not* deallocated. Instead, it will be deallocated by
+ * free_message.
  */
 void erts_move_msg_mbuf_to_heap(Eterm** hpp, ErlOffHeap* off_heap, ErlMessage *msg)
 {
-    EPIPHANY_STUB_BT();
+    struct erl_off_heap_header* oh;
+    Eterm term, token, *fhp, *hp;
+    Sint offs;
+    Uint sz;
+    ErlHeapFragment *bp;
+#ifdef USE_VM_PROBES
+    Eterm utag;
+#endif
+
+    bp = msg->data.heap_frag;
+    term = ERL_MESSAGE_TERM(msg);
+    token = ERL_MESSAGE_TOKEN(msg);
+#ifdef USE_VM_PROBES
+    utag = ERL_MESSAGE_DT_UTAG(msg);
+#endif
+    if (!bp) {
+#ifdef USE_VM_PROBES
+	ASSERT(is_immed(term) && is_immed(token) && is_immed(utag));
+#else
+	ASSERT(is_immed(term) && is_immed(token));
+#endif
+	return;
+    }
+
+    if (bp->next != NULL) {
+	move_multi_frags(hpp, off_heap, bp, msg->m, 
+#ifdef USE_VM_PROBES
+			 3
+#else
+			 2
+#endif
+			 );
+	return;
+    }
+
+    OH_OVERHEAD(off_heap, bp->off_heap.overhead);
+    sz = bp->used_size;
+
+    ASSERT(is_immed(term) || in_heapfrag(ptr_val(term),bp));
+    ASSERT(is_immed(token) || in_heapfrag(ptr_val(token),bp));
+
+    fhp = bp->mem;
+    hp = *hpp;
+    offs = hp - fhp;
+
+    oh = NULL;
+    while (sz--) {
+	Uint cpy_sz;
+	Eterm val = *fhp++;
+
+	switch (primary_tag(val)) {
+	case TAG_PRIMARY_IMMED1:
+	    *hp++ = val;
+	    break;
+	case TAG_PRIMARY_LIST:
+	case TAG_PRIMARY_BOXED:
+	    ASSERT(in_heapfrag(ptr_val(val), bp));
+	    *hp++ = offset_ptr(val, offs);
+	    break;
+	case TAG_PRIMARY_HEADER:
+	    *hp++ = val;
+	    switch (val & _HEADER_SUBTAG_MASK) {
+	    case ARITYVAL_SUBTAG:
+		break;
+	    case REFC_BINARY_SUBTAG:
+	    case FUN_SUBTAG:
+	    case EXTERNAL_PID_SUBTAG:
+	    case EXTERNAL_PORT_SUBTAG:
+	    case EXTERNAL_REF_SUBTAG:
+		oh = (struct erl_off_heap_header*) (hp-1);
+		cpy_sz = thing_arityval(val);
+		goto cpy_words;
+	    default:
+		cpy_sz = header_arity(val);
+
+	    cpy_words:
+		ASSERT(sz >= cpy_sz);
+		sz -= cpy_sz;
+		while (cpy_sz >= 8) {
+		    cpy_sz -= 8;
+		    *hp++ = *fhp++;
+		    *hp++ = *fhp++;
+		    *hp++ = *fhp++;
+		    *hp++ = *fhp++;
+		    *hp++ = *fhp++;
+		    *hp++ = *fhp++;
+		    *hp++ = *fhp++;
+		    *hp++ = *fhp++;
+		}
+		switch (cpy_sz) {
+		case 7: *hp++ = *fhp++;
+		case 6: *hp++ = *fhp++;
+		case 5: *hp++ = *fhp++;
+		case 4: *hp++ = *fhp++;
+		case 3: *hp++ = *fhp++;
+		case 2: *hp++ = *fhp++;
+		case 1: *hp++ = *fhp++;
+		default: break;
+		}
+		if (oh) {
+		    /* Add to offheap list */
+		    oh->next = off_heap->first;
+		    off_heap->first = oh;
+		    ASSERT(*hpp <= (Eterm*)oh);
+		    ASSERT(hp > (Eterm*)oh);
+		    oh = NULL;
+		}
+		break;
+	    }
+	    break;
+	}
+    }
+
+    ASSERT(bp->used_size == hp - *hpp);
+    *hpp = hp;
+
+    if (is_not_immed(token)) {
+	ASSERT(in_heapfrag(ptr_val(token), bp));
+	ERL_MESSAGE_TOKEN(msg) = offset_ptr(token, offs);
+    }
+
+    if (is_not_immed(term)) {
+	ASSERT(in_heapfrag(ptr_val(term),bp));
+	ERL_MESSAGE_TERM(msg) = offset_ptr(term, offs);
+    }
+#ifdef USE_VM_PROBES
+    if (is_not_immed(utag)) {
+	ASSERT(in_heapfrag(ptr_val(utag), bp));
+	ERL_MESSAGE_DT_UTAG(msg) = offset_ptr(utag, offs);
+    }
+#endif
 }
 
 Uint erts_msg_attached_data_size_aux(ErlMessage *msg)
@@ -112,9 +250,15 @@ Uint erts_msg_attached_data_size_aux(ErlMessage *msg)
     return 0;
 }
 
-void erts_move_msg_attached_data_to_heap(Eterm **t, ErlOffHeap *o, ErlMessage *m)
+void
+erts_move_msg_attached_data_to_heap(Eterm **hpp, ErlOffHeap *ohp, ErlMessage *msg)
 {
-    EPIPHANY_STUB_BT();
+    if (is_value(ERL_MESSAGE_TERM(msg)))
+	erts_move_msg_mbuf_to_heap(hpp, ohp, msg);
+    else if (msg->data.dist_ext) {
+	EPIPHANY_STUB_BT();
+    }
+    /* else: bad external detected when calculating size */
 }
 
 

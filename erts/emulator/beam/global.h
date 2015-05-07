@@ -1166,10 +1166,21 @@ erts_alloc_message_heap_state(Uint size,
     erts_aint32_t state;
 #ifdef ERTS_SMP
     int locked_main = 0;
+#endif
+#if defined(ERTS_SMP) || defined(ERTS_SLAVE_EMU_ENABLED)
     state = erts_smp_atomic32_read_acqb(&receiver->state);
     if (statep)
 	*statep = state;
+#endif
+#ifdef ERTS_SMP
     if (state & (ERTS_PSFLG_EXITING|ERTS_PSFLG_PENDING_EXIT))
+	goto allocate_in_mbuf;
+#endif
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    /* If we knew that the slave is blocking in a syscall, we could attempt
+     * allocating directly on the heap, but that case is too rare to justify the
+     * complexity */
+    if (state & ERTS_PSFLG_SLAVE)
 	goto allocate_in_mbuf;
 #endif
 
@@ -1218,8 +1229,13 @@ erts_alloc_message_heap_state(Uint size,
 #endif
     else {
 	ErlHeapFragment *bp;
+	ErtsAlcType_t frag_alctr;
     allocate_in_mbuf:
-	bp = new_message_buffer(size);
+	frag_alctr = ERTS_ALC_T_HEAP_FRAG;
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	if (state & ERTS_PSFLG_SLAVE) frag_alctr = ERTS_ALC_T_SLAVE_HEAP_FRAG;
+#endif
+	bp = new_message_buffer_alctr(frag_alctr, size);
 	hp = bp->mem;
 	*bpp = bp;
 	*ohpp = &bp->off_heap;

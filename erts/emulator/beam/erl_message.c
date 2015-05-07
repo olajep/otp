@@ -74,9 +74,14 @@ free_message(ErlMessage* mp)
 ErlHeapFragment*
 new_message_buffer(Uint size)
 {
+    return new_message_buffer_alctr(ERTS_ALC_T_HEAP_FRAG, size);
+}
+
+ErlHeapFragment*
+new_message_buffer_alctr(ErtsAlcType_t alctr, Uint size)
+{
     ErlHeapFragment* bp;
-    bp = (ErlHeapFragment*) ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP_FRAG,
-					    ERTS_HEAP_FRAG_SIZE(size));
+    bp = (ErlHeapFragment*) ERTS_HEAP_ALLOC(alctr, ERTS_HEAP_FRAG_SIZE(size));
     ERTS_INIT_HEAP_FRAG(bp, size);
     return bp;
 }
@@ -196,12 +201,18 @@ erts_cleanup_offheap(ErlOffHeap *offheap)
 void
 free_message_buffer(ErlHeapFragment* bp)
 {
+    free_message_buffer_alctr(ERTS_ALC_T_HEAP_FRAG, bp);
+}
+
+void
+free_message_buffer_alctr(ErtsAlcType_t alctr, ErlHeapFragment* bp)
+{
     ASSERT(bp != NULL);
     do {
 	ErlHeapFragment* next_bp = bp->next;
 
 	erts_cleanup_offheap(&bp->off_heap);
-	ERTS_HEAP_FREE(ERTS_ALC_T_HEAP_FRAG, (void *) bp,
+	ERTS_HEAP_FREE(alctr, (void *) bp,
 		       ERTS_HEAP_FRAG_SIZE(bp->size));	
 	bp = next_bp;
     }while (bp != NULL);

@@ -463,7 +463,19 @@ erts_slave_queue_message(Process* receiver, ErtsProcLocks *receiver_locks,
 void
 slave_free_message(struct slave *slave, ErlMessage *m)
 {
-    /* ETODO: Do we free the heap fragments, too? */
+    if (m->data.attached) {
+	if (is_value(ERL_MESSAGE_TERM(m))) {
+	    free_message_buffer_alctr(ERTS_ALC_T_SLAVE_HEAP_FRAG,
+				      m->data.heap_frag);
+	} else {
+	    if (is_not_nil(ERL_MESSAGE_TOKEN(m))) {
+		ErlHeapFragment *heap_frag
+		    = erts_dist_ext_trailer(m->data.dist_ext);
+		erts_cleanup_offheap(&heap_frag->off_heap);
+	    }
+	    erts_free_dist_ext_copy(m->data.dist_ext);
+	}
+    }
     erts_free(ERTS_ALC_T_SLAVE_MSG_REF, m);
     erts_smp_atomic32_dec_nob(&slave->msgq_len);
 }

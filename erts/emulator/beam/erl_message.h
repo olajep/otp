@@ -195,6 +195,13 @@ do {									\
  * in process_main() and in hipe_check_get_msg().
  */
 
+#undef ERTS_SLAVE_P
+#ifdef ERTS_SLAVE
+#  define ERTS_SLAVE_P 1
+#else
+#  define ERTS_SLAVE_P 0
+#endif
+
 #define ErtsMoveMsgAttachmentIntoProc(M, P, ST, HT, FC, SWPO, SWPI)	\
 do {									\
     if ((M)->data.attached) {						\
@@ -210,7 +217,7 @@ do {									\
 	    (FC) -= erts_garbage_collect((P), 0, NULL, 0);		\
 	    { SWPI ; }							\
 	}								\
-	ASSERT(!(M)->data.attached);					\
+	ASSERT(ERTS_SLAVE_P || !(M)->data.attached);			\
     }									\
 } while (0)
 
@@ -231,9 +238,11 @@ do {							\
 void init_message(void);
 void free_message(ErlMessage *);
 ErlHeapFragment* new_message_buffer(Uint);
+ErlHeapFragment* new_message_buffer_alctr(ErtsAlcType_t, Uint);
 ErlHeapFragment* erts_resize_message_buffer(ErlHeapFragment *, Uint,
 					    Eterm *, Uint);
 void free_message_buffer(ErlHeapFragment *);
+void free_message_buffer_alctr(ErtsAlcType_t, ErlHeapFragment *);
 void erts_queue_dist_message(Process*, ErtsProcLocks*, ErtsDistExternal *, Eterm);
 void erts_queue_message(Process*, ErtsProcLocks*, ErlHeapFragment*, Eterm, Eterm
 #ifdef USE_VM_PROBES

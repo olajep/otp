@@ -64,16 +64,6 @@ BIF_RETTYPE link_1(BIF_ALIST_1)
     EPIPHANY_STUB_FUN();
 }
 
-BIF_RETTYPE demonitor_1(BIF_ALIST_1)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-BIF_RETTYPE demonitor_2(BIF_ALIST_2)
-{
-    EPIPHANY_STUB_FUN();
-}
-
 /* Type must be atomic object! */
 void
 erts_queue_monitor_message(Process *p,
