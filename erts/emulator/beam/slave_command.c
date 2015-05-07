@@ -147,6 +147,7 @@ tpr_wait(void __attribute__((unused)) *unused)
 }
 
 static ErtsSchedulerData command_thead_esd;
+static volatile int slave_has_started_flag = 0;
 
 static void *
 command_thread_loop(void __attribute__((unused)) *arg)
@@ -179,6 +180,13 @@ command_thread_loop(void __attribute__((unused)) *arg)
     erts_lc_set_thread_name("slave command thread");
 #endif
     erts_proc_register_slave_command_thread(&command_thead_esd);
+
+    while(!slave_has_started_flag) {
+	if (erts_thr_progress_update(NULL)) {
+	    erts_thr_progress_leader_update(NULL);
+	}
+	erts_milli_sleep(10);
+    }
 
     /* Since we're paranoid, we make sure all the cores are ready. */
     erts_await_slave_init();
@@ -216,14 +224,22 @@ command_thread_loop(void __attribute__((unused)) *arg)
 
 static ethr_tid command_thread_tid;
 
-int
+void
 erts_init_slave_command(void)
 {
     ethr_thr_opts opts = ETHR_THR_OPTS_DEFAULT_INITER;
-    if (ethr_thr_create(&command_thread_tid, command_thread_loop, NULL, &opts)) {
-	return 1;
+    if (0 != ethr_thr_create(&command_thread_tid,
+			     command_thread_loop,
+			     NULL,
+			     &opts)) {
+	erl_exit(1, "Failed to create slave commander thread\n");
     }
-    return 0;
+}
+
+void
+erts_signal_slave_command(void)
+{
+    slave_has_started_flag = 1;
 }
 
 struct slave*

@@ -114,7 +114,8 @@ struct slave_command_message {
 } SHARED_DATA;
 
 #ifndef ERTS_SLAVE
-int erts_init_slave_command(void);
+void erts_init_slave_command(void);
+void erts_signal_slave_command(void);
 void erts_stop_slave_command(void);
 
 struct slave* erts_slave_pop_free(void);

@@ -194,12 +194,7 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
 	return NULL;
     }
 
-    if (erts_init_slave_command()) {
-	fprintf(stderr, "Stopping slave emulator: "
-		"SLAVE_BINARY environment variable unset\n");
-	erts_stop_slave_io();
-	return NULL;
-    }
+    erts_signal_slave_command();
 
     while(1) {
 	if (pump_output() == 0) {

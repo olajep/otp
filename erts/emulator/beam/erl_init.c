@@ -53,6 +53,7 @@
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
 #  include "slave_io.h"
+#  include "slave_command.h"
 #endif
 
 #ifdef HAVE_SYS_RESOURCE_H
@@ -1138,6 +1139,7 @@ early_init(int *argc, char **argv) /*
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
     erts_init_slave_io();
+    erts_init_slave_command();
 #endif
 
 #ifdef ERTS_ENABLE_LOCK_CHECK
