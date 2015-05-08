@@ -390,6 +390,16 @@ type	PORT_DATA_HEAP	STANDARD	SYSTEM		port_data_heap
 
 +endif
 
++if slave
+type	SLAVE_COMMAND	SLAVE		SYSTEM		slave_command
+type	SLAVE_HEAP	SLAVE		PROCESSES	slave_heap
+type	SLAVE_HEAP_FRAG	SLAVE		PROCESSES	slave_heap_frag
+type	SLAVE_EXPORT	SLAVE		CODE		slave_export_entry
+type	SLAVE_CODE	SLAVE		CODE		slave_code_data
+type	SLAVE_PREPARED_CODE	SLAVE	CODE		slave_prepared_code
+type	SLAVE_EXPORT_TABLE	SLAVE	CODE		slave_export_tab
+type	SLAVE_MSG_REF	SLAVE		PROCESSES	slave_msg_ref
++endif
 
 #
 # Types used by system specific code
@@ -445,17 +455,6 @@ type	WAITER_OBJ	LONG_LIVED	SYSTEM		waiter_object
 type	ENVIRONMENT	SYSTEM		SYSTEM		environment
 type	CON_VPRINTF_BUF	TEMPORARY	SYSTEM		con_vprintf_buf
 
-+endif
-
-+if slave
-type	SLAVE_COMMAND	SLAVE		SYSTEM		slave_command
-type	SLAVE_HEAP	SLAVE		PROCESSES	slave_heap
-type	SLAVE_HEAP_FRAG	SLAVE		PROCESSES	slave_heap_frag
-type	SLAVE_EXPORT	SLAVE		CODE		slave_export_entry
-type	SLAVE_CODE	SLAVE		CODE		slave_code_data
-type	SLAVE_PREPARED_CODE	SLAVE	CODE		slave_prepared_code
-type	SLAVE_EXPORT_TABLE	SLAVE	CODE		slave_export_tab
-type	SLAVE_MSG_REF	SLAVE		PROCESSES	slave_msg_ref
 +endif
 
 # ----------------------------------------------------------------------------
