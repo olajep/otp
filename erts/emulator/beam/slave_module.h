@@ -33,4 +33,6 @@ Module *slave_module_code(int, ErtsCodeIndex);
 int slave_module_code_size(ErtsCodeIndex);
 int slave_module_table_sz(void);
 
+Eterm slave_make_current_old(Process *c_p, ErtsProcLocks c_p_locks, Eterm module);
+
 #endif /* !__SLAVE_MODULE_H__ */

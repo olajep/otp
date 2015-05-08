@@ -40,8 +40,8 @@ Export* slave_export_put(Eterm mod, Eterm func, unsigned int arity);
 
 Export* slave_export_get_or_make_stub(Eterm, Eterm, unsigned);
 
-/* Export *export_list(int,ErtsCodeIndex); */
-/* int export_list_size(ErtsCodeIndex); */
+Export *slave_export_list(int,ErtsCodeIndex);
+int slave_export_list_size(ErtsCodeIndex);
 /* int export_table_sz(void); */
 /* int export_entries_sz(void); */
 /* Export *export_get(Export*); */

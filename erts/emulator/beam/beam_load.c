@@ -844,14 +844,14 @@ slave_insert_new_code(Process *c_p, ErtsProcLocks c_p_locks,
     Module* modp;
     Eterm retval;
 
-    /* if ((retval = beam_make_current_old(c_p, c_p_locks, module)) != NIL) { */
-    /* 	erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf(); */
-    /* 	erts_dsprintf(dsbufp, */
-    /* 		      "Module %T must be purged before loading\n", */
-    /* 		      module); */
-    /* 	erts_send_error_to_logger(group_leader, dsbufp); */
-    /* 	return retval; */
-    /* } */
+    if ((retval = slave_make_current_old(c_p, c_p_locks, module)) != NIL) {
+	erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
+	erts_dsprintf(dsbufp,
+		      "Slave module %T must be purged before loading\n",
+		      module);
+	erts_send_error_to_logger(group_leader, dsbufp);
+	return retval;
+    }
 
     /*
      * Update module table.

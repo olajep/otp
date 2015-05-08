@@ -252,7 +252,7 @@ BIF_RETTYPE slave_finish_loading_1(BIF_ALIST_1)
     erts_start_staging_code_ix();
 
     for (i = 0; i < n; i++) {
-	p[i].modp = erts_put_module(p[i].module);
+	p[i].modp = slave_put_module(p[i].module);
     }
     for (i = 0; i < n; i++) {
 	if (p[i].modp->curr.num_breakpoints > 0 ||
@@ -269,6 +269,8 @@ BIF_RETTYPE slave_finish_loading_1(BIF_ALIST_1)
     if (is_blocking) {
 	for (i = 0; i < n; i++) {
 	    if (p[i].modp->curr.num_breakpoints) {
+		/* There's no breakpoints yet! */
+		ASSERT(!"breakpoints");
 		erts_clear_module_break(p[i].modp);
 		ASSERT(p[i].modp->curr.num_breakpoints == 0);
 	    }

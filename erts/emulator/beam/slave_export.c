@@ -53,9 +53,6 @@ static erts_smp_atomic_t total_entries_bytes;
  */
 erts_smp_mtx_t slave_export_staging_lock;
 
-/* extern BeamInstr* em_call_error_handler; */
-/* extern BeamInstr* em_call_traced_function; */
-
 /* These structures must match exactly those in export.c in the slave */
 struct SLAVE_SHARED_DATA export_entry
 {
@@ -348,15 +345,15 @@ slave_export_get_or_make_stub(Eterm mod, Eterm func, unsigned int arity)
     return ep;
 }
 
-/* Export *export_list(int i, ErtsCodeIndex code_ix) */
-/* { */
-/*     return ((struct export_entry*) slave_index_lookup(&export_tables[code_ix], i))->ep; */
-/* } */
+Export *slave_export_list(int i, ErtsCodeIndex code_ix)
+{
+    return ((struct export_entry*) erts_index_lookup(&export_tables[code_ix], i))->ep;
+}
 
-/* int export_list_size(ErtsCodeIndex code_ix) */
-/* { */
-/*     return export_tables[code_ix].entries; */
-/* } */
+int slave_export_list_size(ErtsCodeIndex code_ix)
+{
+    return export_tables[code_ix].entries;
+}
 
 /* int export_table_sz(void) */
 /* { */

@@ -24,7 +24,10 @@
 #include "sys.h"
 #include "erl_vm.h"
 #include "global.h"
+#include "beam_catches.h"
 #include "slave_module.h"
+#include "slave_load.h"
+#include "slave_export.h"
 
 #ifdef DEBUG
 #  define IF_DEBUG(x) x
@@ -50,6 +53,8 @@ static int initialized = 0;
  */
 
 #include "erl_smp.h"
+
+static void delete_code(Module* modp);
 
 static HashValue module_hash(Module* x)
 {
@@ -236,4 +241,66 @@ void slave_module_end_staging(int commit)
     }
 
     IF_DEBUG(dbg_load_code_ix = -1);
+}
+
+Eterm
+slave_make_current_old(Process *c_p, ErtsProcLocks c_p_locks, Eterm module)
+{
+    Module* modp = slave_put_module(module);
+
+    /*
+     * Check if the previous code has been already deleted;
+     * if not, delete old code; error if old code already exists.
+     */
+
+    if (modp->curr.code != NULL && modp->old.code != NULL)  {
+	return am_not_purged;
+    } else if (modp->old.code == NULL) { /* Make the current version old. */
+	delete_code(modp);
+    }
+    return NIL;
+}
+
+/*
+ * Move code from current to old and null all export entries for the module
+ */
+
+static void
+delete_code(Module* modp)
+{
+    ErtsCodeIndex code_ix = erts_staging_code_ix();
+    Eterm module = make_atom(modp->module);
+    int i;
+
+    for (i = 0; i < slave_export_list_size(code_ix); i++) {
+	Export *ep = slave_export_list(i, code_ix);
+        if (ep != NULL && (ep->code[0] == module)) {
+	    if (ep->addressv[code_ix] == ep->code+3) {
+		if (ep->code[3] == (BeamInstr) SlaveOp(op_apply_bif)) {
+		    continue;
+		}
+		else if (ep->code[3] ==
+			 (BeamInstr) SlaveOp(op_i_generic_breakpoint)) {
+		    ERTS_SMP_LC_ASSERT(erts_smp_thr_progress_is_blocking());
+		    ASSERT(modp->curr.num_traced_exports > 0);
+		    /* There's no breakpoints yet! */
+		    ASSERT(!"breakpoints");
+		    /* erts_clear_export_break(modp, ep->code+3); */
+		}
+		else ASSERT(ep->code[3] ==
+			    (BeamInstr) SlaveOp(op_call_error_handler));
+	    }
+	    ep->addressv[code_ix] = ep->code+3;
+	    ep->code[3] = (BeamInstr) SlaveOp(op_call_error_handler);
+	    ep->code[4] = 0;
+	}
+    }
+
+    ASSERT(modp->curr.num_breakpoints == 0);
+    ASSERT(modp->curr.num_traced_exports == 0);
+    modp->old = modp->curr;
+    modp->curr.code = NULL;
+    modp->curr.code_length = 0;
+    modp->curr.catches = BEAM_CATCHES_NIL;
+    modp->curr.nif = NULL;
 }
