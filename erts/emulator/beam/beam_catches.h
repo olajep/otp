@@ -38,4 +38,11 @@ void beam_catches_delmod(unsigned head, BeamInstr* code, unsigned code_bytes,
 
 #define catch_pc(x)	beam_catches_car(catch_val((x)))
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void slave_catches_init(void);
+unsigned slave_catches_cons(BeamInstr* cp, unsigned cdr);
+void slave_catches_delmod(unsigned head, BeamInstr* code, unsigned code_bytes,
+			  ErtsCodeIndex);
+#endif
+
 #endif	/* __BEAM_CATCHES_H */

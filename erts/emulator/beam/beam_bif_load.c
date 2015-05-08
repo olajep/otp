@@ -35,6 +35,10 @@
 #include "erl_nif.h"
 #include "erl_thr_progress.h"
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_module.h"
+#endif
+
 static void set_default_trace_pattern(Eterm module);
 static Eterm check_process_code(Process* rp, Module* modp, int allow_gc, int *redsp);
 static void delete_code(Module* modp);
@@ -978,6 +982,9 @@ BIF_RETTYPE purge_module_1(BIF_ALIST_1)
 	ERTS_BIF_PREP_ERROR(ret, BIF_P, BADARG);
     }
     else {
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	Module *slavep = slave_get_module(BIF_ARG_1, code_ix);
+#endif
 	erts_rwlock_old_code(code_ix);
 
 	/*
@@ -1017,6 +1024,31 @@ BIF_RETTYPE purge_module_1(BIF_ALIST_1)
 	    modp->old.code_length = 0;
 	    modp->old.catches = BEAM_CATCHES_NIL;
 	    erts_remove_from_ranges(code);
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	    if (slavep->old.code) {
+		ASSERT(modp->old.nif == NULL);
+
+		/*
+		 * Remove the old code.
+		 */
+		/* ASSERT(erts_total_code_size >= modp->old.code_length); */
+		/* erts_total_code_size -= modp->old.code_length; */
+		code = modp->old.code;
+		end = (BeamInstr *)((char *)code + modp->old.code_length);
+		/* ETODO: Cleanup funs and ranges */
+		/* slave_cleanup_funs_on_purge(code, end); */
+		slave_catches_delmod(modp->old.catches, code, modp->old.code_length,
+				     code_ix);
+		decrement_refc(code);
+		erts_free(ERTS_ALC_T_SLAVE_CODE, (void *) code);
+		modp->old.code = NULL;
+		modp->old.code_length = 0;
+		modp->old.catches = BEAM_CATCHES_NIL;
+		/* slave_remove_from_ranges(code); */
+	    }
+#endif
+
 	    ERTS_BIF_PREP_RET(ret, am_true);
 	}
 	erts_rwunlock_old_code(code_ix);

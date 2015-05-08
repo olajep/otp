@@ -26,6 +26,7 @@
 #include "beam_bp.h"
 #include "erl_binary.h"
 #include "beam_load.h"
+#include "beam_catches.h"
 #include "slave_export.h"
 #include "slave_load.h"
 #include "slave_ix.h"
@@ -37,6 +38,7 @@ const TargetExportTab export_table_slave = {
     slave_active_export_entry,
     slave_bif_export,
     slave_put_module,
+    slave_catches_cons,
 };
 BifEntry slave_bif_table[BIF_SIZE];
 Export *slave_bif_export[BIF_SIZE];
@@ -175,6 +177,7 @@ erts_slave_init_load(struct master_command_setup *cmd)
     slave_init_export_table();
     slave_init_module_table();
     slave_code_ix_init();
+    slave_catches_init();
 
     if (cmd->num_instructions != num_instructions) {
 	erl_exit(1, "Error: Got %d instructions from slave emulator, expected %d\n",

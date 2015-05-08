@@ -557,6 +557,7 @@ TargetExportTab export_table_self = {
     erts_active_export_entry,
     bif_export,
     erts_put_module,
+    beam_catches_cons,
 };
 /**********************************************************************/
 
@@ -4534,7 +4535,8 @@ final_touch(LoaderState* stp)
     while (index != 0) {
 	BeamInstr next = code[index];
 	code[index] = BeamOpCode(op_catch_yf);
-	catches = beam_catches_cons((BeamInstr *)code[index+2], catches);
+	catches = stp->tgt_export->catches_cons((BeamInstr *)code[index+2],
+						catches);
 	code[index+2] = make_catch(catches);
 	index = next;
     }

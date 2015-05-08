@@ -62,6 +62,7 @@ typedef struct {
     Export* (*active_entry)(Eterm mod, Eterm func, unsigned int arity);
     Export** bif;
     Module* (*put_module)(Eterm mod);
+    unsigned (*catches_cons)(BeamInstr* cp, unsigned cdr);
 } TargetExportTab;
 
 extern LoaderTarget loader_target_self;
