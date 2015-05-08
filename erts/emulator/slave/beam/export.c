@@ -28,16 +28,7 @@
 #include "hash.h"
 #include "slave.h"
 
-#define EXPORT_INITIAL_SIZE   4000
-#define EXPORT_LIMIT  (512*1024)
-
 #define EXPORT_HASH(m,f,a) ((m)*(f)+(a))
-
-#ifdef DEBUG
-#  define IF_DEBUG(x) x
-#else
-#  define IF_DEBUG(x)
-#endif
 
 /*
  * The tables are declared non-static because they are linked and modified from

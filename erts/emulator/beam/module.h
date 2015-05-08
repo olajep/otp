@@ -24,7 +24,9 @@
 #include "index.h"
 #endif
 
-struct erl_module_instance {
+#include "slave.h"
+
+struct SLAVE_SHARED_DATA erl_module_instance {
     BeamInstr* code;
     int code_length;		/* Length of loaded code in bytes. */
     unsigned catches;
@@ -33,13 +35,13 @@ struct erl_module_instance {
     int num_traced_exports;
 };
 
-typedef struct erl_module {
+typedef struct SLAVE_SHARED_DATA erl_module {
     IndexSlot slot;		/* Must be located at top of struct! */
     int module;			/* Atom index for module (not tagged). */
 
     struct erl_module_instance curr;
     struct erl_module_instance old; /* protected by "old_code" rwlock */
-} Module; 
+} SLAVE_SHARED_DATA Module;
 
 Module* erts_get_module(Eterm mod, ErtsCodeIndex code_ix);
 Module* erts_put_module(Eterm mod);
@@ -53,6 +55,7 @@ Module *module_code(int, ErtsCodeIndex);
 int module_code_size(ErtsCodeIndex);
 int module_table_sz(void);
 
+#ifndef ERTS_SLAVE
 ERTS_GLB_INLINE void erts_rwlock_old_code(ErtsCodeIndex);
 ERTS_GLB_INLINE void erts_rwunlock_old_code(ErtsCodeIndex);
 ERTS_GLB_INLINE void erts_rlock_old_code(ErtsCodeIndex);
@@ -91,5 +94,6 @@ ERTS_GLB_INLINE int erts_is_old_code_rlocked(ErtsCodeIndex code_ix)
 
 #endif /* ERTS_GLB_INLINE_INCL_FUNC_DEF */
 
+#endif /* !ERTS_SLAVE */
 
 #endif /* !__MODULE_H__ */

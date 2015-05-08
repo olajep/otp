@@ -106,6 +106,16 @@ int index_get(IndexTable* t, void* tmpl)
     return -1;
 }
 
+int index_get_ext(IndexTable* t, void* tmpl, HashFunctions *fun)
+{
+    IndexSlot* p = (IndexSlot*) hash_get_ext(&t->htable, tmpl, fun);
+
+    if (p != NULL) {
+	return p->index;
+    }
+    return -1;
+}
+
 void erts_index_merge(Hash* src, IndexTable* dst)
 {
     int limit = src->size;

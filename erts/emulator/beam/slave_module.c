@@ -28,6 +28,7 @@
 #include "slave_module.h"
 #include "slave_load.h"
 #include "slave_export.h"
+#include "slave_syms.h"
 
 #ifdef DEBUG
 #  define IF_DEBUG(x) x
@@ -38,8 +39,9 @@
 #define MODULE_SIZE   50
 #define MODULE_LIMIT  (64*1024)
 
-static IndexTable module_tables[ERTS_NUM_CODE_IX];
+static IndexTable *module_tables = (void*)SLAVE_SYM_module_tables;
 
+/* ETODO: does this not collide with module.o? */
 erts_smp_rwmtx_t the_old_code_rwlocks[ERTS_NUM_CODE_IX];
 
 static erts_smp_atomic_t tot_module_bytes;
@@ -67,10 +69,9 @@ static int module_cmp(Module* tmpl, Module* obj)
     return tmpl->module != obj->module;
 }
 
-
 static Module* module_alloc(Module* tmpl)
 {
-    Module* obj = (Module*) erts_alloc(ERTS_ALC_T_MODULE, sizeof(Module));
+    Module* obj = (Module*) erts_alloc(ERTS_ALC_T_SLAVE_MODULE, sizeof(Module));
     erts_smp_atomic_add_nob(&tot_module_bytes, sizeof(Module));
 
     obj->module = tmpl->module;
@@ -90,7 +91,7 @@ static Module* module_alloc(Module* tmpl)
 
 static void module_free(Module* mod)
 {
-    erts_free(ERTS_ALC_T_MODULE, mod);
+    erts_free(ERTS_ALC_T_SLAVE_MODULE, mod);
     erts_smp_atomic_add_nob(&tot_module_bytes, -sizeof(Module));
 }
 
@@ -105,8 +106,8 @@ void slave_init_module_table(void)
     f.free = (HFREE_FUN) module_free;
 
     for (i = 0; i < ERTS_NUM_CODE_IX; i++) {
-	erts_index_init(ERTS_ALC_T_MODULE_TABLE, &module_tables[i], "slave_module_code",
-			MODULE_SIZE, MODULE_LIMIT, f);
+	erts_index_init(ERTS_ALC_T_SLAVE_MODULE_TABLE, &module_tables[i],
+			"slave_module_code", MODULE_SIZE, MODULE_LIMIT, f);
     }
 
     for (i=0; i<ERTS_NUM_CODE_IX; i++) {
@@ -146,8 +147,8 @@ slave_put_module(Eterm mod)
 
     ASSERT(is_atom(mod));
     ASSERT(initialized);
-    /* ERTS_SMP_LC_ASSERT(erts_initialized == 0 */
-    /* 		       || erts_has_code_write_permission()); */
+    ERTS_SMP_LC_ASSERT(erts_initialized == 0
+		       || erts_has_code_write_permission());
 
     mod_tab = &module_tables[erts_staging_code_ix()];
     e.module = atom_val(mod);

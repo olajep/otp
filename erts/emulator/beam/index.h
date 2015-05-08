@@ -33,7 +33,7 @@ typedef struct index_slot
 {
     HashBucket bucket;
     int index;
-} IndexSlot;
+} SLAVE_SHARED_DATA IndexSlot;
 
 
 typedef struct index_table
@@ -44,7 +44,7 @@ typedef struct index_table
     int limit;			/* Max size */
     int entries;		/* Number of entries */
     IndexSlot*** seg_table;	/* Mapping index -> obj */
-} IndexTable;
+} SLAVE_SHARED_DATA IndexTable;
 
 #define INDEX_PAGE_SHIFT 10
 #define INDEX_PAGE_SIZE (1 << INDEX_PAGE_SHIFT)
@@ -55,6 +55,7 @@ void index_info(int, void *, IndexTable*);
 int index_table_sz(IndexTable *);
 
 int index_get(IndexTable*, void*);
+int index_get_ext(IndexTable*, void*, HashFunctions*);
 
 IndexSlot* index_put_entry(IndexTable*, void*);
 void erts_index_merge(Hash*, IndexTable*);
