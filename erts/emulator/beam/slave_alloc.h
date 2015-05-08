@@ -22,6 +22,7 @@
 #include "erl_alloc.h"
 
 void erl_slave_alloc_submit(void*, size_t);
+void erl_slave_alloc_fallback(void);
 
 void *erl_slave_alloc(ErtsAlcType_t, void *, Uint);
 void *erl_slave_realloc(ErtsAlcType_t, void *, void *, Uint);

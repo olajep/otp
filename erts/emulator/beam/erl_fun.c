@@ -47,9 +47,13 @@ static void fun_free(ErlFunEntry* obj);
  * The address field of every fun that has no loaded code will point
  * to unloaded_fun[]. The -1 in unloaded_fun[0] will be interpreted
  * as an illegal arity when attempting to call a fun.
+ *
+ * unloaded_fun is now dynamically allocated so that it will appear in shared
+ * DRAM when a slave is connected, but be in normal memory otherwise. That
+ * decision can only happen at runtime
  */
 static BeamInstr unloaded_fun_code[3] = {NIL, -1, 0};
-static BeamInstr* unloaded_fun = unloaded_fun_code + 2;
+static BeamInstr* unloaded_fun;
 
 void
 erts_init_fun_table(void)
@@ -67,6 +71,10 @@ erts_init_fun_table(void)
     f.free = (HFREE_FUN) fun_free;
 
     hash_init(ERTS_ALC_T_FUN_TABLE, &erts_fun_table, "fun_table", 16, f);
+
+    unloaded_fun = erts_alloc(ERTS_ALC_T_FUN_ENTRY, sizeof(unloaded_fun_code));
+    memcpy(unloaded_fun, unloaded_fun_code, sizeof(unloaded_fun_code));
+    unloaded_fun = unloaded_fun + 2;
 }
 
 void
@@ -183,7 +191,11 @@ erts_erase_fun_entry(ErlFunEntry* fe)
     if (erts_refc_dectest(&fe->refc, -1) <= 0)
 #endif
     {
-	if (fe->address != unloaded_fun)
+	if (fe->address != unloaded_fun
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	    || fe->slave_address != unloaded_fun
+#endif
+	    )
 	    erl_exit(1,
 		     "Internal error: "
 		     "Invalid reference count found on #Fun<%T.%d.%d>: "
@@ -219,6 +231,17 @@ erts_cleanup_funs_on_purge(BeamInstr* start, BeamInstr* end)
 		    to_delete = fe;
 		}
 	    }
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	    addr = fe->slave_address;
+	    if (start <= addr && addr < end) {
+		fe->slave_address = unloaded_fun;
+		if (erts_refc_dectest(&fe->refc, 0) == 0) {
+		    fe->address = (void *) to_delete;
+		    to_delete = fe;
+		}
+	    }
+#endif
+
 	    b = b->next;
 	}
     }
@@ -254,6 +277,9 @@ erts_dump_fun_entries(int to, void *to_arg)
 	    erts_print(to, to_arg, "Uniq: %d\n", fe->old_uniq);
 	    erts_print(to, to_arg, "Index: %d\n",fe->old_index);
 	    erts_print(to, to_arg, "Address: %p\n", fe->address);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	    erts_print(to, to_arg, "Slave_address: %p\n", fe->slave_address);
+#endif
 #ifdef HIPE
 	    erts_print(to, to_arg, "Native_address: %p\n", fe->native_address);
 #endif
@@ -290,6 +316,9 @@ fun_alloc(ErlFunEntry* template)
     obj->module = template->module;
     erts_refc_init(&obj->refc, -1);
     obj->address = unloaded_fun;
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    obj->slave_address = unloaded_fun;
+#endif
 #ifdef HIPE
     obj->native_address = NULL;
 #endif

@@ -141,10 +141,13 @@ unlink_free(struct segment *seg)
 #endif
 }
 
+static int fallback_enabled = 0;
+
 void
 erl_slave_alloc_submit(void *seg, size_t size)
 {
     struct segment *free;
+    ASSERT(!fallback_enabled);
     if (size <= HEADER_SZ) return;
     free = seg;
     sys_memzero(free, HEADER_SZ);
@@ -156,6 +159,12 @@ erl_slave_alloc_submit(void *seg, size_t size)
     insert_free(free);
     DEBUG_VERIFY();
     erts_smp_mtx_init(&alloc_mtx, "slave_alloc_mtx");
+}
+
+void erl_slave_alloc_fallback(void)
+{
+    ASSERT(available == 0);
+    fallback_enabled = 1;
 }
 
 #define LOCK() erts_smp_mtx_lock(&alloc_mtx)
@@ -171,6 +180,11 @@ erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
     int max = 0, count = 0;
 #endif
     void *res = NULL;
+    if (fallback_enabled) {
+	ASSERT(t == ERTS_ALC_T2N(ERTS_ALC_T_FUN_ENTRY));
+	return erts_alloc_fnf(ERTS_ALC_T_FUN_ENTRY_FALLBACK, size);
+    }
+
     LOCK();
     free = first_free;
     size = ALIGN(size, 16);
@@ -203,19 +217,29 @@ erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 void
 erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
 {
-    struct segment *seg = SEGMENT(ptr);
-    LOCK();
-    insert_free(seg);
-    DEBUG_VERIFY();
-    UNLOCK();
+    if (fallback_enabled) {
+	ASSERT(t == ERTS_ALC_T2N(ERTS_ALC_T_FUN_ENTRY));
+	erts_free(ERTS_ALC_T_FUN_ENTRY_FALLBACK, ptr);
+    } else {
+	struct segment *seg = SEGMENT(ptr);
+	LOCK();
+	insert_free(seg);
+	DEBUG_VERIFY();
+	UNLOCK();
+    }
 }
 
 void *erl_slave_realloc(ErtsAlcType_t t, void *extra, void *block, Uint size) {
-    void *newblock = erl_slave_alloc(t, extra, size);
-    Uint tocopy = MIN(SEGMENT(block)->length, size);
-    if (newblock) {
-	sys_memcpy(newblock, block, tocopy);
-	erl_slave_free(t, extra, block);
+    if (fallback_enabled) {
+	ASSERT(t == ERTS_ALC_T2N(ERTS_ALC_T_FUN_ENTRY));
+	return erts_realloc(ERTS_ALC_T_FUN_ENTRY_FALLBACK, block, size);
+    } else {
+	void *newblock = erl_slave_alloc(t, extra, size);
+	Uint tocopy = MIN(SEGMENT(block)->length, size);
+	if (newblock) {
+	    sys_memcpy(newblock, block, tocopy);
+	    erl_slave_free(t, extra, block);
+	}
+	return newblock;
     }
-    return newblock;
 }

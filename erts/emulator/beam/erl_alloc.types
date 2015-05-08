@@ -154,7 +154,6 @@ type	SUSPEND_MON	STANDARD	PROCESSES	suspend_monitor
 type	PEND_SUSPEND	SHORT_LIVED	PROCESSES	pending_suspend
 type	PROC_LIST	SHORT_LIVED	PROCESSES	proc_list
 type	SAVED_ESTACK	SHORT_LIVED	PROCESSES	saved_estack
-type	FUN_ENTRY	LONG_LIVED	CODE		fun_entry
 type	ATOM_TXT	LONG_LIVED	ATOM		atom_text
 type 	BEAM_REGISTER	EHEAP		PROCESSES	beam_register
 type	HEAP		EHEAP		PROCESSES	heap
@@ -401,6 +400,17 @@ type	SLAVE_EXPORT_TABLE	SLAVE	CODE		slave_export_tab
 type	SLAVE_MSG_REF	SLAVE		PROCESSES	slave_msg_ref
 type	SLAVE_MODULE	SLAVE		CODE		slave_module_entry
 type	SLAVE_MODULE_TABLE	SLAVE	CODE		slave_module_tab
+
+# Fun entries are read by both emulators, so they need to be allocated with the
+# SLAVE allocator.
+#
+# There might not be any shared dram available. In that case, slave_alloc will
+# explicitly proxy allocation requests of type FUN_ENTRY to type
+# FUN_ENTRY_FALLBACK
+type	FUN_ENTRY	SLAVE		CODE		fun_entry
+type	FUN_ENTRY_FALLBACK	LONG_LIVED	CODE	fun_entry_fallback
++else
+type	FUN_ENTRY	LONG_LIVED	CODE		fun_entry
 +endif
 
 #

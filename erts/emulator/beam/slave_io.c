@@ -134,6 +134,7 @@ static int spoof_mmap(void) {
 		(unsigned)ephy_base, (unsigned)ret);
 	return -1;
     }
+    erl_slave_alloc_fallback();
     return 0;
 }
 

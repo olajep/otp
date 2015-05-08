@@ -4597,13 +4597,13 @@ final_touch(LoaderState* stp)
     /*
      * Fix all funs.
      */ 
-    if (stp->target == &loader_target_self) {
-	if (stp->num_lambdas > 0) {
-	    for (i = 0; i < stp->num_lambdas; i++) {
-		unsigned entry_label = stp->lambdas[i].label;
-		ErlFunEntry* fe = stp->lambdas[i].fe;
-		BeamInstr* code_ptr = (BeamInstr *) (stp->code + stp->labels[entry_label].value);
+    if (stp->num_lambdas > 0) {
+	for (i = 0; i < stp->num_lambdas; i++) {
+	    unsigned entry_label = stp->lambdas[i].label;
+	    ErlFunEntry* fe = stp->lambdas[i].fe;
+	    BeamInstr* code_ptr = (BeamInstr *) (stp->code + stp->labels[entry_label].value);
 
+	    if (stp->target == &loader_target_self) {
 		if (fe->address[0] != 0) {
 		    /*
 		     * We are hiding a pointer into older code.
@@ -4614,6 +4614,10 @@ final_touch(LoaderState* stp)
 #ifdef HIPE
 		hipe_set_closure_stub(fe, stp->lambdas[i].num_free);
 #endif
+	    } else {
+		if (fe->slave_address[0] != 0)
+		    erts_refc_dec(&fe->refc, 1);
+		fe->slave_address = code_ptr;
 	    }
 	}
     }

@@ -21,6 +21,7 @@
 #define __ERLFUNTABLE_H__
 
 #include "erl_smp.h"
+#include "slave.h"
 
 /*
  * Fun entry.
@@ -33,7 +34,23 @@ typedef struct erl_fun_entry {
     int index;			/* New style index. */
     int old_uniq;		/* Unique number (old_style) */
     int old_index;		/* Old style index */
+
+    /* Fun entries are shared between master and slave; we thus need separate
+     * address fields for the two emulators. In order to simplify the code
+     * elsewhere, the field for the current architecture is always called
+     * "address".
+     */
+#ifndef ERTS_SLAVE
+#  ifndef ERTS_SLAVE_EMU_ENABLED
     BeamInstr* address;		/* Pointer to code for fun */
+#  else
+    BeamInstr* address;		/* Pointer to code for fun */
+    BeamInstr* slave_address;	/* Pointer to slave emulator code for fun */
+#  endif
+#else
+    BeamInstr* master_address;	/* Pointer to master emulator code for fun */
+    BeamInstr* address;		/* Pointer to code for fun */
+#endif
 
 #ifdef HIPE
     UWord* native_address;	/* Native entry code for fun. */
@@ -41,9 +58,15 @@ typedef struct erl_fun_entry {
 
     Uint arity;			/* The arity of the fun. */
     Eterm module;		/* Tagged atom for module. */
+
+#ifndef ERTS_SLAVE
     erts_refc_t refc;		/* Reference count: One for code + one for each
 				   fun object in each process. */
-} ErlFunEntry;
+#else
+    /* I must not be altered, and preferrably not even read */
+    volatile const int refc;
+#endif
+} SLAVE_SHARED_DATA ErlFunEntry;
 
 /*
  * This structure represents a 'fun' (lambda). It is stored on
@@ -63,7 +86,7 @@ typedef struct erl_fun_thing {
   /* -- The following may be compound Erlang terms ---------------------- */
     Eterm creator;		/* Pid of creator process (contains node). */
     Eterm env[1];		/* Environment (free variables). */
-} ErlFunThing;
+} SLAVE_SHARED_DATA ErlFunThing;
 
 /* ERL_FUN_SIZE does _not_ include space for the environment */
 #define ERL_FUN_SIZE ((sizeof(ErlFunThing)/sizeof(Eterm))-1)

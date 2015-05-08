@@ -4772,6 +4772,7 @@ call_fun(Process* p,		/* Current process. */
     if (!is_boxed(fun)) {
 	goto badfun;
     }
+    ASSERT(epiphany_in_dram(boxed_val(fun)));
     hdr = *boxed_val(fun);
 
     if (is_fun_header(hdr)) {
@@ -4834,12 +4835,53 @@ call_fun(Process* p,		/* Current process. */
 		p->fvalue = TUPLE2(hp, fun, args);
 		return NULL;
 	    } else {
-                EPIPHANY_STUB(call_fun);
+		Export* ep;
+		Module* modp;
+		Eterm module;
+		ErtsCodeIndex code_ix = erts_active_code_ix();
+
+		/*
+		 * No arity. There is no module loaded that defines the fun,
+		 * either because the fun is newly created from the external
+		 * representation (the module has never been loaded),
+		 * or the module defining the fun has been unloaded.
+		 */
+		module = fe->module;
+		if ((modp = erts_get_module(module, code_ix)) != NULL
+		    && modp->curr.code != NULL) {
+		    /*
+		     * There is a module loaded, but obviously the fun is not
+		     * defined in it. We must not call the error_handler
+		     * (or we will get into an infinite loop).
+		     */
+		    goto badfun;
+		}
+
+		/*
+		 * No current code for this module. Call the error_handler module
+		 * to attempt loading the module.
+		 */
+
+		ep = erts_find_function(erts_proc_get_error_handler(p),
+					am_undefined_lambda, 3, code_ix);
+		if (ep == NULL) {	/* No error handler */
+		    p->current = NULL;
+		    p->freason = EXC_UNDEF;
+		    return NULL;
+		}
+		reg[0] = module;
+		reg[1] = fun;
+		reg[2] = args;
+		reg[3] = NIL;
+		return ep->addressv[erts_active_code_ix()];
 	    }
 	}
     } else if (is_export_header(hdr)) {
 	Export *ep;
 	int actual_arity;
+	/* Export entries need to have their representations merged, just
+	 * like was done with fun entries, before this can work. */
+	ASSERT(!"export");
 
 	ep = *((Export **) (export_val(fun) + 1));
 	actual_arity = (int) ep->code[2];
@@ -4916,6 +4958,10 @@ new_fun(Process* p, Eterm* reg, ErlFunEntry* fe, int num_free)
     Eterm* hp;
     int i;
 
+    /* ETODO: Fix reference counting */
+    erts_printf("new_fun: Can't bump reference counter on fun from %T! "
+		"Instability may ensue...\n", fe->module);
+
     if (HEAP_LIMIT(p) - HEAP_TOP(p) <= needed) {
 	PROCESS_MAIN_CHK_LOCKS(p);
 	erts_garbage_collect(p, needed, reg, num_free);
@@ -4926,7 +4972,7 @@ new_fun(Process* p, Eterm* reg, ErlFunEntry* fe, int num_free)
     p->htop = hp + needed;
     funp = (ErlFunThing *) hp;
     hp = funp->env;
-    erts_refc_inc(&fe->refc, 2);
+    /* erts_refc_inc(&fe->refc, 2); */
     funp->thing_word = HEADER_FUN;
     funp->next = MSO(p).first;
     MSO(p).first = (struct erl_off_heap_header*) funp;
