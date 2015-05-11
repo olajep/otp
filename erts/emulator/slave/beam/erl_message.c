@@ -69,9 +69,22 @@ ErlHeapFragment* new_message_buffer(Uint u)
 
 ErlHeapFragment* erts_resize_message_buffer(ErlHeapFragment *, Uint,
 					    Eterm *, Uint);
-void free_message_buffer(ErlHeapFragment *f)
+void free_message_buffer(ErlHeapFragment *bp)
 {
-    EPIPHANY_STUB_BT();
+    extern char __heap_start, __heap_end;
+    /* Message buffers that are attached to messages are allocated on the master
+     * and must not be freed here. They are freed by free_message instead. */
+    ASSERT((void*)&__heap_start <= (void*)bp && (void*)bp <= (void*)&__heap_end);
+
+    ASSERT(bp != NULL);
+    do {
+	ErlHeapFragment* next_bp = bp->next;
+
+	erts_cleanup_offheap(&bp->off_heap);
+	ERTS_HEAP_FREE(ERTS_ALC_T_HEAP_FRAG, (void *) bp,
+		       ERTS_HEAP_FRAG_SIZE(bp->size));
+	bp = next_bp;
+    } while (bp != NULL);
 }
 
 void erts_queue_dist_message(Process *p, ErtsProcLocks *l, ErtsDistExternal *d, Eterm t)
@@ -271,7 +284,20 @@ Eterm erts_msg_distext2heap(Process *p, ErtsProcLocks *l, ErlHeapFragment **f,
 
 void erts_cleanup_offheap(ErlOffHeap *offheap)
 {
-    EPIPHANY_STUB_BT();
+    union erl_off_heap_ptr u;
+
+    for (u.hdr = offheap->first; u.hdr; u.hdr = u.hdr->next) {
+	switch (thing_subtag(u.hdr->thing_word)) {
+	case REFC_BINARY_SUBTAG:
+	case FUN_SUBTAG:
+	    /* We can't decrease the reference counters yet. */
+	    EPIPHANY_STUB_BT();
+	default:
+	    ASSERT(is_external_header(u.hdr->thing_word));
+	    erts_deref_node_entry(u.ext->node);
+	    break;
+	}
+    }
 }
 
 void

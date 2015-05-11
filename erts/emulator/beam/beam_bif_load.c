@@ -149,6 +149,7 @@ struct m {
     Eterm module;
     Module* modp;
     Uint exception;
+    const LoaderTarget *target;
 };
 
 static Eterm staging_epilogue(Process* c_p, int, Eterm res, int, struct m*, int);
@@ -233,6 +234,7 @@ finish_loading_1(BIF_ALIST_1)
 	    ERTS_BIF_PREP_ERROR(res, BIF_P, BADARG);
 	    goto done;
 	}
+	p[i].target = erts_get_loader_target(p[i].code);
 	BIF_ARG_1 = CDR(cons);
     }
 
@@ -260,7 +262,7 @@ finish_loading_1(BIF_ALIST_1)
     erts_start_staging_code_ix();
 
     for (i = 0; i < n; i++) {
-	p[i].modp = erts_put_module(p[i].module);
+	p[i].modp = p[i].target->put_module(p[i].module);
     }
     for (i = 0; i < n; i++) {
 	if (p[i].modp->curr.num_breakpoints > 0 ||

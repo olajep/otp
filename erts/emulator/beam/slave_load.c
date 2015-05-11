@@ -32,13 +32,17 @@
 #include "slave_ix.h"
 #include "slave_module.h"
 
-const LoaderTarget *loader_target_slave;
-const TargetExportTab export_table_slave = {
+LoaderTarget loader_target_slave = {
+#ifndef NO_JUMP_TABLE
+    NULL,
+#endif
     slave_export_put,
     slave_active_export_entry,
     slave_bif_export,
     slave_put_module,
     slave_catches_cons,
+    slave_make_current_old,
+    slave_update_ranges,
 };
 BifEntry slave_bif_table[BIF_SIZE];
 Export *slave_bif_export[BIF_SIZE];
@@ -94,8 +98,7 @@ slave_preload_module(Process *c_p,
 {
     Binary* magic = erts_alloc_loader_state();
     Eterm retval;
-    erts_set_loader_target(magic, loader_target_slave,
-			   &export_table_slave,
+    erts_set_loader_target(magic, &loader_target_slave,
 			   ERTS_ALC_T_SLAVE_CODE,
 			   ERTS_ALC_T_SLAVE_PREPARED_CODE);
 
@@ -104,7 +107,7 @@ slave_preload_module(Process *c_p,
     if (retval != NIL) {
 	return retval;
     }
-    return slave_finish_loading(magic, c_p, c_p_locks, modp);
+    return erts_finish_loading(magic, c_p, c_p_locks, modp);
 }
 
 static void
@@ -123,6 +126,7 @@ load_preloaded(void)
     }
     i = 0;
     while ((name = preload_p[i].name) != NULL) {
+	erts_start_staging_code_ix();
 	length = preload_p[i].size;
 	module_name = erts_atom_put((byte *) name, sys_strlen(name), ERTS_ATOM_ENC_LATIN1, 1);
 	if ((code = sys_preload_begin(&preload_p[i])) == 0)
@@ -134,6 +138,8 @@ load_preloaded(void)
 	    erl_exit(1,"Failed loading preloaded module %s (%T)\n",
 		     name, res);
 	i++;
+	erts_end_staging_code_ix();
+	erts_commit_staging_code_ix();
     }
 }
 
@@ -161,10 +167,9 @@ erts_slave_bootstrap(void)
     erts_end_staging_code_ix();
     erts_commit_staging_code_ix();
 
-    erts_start_staging_code_ix();
+    /* beam_ranges does not seem to support commiting more than one module at
+     * once; we let load_preloaded commit after each module instead. */
     load_preloaded();
-    erts_end_staging_code_ix();
-    erts_commit_staging_code_ix();
 
     free(setup_cmd);
     erts_slave_booted = 1;
@@ -178,6 +183,7 @@ erts_slave_init_load(struct master_command_setup *cmd)
     slave_init_module_table();
     slave_code_ix_init();
     slave_catches_init();
+    slave_init_ranges();
 
     if (cmd->num_instructions != num_instructions) {
 	erl_exit(1, "Error: Got %d instructions from slave emulator, expected %d\n",
@@ -188,7 +194,9 @@ erts_slave_init_load(struct master_command_setup *cmd)
 		 cmd->bif_size, BIF_SIZE);
     }
 
-    loader_target_slave = cmd->target;
+#ifndef NO_JUMP_TABLE
+    loader_target_slave.beam_ops = cmd->target->beam_ops;
+#endif
 
     setup_cmd = malloc(sizeof(struct master_command_setup));
     ASSERT(setup_cmd);

@@ -363,7 +363,6 @@ typedef struct LoaderState {
     const LoaderTarget* target;
     ErtsAlcType_t code_alc_t;
     ErtsAlcType_t prepared_alc_t;
-    const TargetExportTab* tgt_export;
 } LoaderState;
 
 #define GetTagAndValue(Stp, Tag, Val)					\
@@ -491,7 +490,8 @@ typedef struct LoaderState {
 
 static void free_loader_state(Binary* magic);
 static void loader_state_dtor(Binary* magic);
-static Eterm insert_new_code(Process *c_p, ErtsProcLocks c_p_locks,
+static Eterm insert_new_code(const LoaderTarget *target, Process *c_p,
+			     ErtsProcLocks c_p_locks,
 			     Eterm group_leader, Eterm module,
 			     BeamInstr* code, Uint size);
 static int init_iff_file(LoaderState* stp, byte* code, Uint size);
@@ -551,13 +551,17 @@ static int safe_mul(UWord a, UWord b, UWord* resp);
 static int must_swap_floats;
 
 Uint erts_total_code_size;
-LoaderTarget loader_target_self;
-TargetExportTab export_table_self = {
+LoaderTarget loader_target_self = {
+#ifndef NO_JUMP_TABLE
+    NULL,
+#endif
     erts_export_put,
     erts_active_export_entry,
     bif_export,
     erts_put_module,
     beam_catches_cons,
+    beam_make_current_old,
+    erts_update_ranges,
 };
 /**********************************************************************/
 
@@ -796,8 +800,8 @@ erts_finish_loading(Binary* magic, Process* c_p,
      */
 
     CHKBLK(stp->code_alc_t,stp->code);
-    retval = insert_new_code(c_p, c_p_locks, stp->group_leader, stp->module,
-			     stp->code, stp->loaded_size);
+    retval = insert_new_code(stp->target, c_p, c_p_locks, stp->group_leader,
+			     stp->module, stp->code, stp->loaded_size);
     if (retval != NIL) {
 	goto load_error;
     }
@@ -835,105 +839,6 @@ erts_finish_loading(Binary* magic, Process* c_p,
     free_loader_state(magic);
     return retval;
 }
-
-#ifdef ERTS_SLAVE_EMU_ENABLED
-static Eterm
-slave_insert_new_code(Process *c_p, ErtsProcLocks c_p_locks,
-		      Eterm group_leader, Eterm module, BeamInstr* code,
-		      Uint size)
-{
-    Module* modp;
-    Eterm retval;
-
-    if ((retval = slave_make_current_old(c_p, c_p_locks, module)) != NIL) {
-	erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
-	erts_dsprintf(dsbufp,
-		      "Slave module %T must be purged before loading\n",
-		      module);
-	erts_send_error_to_logger(group_leader, dsbufp);
-	return retval;
-    }
-
-    /*
-     * Update module table.
-     */
-
-    erts_total_code_size += size;
-    modp = slave_put_module(module);
-    modp->curr.code = code;
-    modp->curr.code_length = size;
-    modp->curr.catches = BEAM_CATCHES_NIL; /* Will be filled in later. */
-
-    /* /\* */
-    /*  * Update ranges (used for finding a function from a PC value). */
-    /*  *\/ */
-
-    /* erts_update_ranges(code, size); */
-    return NIL;
-}
-
-Eterm
-slave_finish_loading(Binary* magic, Process* c_p,
-		     ErtsProcLocks c_p_locks, Eterm* modp)
-{
-    Eterm retval;
-    LoaderState* stp = ERTS_MAGIC_BIN_DATA(magic);
-
-    /*
-     * No other process may run since we will update the export
-     * table which is not protected by any locks.
-     */
-
-    ERTS_SMP_LC_ASSERT(erts_initialized == 0 || erts_has_code_write_permission() ||
-		       erts_smp_thr_progress_is_blocking());
-
-    /*
-     * Make current code for the module old and insert the new code
-     * as current.  This will fail if there already exists old code
-     * for the module.
-     */
-
-    CHKBLK(stp->code_alc_t,stp->code);
-    retval = slave_insert_new_code(c_p, c_p_locks, stp->group_leader,
-				   stp->module, stp->code, stp->loaded_size);
-    if (retval != NIL) {
-	goto load_error;
-    }
-
-    /*
-     * Ready for the final touch: fixing the export table entries for
-     * exported and imported functions.  This can't fail.
-     */
-
-    CHKBLK(stp->code_alc_t,stp->code);
-    final_touch(stp);
-
-    /*
-     * Loading succeded.
-     */
-    CHKBLK(stp->code_alc_t,stp->code);
-#if defined(LOAD_MEMORY_HARD_DEBUG) && defined(DEBUG)
-    erts_fprintf(stderr,"Loaded %T\n",*modp);
-#if 0
-    debug_dump_code(stp->code,stp->ci);
-#endif
-#endif
-    stp->code = NULL;		/* Prevent code from being freed. */
-    *modp = stp->module;
-
-    /*
-     * If there is an on_load function, signal an error to
-     * indicate that the on_load function must be run.
-     */
-    if (stp->on_load) {
-	retval = am_on_load;
-    }
-
- load_error:
-    free_loader_state(magic);
-    return retval;
-}
-#endif
 
 Binary*
 erts_alloc_loader_state(void)
@@ -976,13 +881,11 @@ erts_alloc_loader_state(void)
     stp->target = &loader_target_self;
     stp->prepared_alc_t = ERTS_ALC_T_PREPARED_CODE;
     stp->code_alc_t = ERTS_ALC_T_CODE;
-    stp->tgt_export = &export_table_self;
     return magic;
 }
 
 void
 erts_set_loader_target(Binary *magic, const LoaderTarget *target,
-		       const TargetExportTab *tgt_export,
 		       ErtsAlcType_t code_alc_t,
 		       ErtsAlcType_t prepared_code_alc_t)
 {
@@ -1008,7 +911,18 @@ erts_set_loader_target(Binary *magic, const LoaderTarget *target,
 	stp->prepared_alc_t = prepared_code_alc_t;
     }
     stp->target = target;
-    stp->tgt_export = tgt_export;
+}
+
+const LoaderTarget *
+erts_get_loader_target(Binary* magic)
+{
+    LoaderState* stp;
+
+    if (ERTS_MAGIC_BIN_DESTRUCTOR(magic) != loader_state_dtor) {
+	return NULL;
+    }
+    stp = ERTS_MAGIC_BIN_DATA(magic);
+    return stp->target;
 }
 
 /*
@@ -1128,14 +1042,14 @@ loader_state_dtor(Binary* magic)
 }
 
 static Eterm
-insert_new_code(Process *c_p, ErtsProcLocks c_p_locks,
-		Eterm group_leader, Eterm module, BeamInstr* code,
-		Uint size)
+insert_new_code(const LoaderTarget *target, Process *c_p,
+		ErtsProcLocks c_p_locks, Eterm group_leader, Eterm module,
+		BeamInstr* code, Uint size)
 {
     Module* modp;
     Eterm retval;
 
-    if ((retval = beam_make_current_old(c_p, c_p_locks, module)) != NIL) {
+    if ((retval = target->make_current_old(c_p, c_p_locks, module)) != NIL) {
 	erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
 	erts_dsprintf(dsbufp,
 		      "Module %T must be purged before loading\n",
@@ -1149,7 +1063,7 @@ insert_new_code(Process *c_p, ErtsProcLocks c_p_locks,
      */
 
     erts_total_code_size += size;
-    modp = erts_put_module(module);
+    modp = target->put_module(module);
     modp->curr.code = code;
     modp->curr.code_length = size;
     modp->curr.catches = BEAM_CATCHES_NIL; /* Will be filled in later. */
@@ -1158,7 +1072,7 @@ insert_new_code(Process *c_p, ErtsProcLocks c_p_locks,
      * Update ranges (used for finding a function from a PC value).
      */
 
-    erts_update_ranges(code, size);
+    target->update_ranges(code, size);
     return NIL;
 }
 
@@ -1455,7 +1369,7 @@ load_import_table(LoaderState* stp)
 	 * If the export entry refers to a BIF, get the pointer to
 	 * the BIF function.
 	 */
-	if ((e = stp->tgt_export->active_entry(mod, func, arity)) != NULL) {
+	if ((e = stp->target->active_entry(mod, func, arity)) != NULL) {
 	    if (e->code[3] == BeamOpCode(op_apply_bif)) {
 		stp->import[i].bf = (BifFunction) e->code[4];
 		if (func == am_load_nif && mod == am_erlang && arity == 2) {
@@ -1546,7 +1460,7 @@ read_export_table(LoaderState* stp)
 static int
 is_bif(const LoaderState* stp, Eterm mod, Eterm func, unsigned arity)
 {
-    Export* e = stp->tgt_export->active_entry(mod, func, arity);
+    Export* e = stp->target->active_entry(mod, func, arity);
     if (e == NULL) {
 	return 0;
     }
@@ -4535,12 +4449,12 @@ final_touch(LoaderState* stp)
     while (index != 0) {
 	BeamInstr next = code[index];
 	code[index] = BeamOpCode(op_catch_yf);
-	catches = stp->tgt_export->catches_cons((BeamInstr *)code[index+2],
+	catches = stp->target->catches_cons((BeamInstr *)code[index+2],
 						catches);
 	code[index+2] = make_catch(catches);
 	index = next;
     }
-    modp = stp->tgt_export->put_module(stp->module);
+    modp = stp->target->put_module(stp->module);
     modp->curr.catches = catches;
 
     /*
@@ -4555,7 +4469,7 @@ final_touch(LoaderState* stp)
 	    /* Skip stub for a BIF */
 	    continue;
 	}
-	ep = stp->tgt_export->put(stp->module, stp->export[i].function,
+	ep = stp->target->put_export(stp->module, stp->export[i].function,
 				  stp->export[i].arity);
 	if (!on_load) {
 	    ep->addressv[erts_staging_code_ix()] = address;
@@ -4584,7 +4498,7 @@ final_touch(LoaderState* stp)
 	mod = stp->import[i].module;
 	func = stp->import[i].function;
 	arity = stp->import[i].arity;
-	import = (BeamInstr) stp->tgt_export->put(mod, func, arity);
+	import = (BeamInstr) stp->target->put_export(mod, func, arity);
 	current = stp->import[i].patches;
 	while (current != 0) {
 	    ASSERT(current < stp->ci);
@@ -4753,7 +4667,7 @@ transform_engine(LoaderState* st)
 		if (i >= st->num_imports || st->import[i].bf == NULL)
 		    goto restart;
 		if (bif_number != -1 &&
-		    st->tgt_export->bif[bif_number]->code[4] != (BeamInstr) st->import[i].bf) {
+		    st->target->bif[bif_number]->code[4] != (BeamInstr) st->import[i].bf) {
 		    goto restart;
 		}
 	    }
@@ -5860,7 +5774,7 @@ stub_final_touch(LoaderState* stp, BeamInstr* fp)
 
     for (i = 0; i < n; i++) {
 	if (stp->export[i].function == function && stp->export[i].arity == arity) {
-	    Export* ep = stp->tgt_export->put(mod, function, arity);
+	    Export* ep = stp->target->put_export(mod, function, arity);
 	    ep->addressv[erts_staging_code_ix()] = fp+5;
 	    return;
 	}
@@ -6237,7 +6151,8 @@ erts_make_stub_module(Process* p, Eterm Mod, Eterm Beam, Eterm Info)
      * Insert the module in the module table.
      */
 
-    rval = insert_new_code(p, 0, p->group_leader, Mod, code, code_size);
+    rval = insert_new_code(&loader_target_self, p, 0, p->group_leader, Mod,
+			   code, code_size);
     if (rval != NIL) {
 	goto error;
     }

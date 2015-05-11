@@ -25,11 +25,10 @@
 #ifdef NO_JUMP_TABLE
 #define SlaveOp(Op) (Op)
 #else
-#define SlaveOp(Op) (loader_target_slave->beam_ops[(Op)])
+#define SlaveOp(Op) (loader_target_slave.beam_ops[(Op)])
 #endif
 
-extern const LoaderTarget *loader_target_slave;
-extern const TargetExportTab export_table_slave;
+extern LoaderTarget loader_target_slave;
 extern BifEntry slave_bif_table[];
 extern Export *slave_bif_export[];
 extern int erts_slave_booted;

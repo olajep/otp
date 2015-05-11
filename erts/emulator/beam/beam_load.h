@@ -55,20 +55,17 @@ typedef struct {
 #ifndef NO_JUMP_TABLE
     void** beam_ops;
 #endif
-} LoaderTarget;
-
-typedef struct {
-    Export* (*put)(Eterm mod, Eterm func, unsigned int arity);
+    Export* (*put_export)(Eterm mod, Eterm func, unsigned int arity);
     Export* (*active_entry)(Eterm mod, Eterm func, unsigned int arity);
     Export** bif;
     Module* (*put_module)(Eterm mod);
     unsigned (*catches_cons)(BeamInstr* cp, unsigned cdr);
-} TargetExportTab;
+    Eterm (*make_current_old)(Process *c_p, ErtsProcLocks c_p_locks,
+			      Eterm module);
+    void (*update_ranges)(BeamInstr* code, Uint size);
+} LoaderTarget;
 
 extern LoaderTarget loader_target_self;
-extern TargetExportTab export_table_self;
-
-#define TARGET(Proc) (&loader_target_self)
 
 /*
  * The following variables keep a sorted list of address ranges for

@@ -25,19 +25,30 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "beam_load.h"
+#include "slave.h"
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_syms.h"
+#endif
+
+#ifdef ERTS_SLAVE
+typedef Sint readwrite_atomic_t;
+#else
+typedef erts_smp_atomic_t readwrite_atomic_t;
+#endif
 
 typedef struct {
     BeamInstr* start;		/* Pointer to start of module. */
-    erts_smp_atomic_t end; /* (BeamInstr*) Points one word beyond last function in module. */
-} Range;
+    readwrite_atomic_t end; /* (BeamInstr*) Points one word beyond last function in module. */
+} SLAVE_SHARED_DATA Range;
 
 /* Range 'end' needs to be atomic as we purge module
     by setting end=start in active code_ix */
-#define RANGE_END(R) ((BeamInstr*)erts_smp_atomic_read_nob(&(R)->end))
-
-static Range* find_range(BeamInstr* pc);
-static void lookup_loc(FunctionInfo* fi, BeamInstr* pc,
-		       BeamInstr* modp, int idx);
+#ifdef ERTS_SLAVE
+#  define RANGE_END(R) ((BeamInstr*)((R)->end))
+#else
+#  define RANGE_END(R) ((BeamInstr*)erts_smp_atomic_read_nob(&(R)->end))
+#endif
 
 /*
  * The following variables keep a sorted list of address ranges for
@@ -48,10 +59,31 @@ struct ranges {
     Range* modules;	       /* Sorted lists of module addresses. */
     Sint n;		       /* Number of range entries. */
     Sint allocated;	       /* Number of allocated entries. */
-    erts_smp_atomic_t mid;     /* Cached search start point */
-};
-static struct ranges r[ERTS_NUM_CODE_IX];
+    readwrite_atomic_t mid;     /* Cached search start point */
+} SLAVE_SHARED_DATA;
+#ifndef ERTS_SLAVE
 static erts_smp_atomic_t mem_used;
+static
+#endif
+struct ranges range_tables[ERTS_NUM_CODE_IX];
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+static struct ranges *slave_range_tables = (void*)SLAVE_SYM_range_tables;
+static int slave_initialised = 0;
+#endif
+
+/* */
+#ifdef ERTS_SLAVE
+#  define READ_MID(P) ((Range *) (P).mid)
+#  define WRITE_MID(P, V) ((P).mid = (Sint)(V))
+#else
+#  define READ_MID(P) ((Range *) erts_smp_atomic_read_nob(&(P).mid))
+#  define WRITE_MID(P, V) (erts_smp_atomic_set_nob(&(P).mid, (erts_aint_t)(V)))
+#endif
+
+static Range* find_range(struct ranges* r, BeamInstr* pc);
+static void lookup_loc(FunctionInfo* fi, BeamInstr* pc,
+		       BeamInstr* modp, int idx);
 
 #ifdef HARD_DEBUG
 static void check_consistency(struct ranges* p)
@@ -71,13 +103,19 @@ static void check_consistency(struct ranges* p)
 #  define CHECK(r)
 #endif /* HARD_DEBUG */
 
+#ifdef DEBUG
+#  define IF_DEBUG(X) X
+#else
+#  define IF_DEBUG(X)
+#endif
 
-void
-erts_init_ranges(void)
+#ifndef ERTS_SLAVE
+IF_DEBUG(static int staging = 0);
+
+static void table_init_ranges(struct ranges* r)
 {
     Sint i;
 
-    erts_smp_atomic_init_nob(&mem_used, 0);
     for (i = 0; i < ERTS_NUM_CODE_IX; i++) {
 	r[i].modules = 0;
 	r[i].n = 0;
@@ -87,19 +125,53 @@ erts_init_ranges(void)
 }
 
 void
-erts_start_staging_ranges(void)
+erts_init_ranges(void)
+{
+    erts_smp_atomic_init_nob(&mem_used, 0);
+    table_init_ranges(range_tables);
+}
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void
+slave_init_ranges(void)
+{
+    /* What we do with readwrite_atomic_t requires the types to be of equal
+     * size. */
+    ASSERT(sizeof(erts_smp_atomic_t) == sizeof(Sint));
+
+    ASSERT(!staging);
+    slave_initialised = 1;
+    table_init_ranges(slave_range_tables);
+}
+#endif
+
+static void
+table_start_staging_ranges(ErtsAlcType_t alctr, struct ranges* r)
 {
     ErtsCodeIndex dst = erts_staging_code_ix();
 
     if (r[dst].modules) {
 	erts_smp_atomic_add_nob(&mem_used, -r[dst].allocated);
-	erts_free(ERTS_ALC_T_MODULE_REFS, r[dst].modules);
+	erts_free(alctr, r[dst].modules);
 	r[dst].modules = NULL;
     }
 }
 
 void
-erts_end_staging_ranges(int commit)
+erts_start_staging_ranges(void)
+{
+    table_start_staging_ranges(ERTS_ALC_T_MODULE_REFS, range_tables);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (slave_initialised) {
+	table_start_staging_ranges(ERTS_ALC_T_SLAVE_MODULE_REFS,
+				   slave_range_tables);
+	IF_DEBUG(staging = 1);
+    }
+#endif
+}
+
+static void
+table_end_staging_ranges(ErtsAlcType_t alctr, struct ranges* r, int commit)
 {
     ErtsCodeIndex dst = erts_staging_code_ix();
 
@@ -111,8 +183,7 @@ erts_end_staging_ranges(int commit)
 	ErtsCodeIndex src = erts_active_code_ix();
 
 	erts_smp_atomic_add_nob(&mem_used, r[src].n);
-	r[dst].modules = erts_alloc(ERTS_ALC_T_MODULE_REFS,
-				    r[src].n * sizeof(Range));
+	r[dst].modules = erts_alloc(alctr, r[src].n * sizeof(Range));
 	r[dst].allocated = r[src].n;
 	n = 0;
 	for (i = 0; i < r[src].n; i++) {
@@ -130,7 +201,21 @@ erts_end_staging_ranges(int commit)
 }
 
 void
-erts_update_ranges(BeamInstr* code, Uint size)
+erts_end_staging_ranges(int commit)
+{
+    table_end_staging_ranges(ERTS_ALC_T_MODULE_REFS, range_tables, commit);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (slave_initialised) {
+	table_end_staging_ranges(ERTS_ALC_T_SLAVE_MODULE_REFS,
+				 slave_range_tables, commit);
+	IF_DEBUG(staging = 0);
+    }
+#endif
+}
+
+static void
+table_update_ranges(ErtsAlcType_t alctr, struct ranges* r, BeamInstr* code,
+		    Uint size)
 {
     ErtsCodeIndex dst = erts_staging_code_ix();
     ErtsCodeIndex src = erts_active_code_ix();
@@ -148,7 +233,7 @@ erts_update_ranges(BeamInstr* code, Uint size)
 	src = (src+1) % ERTS_NUM_CODE_IX;
 	if (r[src].modules) {
 	    erts_smp_atomic_add_nob(&mem_used, -r[src].allocated);
-	    erts_free(ERTS_ALC_T_MODULE_REFS, r[src].modules);
+	    erts_free(alctr, r[src].modules);
 	}
 	r[src] = r[dst];
 	r[dst].modules = 0;
@@ -159,8 +244,7 @@ erts_update_ranges(BeamInstr* code, Uint size)
     ASSERT(r[dst].modules == NULL);
     need = r[dst].allocated = r[src].n + 1;
     erts_smp_atomic_add_nob(&mem_used, need);
-    r[dst].modules = (Range *) erts_alloc(ERTS_ALC_T_MODULE_REFS,
-					  need * sizeof(Range));
+    r[dst].modules = (Range *) erts_alloc(alctr, need * sizeof(Range));
     n = 0;
     for (i = 0; i < r[src].n; i++) {
 	Range* rp = r[src].modules+i;
@@ -213,9 +297,29 @@ erts_update_ranges(BeamInstr* code, Uint size)
 }
 
 void
+erts_update_ranges(BeamInstr* code, Uint size)
+{
+    table_update_ranges(ERTS_ALC_T_MODULE_REFS, range_tables, code, size);
+}
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void
+slave_update_ranges(BeamInstr* code, Uint size)
+{
+    ASSERT(slave_initialised);
+    table_update_ranges(ERTS_ALC_T_SLAVE_MODULE_REFS, slave_range_tables,
+			code, size);
+}
+#endif
+
+void
 erts_remove_from_ranges(BeamInstr* code)
 {
-    Range* rp = find_range(code);
+    Range* rp = find_range(range_tables, code);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (slave_initialised && rp == 0)
+	rp = find_range(slave_range_tables, code);
+#endif
     erts_smp_atomic_set_nob(&rp->end, (erts_aint_t)rp->start);
 }
 
@@ -224,6 +328,14 @@ erts_ranges_sz(void)
 {
     return erts_smp_atomic_read_nob(&mem_used) * sizeof(Range);
 }
+
+#else
+void
+erts_init_ranges(void)
+{
+    /* Nothing to initialise from slave side. */
+}
+#endif /* !ERTS_SLAVE */
 
 /*
  * Find a function from the given pc and fill information in
@@ -244,7 +356,11 @@ erts_lookup_function_info(FunctionInfo* fi, BeamInstr* pc, int full_info)
     fi->current = NULL;
     fi->needed = 5;
     fi->loc = LINE_INVALID_LOCATION;
-    rp = find_range(pc);
+    rp = find_range(range_tables, pc);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (slave_initialised && rp == 0)
+	rp = find_range(slave_range_tables, pc);
+#endif
     if (rp == 0) {
 	return;
     }
@@ -271,12 +387,12 @@ erts_lookup_function_info(FunctionInfo* fi, BeamInstr* pc, int full_info)
 }
 
 static Range*
-find_range(BeamInstr* pc)
+find_range(struct ranges* r, BeamInstr* pc)
 {
     ErtsCodeIndex active = erts_active_code_ix();
     Range* low = r[active].modules;
     Range* high = low + r[active].n;
-    Range* mid = (Range *) erts_smp_atomic_read_nob(&r[active].mid);
+    Range* mid = READ_MID(r[active]);
 
     CHECK(&r[active]);
     while (low < high) {
@@ -285,7 +401,7 @@ find_range(BeamInstr* pc)
 	} else if (pc >= RANGE_END(mid)) {
 	    low = mid + 1;
 	} else {
-	    erts_smp_atomic_set_nob(&r[active].mid, (erts_aint_t) mid);
+	    WRITE_MID(r[active], mid);
 	    return mid;
 	}
 	mid = low + (high-low) / 2;

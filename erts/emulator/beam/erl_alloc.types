@@ -400,6 +400,7 @@ type	SLAVE_EXPORT_TABLE	SLAVE	CODE		slave_export_tab
 type	SLAVE_MSG_REF	SLAVE		PROCESSES	slave_msg_ref
 type	SLAVE_MODULE	SLAVE		CODE		slave_module_entry
 type	SLAVE_MODULE_TABLE	SLAVE	CODE		slave_module_tab
+type	SLAVE_MODULE_REFS	SLAVE	CODE		slave_module_refs
 
 # Fun entries are read by both emulators, so they need to be allocated with the
 # SLAVE allocator.

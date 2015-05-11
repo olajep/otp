@@ -22,8 +22,8 @@
 %% built-in functions that are used to manage the
 
 %% Built-in functions
--export([internal_spawn/3, print/1, boot/0, prepare_loading/2, finish_loading/1,
-	 module_loaded/1, host/0, state/0]).
+-export([internal_spawn/3, print/1, boot/0, prepare_loading/2, module_loaded/1,
+	 host/0, state/0]).
 
 -export([load_module/2, load_module/1, spawn/3]).
 
@@ -50,22 +50,13 @@ boot() ->
     erlang:nif_error(undefined).
 
 %% prepare_loading/2
--spec erlang:prepare_loading(Module, Code)
+-spec prepare_loading(Module, Code)
 			    -> PreparedCode | {error, Reason} when
       Module :: module(),
       Code :: binary(),
       PreparedCode :: binary(),
       Reason :: bad_file.
 prepare_loading(_Module, _Code) ->
-    erlang:nif_error(undefined).
-
-%% finish_loading/1
--spec erlang:finish_loading(PreparedCodeBinaries) -> ok | Error when
-      PreparedCodeBinaries :: [PreparedCodeBinary],
-      PreparedCodeBinary :: binary(),
-      ModuleList :: [module()],
-      Error :: {not_purged,ModuleList} | {on_load,ModuleList}.
-finish_loading(_List) ->
     erlang:nif_error(undefined).
 
 %% module_loaded/1
@@ -94,7 +85,7 @@ load_module(Mod, Code) ->
 	{error,_}=Error ->
 	    Error;
 	Bin when erlang:is_binary(Bin) ->
-	    case slave:finish_loading([Bin]) of
+	    case erlang:finish_loading([Bin]) of
 		ok ->
 		    {module,Mod};
 		{Error,[Mod]} ->

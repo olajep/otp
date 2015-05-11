@@ -671,9 +671,9 @@ typedef struct {
 
 Binary* erts_alloc_loader_state(void);
 void erts_set_loader_target(Binary *magic, const LoaderTarget *target,
-			    const TargetExportTab *tgt_export,
 			    ErtsAlcType_t code_alc_t,
 			    ErtsAlcType_t prepared_code_alc_t);
+const LoaderTarget *erts_get_loader_target(Binary* magic);
 Eterm erts_module_for_prepared_code(Binary* magic);
 Eterm erts_prepare_loading(Binary* loader_state,  Process *c_p,
 			   Eterm group_leader, Eterm* modp,
@@ -690,10 +690,6 @@ void erts_set_current_function(FunctionInfo* fi, BeamInstr* current);
 Eterm erts_module_info_0(Process* p, Eterm module);
 Eterm erts_module_info_1(Process* p, Eterm module, Eterm what);
 Eterm erts_make_stub_module(Process* p, Eterm Mod, Eterm Beam, Eterm Info);
-#ifdef ERTS_SLAVE_EMU_ENABLED
-Eterm slave_finish_loading(Binary* magic, Process* c_p,
-			   ErtsProcLocks c_p_locks, Eterm* modp);
-#endif
 
 /* beam_ranges.c */
 void erts_init_ranges(void);
@@ -703,6 +699,10 @@ void erts_update_ranges(BeamInstr* code, Uint size);
 void erts_remove_from_ranges(BeamInstr* code);
 UWord erts_ranges_sz(void);
 void erts_lookup_function_info(FunctionInfo* fi, BeamInstr* pc, int full_info);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void slave_init_ranges(void);
+void slave_update_ranges(BeamInstr* code, Uint size);
+#endif
 
 /* break.c */
 void init_break_handler(void);

@@ -612,7 +612,6 @@ bif slave:internal_spawn/3
 bif slave:print/1
 bif slave:boot/0
 bif slave:prepare_loading/2
-bif slave:finish_loading/1
 bif slave:module_loaded/1
 bif slave:host/0
 bif slave:state/0
