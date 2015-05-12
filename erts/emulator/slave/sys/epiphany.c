@@ -84,13 +84,13 @@ epiphany_workgroup_origin(unsigned *row, unsigned *col)
     }
 }
 
-#ifdef DEBUG
 int
 epiphany_in_dram(void *addr)
 {
     return 0x8e000000 <= (unsigned)addr && (unsigned)addr < 0x90000000;
 }
 
+#ifdef DEBUG
 int
 epiphany_sane_address(void *addrp)
 {

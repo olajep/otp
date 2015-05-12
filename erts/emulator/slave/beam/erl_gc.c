@@ -42,44 +42,33 @@ erts_garbage_collect(Process* p, int need, Eterm* objv, int nobj)
 {
     int ret;
     struct slave_syscall_gc *cmd = erts_alloc(ERTS_ALC_T_TMP, sizeof(*cmd));
+    Eterm *dram_objv;
+    int copy_objv = nobj != 0 && !epiphany_in_dram(objv);
+
+    if (copy_objv) {
+	dram_objv = erts_alloc(ERTS_ALC_T_TMP, nobj*sizeof(Eterm));
+	memcpy(dram_objv, objv, nobj*sizeof(Eterm));
+    } else {
+	dram_objv = objv;
+    }
 
     cmd->need = need;
-    ASSERT(epiphany_in_dram(objv));
-    cmd->objv = objv;
+    cmd->objv = dram_objv;
     cmd->nobj = nobj;
     slave_state_swapout(p, &cmd->state);
 
     erts_master_syscall(SLAVE_SYSCALL_GC, cmd);
+
+    if (copy_objv) {
+	memcpy(objv, dram_objv, nobj*sizeof(Eterm));
+	erts_free(ERTS_ALC_T_TMP, dram_objv);
+    }
 
     slave_state_swapin(p, &cmd->state);
     ret = cmd->ret;
     erts_free(ERTS_ALC_T_TMP, cmd);
     return ret;
 }
-
-/* /\* */
-/*  * Place all living data on a the new heap; deallocate any old heap. */
-/*  * Meant to be used by hibernate/3. */
-/*  *\/ */
-/* void */
-/* erts_garbage_collect_hibernate(Process* p) */
-/* { */
-/*     /\* STUB *\/ */
-/* } */
-
-/* void */
-/* erts_garbage_collect_literals(Process* p, Eterm* literals, */
-/* 			      Uint lit_size, */
-/* 			      struct erl_off_heap_header* oh) */
-/* { */
-/*     /\* STUB *\/ */
-/* } */
-
-/* Eterm */
-/* erts_gc_info_request(Process *c_p) */
-/* { */
-/*     /\* STUB *\/ */
-/* } */
 
 Eterm
 erts_gc_after_bif_call(Process* p, Eterm result, Eterm* regs, Uint arity)

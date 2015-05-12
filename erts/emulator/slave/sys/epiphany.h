@@ -32,8 +32,9 @@ void epiphany_workgroup_dimens(unsigned *rows, unsigned *cols);
 void epiphany_backtrace(void);
 void returning_abort(void);
 
-#ifdef DEBUG
 int epiphany_in_dram(void *);
+
+#ifdef DEBUG
 int epiphany_sane_address(void *);
 #endif
 
