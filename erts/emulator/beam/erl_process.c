@@ -6152,6 +6152,15 @@ schedule_process_sys_task(Process *p, erts_aint32_t state, Process *proxy)
 
     ASSERT(!(state & ERTS_PSFLG_PROXY));
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    /* ETODO */
+    if (state & ERTS_PSFLG_SLAVE) {
+	erts_printf(__FILE__ ":%d:%s(): Slaves can't run sys tasks yet, sorry!\n",
+		    __LINE__, __FUNCTION__);
+	goto cleanup;
+    }
+#endif
+
     while (1) {
 	erts_aint32_t e;
 	n = e = a;
