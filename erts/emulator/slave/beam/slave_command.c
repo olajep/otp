@@ -23,7 +23,7 @@
 #endif
 
 #include "sys.h"
-#include "erl_slave_command.h"
+#include "slave_command.h"
 #include "erl_bif_table.h"
 #include "epiphany.h"
 

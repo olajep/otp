@@ -3,7 +3,7 @@
 #endif
 
 #include "sys.h"
-#include "erl_fifo.h"
+#include "slave_fifo.h"
 
 /*
  * %CopyrightBegin%

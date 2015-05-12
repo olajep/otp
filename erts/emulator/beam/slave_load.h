@@ -20,7 +20,7 @@
 #ifndef _ERL_SLAVE_LOAD_H
 #  define _ERL_SLAVE_LOAD_H
 
-#include "erl_slave_command.h"
+#include "slave_command.h"
 
 #ifdef NO_JUMP_TABLE
 #define SlaveOp(Op) (Op)

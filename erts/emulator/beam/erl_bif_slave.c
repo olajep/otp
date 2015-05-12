@@ -33,8 +33,8 @@
 #  include "erl_binary.h"
 #  include "beam_bp.h"
 
-#  include "erl_slave_process.h"
-#  include "erl_slave_load.h"
+#  include "slave_process.h"
+#  include "slave_load.h"
 #endif
 
 BIF_RETTYPE slave_spawn_3(BIF_ALIST_3)

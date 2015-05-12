@@ -41,8 +41,8 @@
 #include "dtrace-wrapper.h"
 #include "erl_ptab.h"
 
-#include "erl_slave_process.h"
-#include "erl_slave_load.h"
+#include "slave_process.h"
+#include "slave_load.h"
 #include "slave_export.h"
 
 typedef struct {

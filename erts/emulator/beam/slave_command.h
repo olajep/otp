@@ -23,7 +23,7 @@
 
 #include "erl_term.h"
 #include "erl_process.h"
-#include "erl_fifo.h"
+#include "slave_fifo.h"
 #include "erl_bif_table.h"
 
 /*

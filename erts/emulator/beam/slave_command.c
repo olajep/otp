@@ -35,9 +35,9 @@
 
 #include "sys.h"
 #include "slave_syms.h"
-#include "erl_slave_io.h"
-#include "erl_slave_command.h"
-#include "erl_slave_load.h"
+#include "slave_io.h"
+#include "slave_command.h"
+#include "slave_load.h"
 
 static int num_slaves = 0;
 static struct slave *slaves;

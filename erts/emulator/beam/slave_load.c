@@ -27,7 +27,7 @@
 #include "erl_binary.h"
 #include "beam_load.h"
 #include "slave_export.h"
-#include "erl_slave_load.h"
+#include "slave_load.h"
 #include "slave_ix.h"
 #include "slave_module.h"
 

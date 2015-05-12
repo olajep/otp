@@ -52,7 +52,7 @@
 #endif
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
-#  include "erl_slave_io.h"
+#  include "slave_io.h"
 #endif
 
 #ifdef HAVE_SYS_RESOURCE_H

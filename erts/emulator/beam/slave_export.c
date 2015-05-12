@@ -25,7 +25,7 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "slave_export.h"
-#include "erl_slave_load.h"
+#include "slave_load.h"
 #include "hash.h"
 #include "slave.h"
 #include "slave_syms.h"

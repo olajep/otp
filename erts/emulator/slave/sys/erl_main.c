@@ -24,7 +24,7 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_printf_format.h"
-#include "erl_slave_io.h"
+#include "slave_io.h"
 #include "epiphany.h"
 #include <e-lib.h>
 

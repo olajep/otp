@@ -29,7 +29,7 @@
 #include "global.h"
 #include "erl_process_lock.h"
 #include "epiphany.h"
-#include "erl_slave_command.h"
+#include "slave_command.h"
 
 
 #define ERTS_DELAYED_WAKEUP_INFINITY (~(Uint64) 0)

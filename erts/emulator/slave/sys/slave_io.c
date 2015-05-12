@@ -24,8 +24,8 @@
 #include "sys.h"
 #include "erl_printf_format.h"
 #include "epiphany.h"
-#include "erl_slave_io.h"
-#include "erl_fifo.h"
+#include "slave_io.h"
+#include "slave_fifo.h"
 #include <e-lib.h>
 
 // erl_epiphany_sys.h redeclares write(int, const void*, size_t) with the same

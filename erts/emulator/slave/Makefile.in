@@ -527,9 +527,9 @@ OS_OBJS = \
 #	$(OBJDIR)/driver_tab.o \
 
 SLAVE_OBJS = \
-	$(OBJDIR)/erl_fifo.o \
-	$(OBJDIR)/erl_slave_io.o \
-	$(OBJDIR)/erl_slave_command.o
+	$(OBJDIR)/slave_fifo.o \
+	$(OBJDIR)/slave_io.o \
+	$(OBJDIR)/slave_command.o
 
 
 OS_OBJS += $(OBJDIR)/sys_float.o

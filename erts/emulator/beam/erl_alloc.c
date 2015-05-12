@@ -46,7 +46,7 @@
 #include "erl_check_io.h"
 #endif
 #ifdef ERTS_SLAVE_EMU_ENABLED
-#  include "erl_slave_alloc.h"
+#  include "slave_alloc.h"
 #endif
 
 #define GET_ERL_GF_ALLOC_IMPL

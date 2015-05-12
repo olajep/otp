@@ -39,11 +39,11 @@
 #include <sys/mman.h>
 
 #include "sys.h"
-#include "erl_fifo.h"
+#include "slave_fifo.h"
 #include "slave_syms.h"
-#include "erl_slave_io.h"
-#include "erl_slave_command.h"
-#include "erl_slave_alloc.h"
+#include "slave_io.h"
+#include "slave_command.h"
+#include "slave_alloc.h"
 
 static int map_shm(void);
 static int spoof_mmap(void);

@@ -28,7 +28,7 @@
 #  include "config.h"
 #endif
 #include "sys.h"
-#include "erl_slave_alloc.h"
+#include "slave_alloc.h"
 #include "erl_smp.h"
 
 #define ALIGN(X, A)				\
