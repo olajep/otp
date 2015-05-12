@@ -453,6 +453,7 @@ type	SLAVE_HEAP	SLAVE		PROCESSES	slave_heap
 type	SLAVE_EXPORT	SLAVE		CODE		slave_export_entry
 type	SLAVE_CODE	SLAVE		CODE		slave_code_data
 type	SLAVE_PREPARED_CODE	SLAVE	CODE		slave_prepared_code
+type	SLAVE_EXPORT_TABLE	SLAVE	CODE		slave_export_tab
 +endif
 
 # ----------------------------------------------------------------------------

@@ -27,6 +27,8 @@
 #include "slave_export.h"
 #include "erl_slave_load.h"
 #include "hash.h"
+#include "slave.h"
+#include "slave_syms.h"
 
 #define EXPORT_INITIAL_SIZE   4000
 #define EXPORT_LIMIT  (512*1024)
@@ -39,7 +41,8 @@
 #  define IF_DEBUG(x)
 #endif
 
-static IndexTable export_tables[ERTS_NUM_CODE_IX];  /* Active not locked */
+/* Active not locked */
+static IndexTable *export_tables = (void*)SLAVE_SYM_export_tables;
 
 static erts_smp_atomic_t total_entries_bytes;
 
@@ -53,7 +56,8 @@ erts_smp_mtx_t slave_export_staging_lock;
 /* extern BeamInstr* em_call_error_handler; */
 /* extern BeamInstr* em_call_traced_function; */
 
-struct export_entry
+/* These structures must match exactly those in export.c in the slave */
+struct SLAVE_SHARED_DATA export_entry
 {
     IndexSlot slot; /* MUST BE LOCATED AT TOP OF STRUCT!!! */
     Export* ep;
@@ -61,7 +65,7 @@ struct export_entry
 
 /* Helper struct that brings things together in one allocation
 */
-struct export_blob
+struct SLAVE_SHARED_DATA export_blob
 {
     Export exp;
     struct export_entry entryv[ERTS_NUM_CODE_IX];
@@ -71,7 +75,7 @@ struct export_blob
 
 /* Helper struct only used as template
 */
-struct export_templ
+struct SLAVE_SHARED_DATA export_templ
 {
     struct export_entry entry;
     Export exp;
@@ -189,7 +193,8 @@ slave_init_export_table(void)
     f.free = (HFREE_FUN) export_free;
 
     for (i=0; i<ERTS_NUM_CODE_IX; i++) {
-	erts_index_init(ERTS_ALC_T_EXPORT_TABLE, &export_tables[i], "slave_export_list",
+	erts_index_init(ERTS_ALC_T_SLAVE_EXPORT_TABLE, &export_tables[i],
+			"slave_export_list",
 			EXPORT_INITIAL_SIZE, EXPORT_LIMIT, f);
     }
 }
