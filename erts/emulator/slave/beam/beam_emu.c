@@ -4016,7 +4016,26 @@ next_catch(Process* c_p, Eterm *reg) {
 static void
 terminate_proc(Process* c_p, Eterm Value)
 {
-    EPIPHANY_STUB(terminate_proc);
+    /* Add a stacktrace if this is an error. */
+    if (GET_EXC_CLASS(c_p->freason) == EXTAG_ERROR) {
+        Value = add_stacktrace(c_p, Value, c_p->ftrace);
+    }
+    /* EXF_LOG is a primary exception flag */
+    if (c_p->freason & EXF_LOG) {
+	erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
+	erts_dsprintf(dsbufp, "Error in process %T ", c_p->common.id);
+	/* if (erts_is_alive) */
+	/*     erts_dsprintf(dsbufp, "on node %T ", erts_this_node->sysname); */
+	erts_dsprintf(dsbufp, "on slave %d ", epiphany_coreno());
+	erts_dsprintf(dsbufp,"with exit value: %0.*T\n", display_items, Value);
+	erts_send_error_to_logger(c_p->group_leader, dsbufp);
+    }
+    /*
+     * If we use a shared heap, the process will be garbage-collected.
+     * Must zero c_p->arity to indicate that there are no live registers.
+     */
+    c_p->arity = 0;
+    erts_do_exit_process(c_p, Value);
 }
 
 /*
