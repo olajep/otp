@@ -25,7 +25,7 @@
 -export([internal_spawn/3, print/1, boot/0, prepare_loading/2, module_loaded/1,
 	 host/0, state/0]).
 
--export([load_module/2, load_module/1, spawn/3]).
+-export([load_module/2, load_module/1, spawn/3, spawn/1]).
 
 -define(SERVER, slave_server).
 -define(CALL_TIMEOUT, 10000).
@@ -115,6 +115,16 @@ load_module(Mod) ->
 spawn(Module, Function, Args) ->
     call({spawn, Module, Function, Args}).
 
+%% Spawns with a fun
+-spec spawn(Fun) -> pid() when
+      Fun :: function().
+spawn(F) when erlang:is_function(F) ->
+    slave:spawn(erlang, apply, [F, []]);
+spawn({M,F}=MF) when erlang:is_atom(M), erlang:is_atom(F) ->
+    slave:spawn(erlang, apply, [MF, []]);
+spawn(F) ->
+    erlang:error(badarg, [F]).
+
 -spec call(tuple()) -> term().
 call(Cmd) ->
     %% We short-circuit here if the slave is offline, since the call will
@@ -122,5 +132,10 @@ call(Cmd) ->
     case slave:state() of
 	offline -> error(offline);
 	unavailable -> error(notsup);
-	_ -> slave_server:call(Cmd)
+        _ -> unwrap(slave_server:call(Cmd))
     end.
+
+unwrap({ok, V}) -> V;
+unwrap({throw, E}) -> throw(E);
+unwrap({error, E}) -> error(E);
+unwrap({exit, E}) -> exit(E).

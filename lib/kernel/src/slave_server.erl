@@ -121,7 +121,7 @@ prerequisite_modules() ->
 -spec handle_call(term(), term(), #state{}) -> {reply, Reply, #state{}} when
       Reply :: ok | pid().
 handle_call({spawn, M, F, A}, _From, State) ->
-    {reply, slave:internal_spawn(M,F,A), State};
+    {reply, wrap(fun() -> slave:internal_spawn(M,F,A) end), State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -140,3 +140,14 @@ terminate(_Reason, _State) ->
 -spec code_change(term(), #state{}, term()) -> {ok, #state{}}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+wrap(Fun) ->
+    try {ok, Fun()}
+    catch throw:E -> {throw, E};
+          error:E -> {error, E};
+          exit:E -> {exit, E}
+    end.
