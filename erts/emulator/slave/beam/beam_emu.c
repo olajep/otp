@@ -4026,7 +4026,7 @@ terminate_proc(Process* c_p, Eterm Value)
 	erts_dsprintf(dsbufp, "Error in process %T ", c_p->common.id);
 	/* if (erts_is_alive) */
 	/*     erts_dsprintf(dsbufp, "on node %T ", erts_this_node->sysname); */
-	erts_dsprintf(dsbufp, "on slave %d ", epiphany_coreno());
+	erts_dsprintf(dsbufp, "on slave %d ", erts_get_scheduler_data()->no - 1);
 	erts_dsprintf(dsbufp,"with exit value: %0.*T\n", display_items, Value);
 	erts_send_error_to_logger(c_p->group_leader, dsbufp);
     }
@@ -4288,6 +4288,24 @@ static struct StackTrace *get_trace_from_exc(Eterm exc) {
     }
 }
 
+static Eterm get_args_from_exc(Eterm exc) {
+    if (exc == NIL) {
+	return NIL;
+    } else {
+	ASSERT(is_list(exc));
+	return CAR(list_val(exc));
+    }
+}
+
+static int is_raised_exc(Eterm exc) {
+    if (exc == NIL) {
+        return 0;
+    } else {
+        ASSERT(is_list(exc));
+        return bignum_header_is_neg(*big_val(CDR(list_val(exc))));
+    }
+}
+
 /*
  * Creating a list with the argument registers
  */
@@ -4312,7 +4330,85 @@ make_arglist(Process* c_p, Eterm* reg, int a) {
  */
 Eterm
 build_stacktrace(Process* c_p, Eterm exc) {
-    EPIPHANY_STUB(build_stacktrace);
+    struct StackTrace* s;
+    Eterm  args;
+    int    depth;
+    FunctionInfo fi;
+    FunctionInfo* stk;
+    FunctionInfo* stkp;
+    Eterm res = NIL;
+    Uint heap_size;
+    Eterm* hp;
+    Eterm mfa;
+    int i;
+
+    if (! (s = get_trace_from_exc(exc))) {
+        return NIL;
+    }
+#ifdef HIPE
+    if (s->freason & EXF_NATIVE) {
+	return hipe_build_stacktrace(c_p, s);
+    }
+#endif
+    if (is_raised_exc(exc)) {
+	return get_args_from_exc(exc);
+    }
+
+    /*
+     * Find the current function. If the saved s->pc is null, then the
+     * saved s->current should already contain the proper value.
+     */
+    if (s->pc != NULL) {
+	erts_lookup_function_info(&fi, s->pc, 1);
+    } else if (GET_EXC_INDEX(s->freason) ==
+	       GET_EXC_INDEX(EXC_FUNCTION_CLAUSE)) {
+	erts_lookup_function_info(&fi, s->current, 1);
+    } else {
+	erts_set_current_function(&fi, s->current);
+    }
+
+    /*
+     * If fi.current is still NULL, default to the initial function
+     * (e.g. spawn_link(erlang, abs, [1])).
+     */
+    if (fi.current == NULL) {
+	erts_set_current_function(&fi, c_p->initial);
+	args = am_true; /* Just in case */
+    } else {
+	args = get_args_from_exc(exc);
+    }
+
+    /*
+     * Look up all saved continuation pointers and calculate
+     * needed heap space.
+     */
+    depth = s->depth;
+    stk = stkp = (FunctionInfo *) erts_alloc(ERTS_ALC_T_TMP,
+				      depth*sizeof(FunctionInfo));
+    heap_size = fi.needed + 2;
+    for (i = 0; i < depth; i++) {
+	erts_lookup_function_info(stkp, s->trace[i], 1);
+	if (stkp->current) {
+	    heap_size += stkp->needed + 2;
+	    stkp++;
+	}
+    }
+
+    /*
+     * Allocate heap space and build the stacktrace.
+     */
+    hp = HAlloc(c_p, heap_size);
+    while (stkp > stk) {
+	stkp--;
+	hp = erts_build_mfa_item(stkp, hp, am_true, &mfa);
+	res = CONS(hp, mfa, res);
+	hp += 2;
+    }
+    hp = erts_build_mfa_item(&fi, hp, args, &mfa);
+    res = CONS(hp, mfa, res);
+
+    erts_free(ERTS_ALC_T_TMP, (void *) stk);
+    return res;
 }
 
 static BeamInstr*

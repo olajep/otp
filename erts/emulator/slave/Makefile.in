@@ -518,7 +518,8 @@ RUN_OBJS = \
 	$(OBJDIR)/erl_process_lock.o	$(OBJDIR)/erl_thr_progress.o \
 	$(OBJDIR)/io.o			$(OBJDIR)/erl_time_sup.o \
 	$(OBJDIR)/erl_bif_table.o	$(OBJDIR)/erl_bif_wrap.o \
-	$(OBJDIR)/erl_bif_slave.o	$(OBJDIR)/export.o
+	$(OBJDIR)/erl_bif_slave.o	$(OBJDIR)/export.o \
+	$(OBJDIR)/beam_load.o
 
 OS_OBJS = \
 	$(OBJDIR)/elib_memmove.o	$(OBJDIR)/sys.o \

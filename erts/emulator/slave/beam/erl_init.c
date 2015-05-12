@@ -318,7 +318,7 @@ erl_init(int ncpu,
     // erl_drv_thr_init();
     // erts_init_async();
     // erts_init_io(port_tab_sz, port_tab_sz_ignore_files, legacy_port_tab);
-    // init_load();
+    erts_init_ranges(); // Instead of: // init_load();
     // erts_init_bif(); // ESTUB: bif
     // erts_init_bif_chksum();
     // erts_init_bif_binary();

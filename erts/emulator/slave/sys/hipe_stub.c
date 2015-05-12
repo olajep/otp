@@ -31,3 +31,9 @@ Process *hipe_mode_switch(Process *p, unsigned cmd, Eterm reg[])
     EPIPHANY_STUB_BT();
     return NULL;
 }
+
+Eterm hipe_build_stacktrace(Process *p, struct StackTrace *s)
+{
+    EPIPHANY_STUB_BT();
+    return THE_NON_VALUE;
+}
