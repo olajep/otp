@@ -146,7 +146,6 @@ class	SYSTEM		system_data
 
 type	PROC		FIXED_SIZE	PROCESSES	proc
 type	PORT		DRIVER		SYSTEM		port
-type	ATOM		LONG_LIVED	ATOM		atom_entry
 type	MODULE		LONG_LIVED	CODE		module_entry
 type	REG_PROC	STANDARD	PROCESSES	reg_proc
 type	LINK_LH		STANDARD	PROCESSES	link_lh
@@ -154,7 +153,6 @@ type	SUSPEND_MON	STANDARD	PROCESSES	suspend_monitor
 type	PEND_SUSPEND	SHORT_LIVED	PROCESSES	pending_suspend
 type	PROC_LIST	SHORT_LIVED	PROCESSES	proc_list
 type	SAVED_ESTACK	SHORT_LIVED	PROCESSES	saved_estack
-type	ATOM_TXT	LONG_LIVED	ATOM		atom_text
 type 	BEAM_REGISTER	EHEAP		PROCESSES	beam_register
 type	HEAP		EHEAP		PROCESSES	heap
 type	OLD_HEAP	EHEAP		PROCESSES	old_heap
@@ -172,7 +170,6 @@ type	REG_TABLE	STANDARD	SYSTEM		reg_tab
 type	FUN_TABLE	STANDARD	CODE		fun_tab
 type	DIST_TABLE	STANDARD	SYSTEM		dist_tab
 type	NODE_TABLE	STANDARD	SYSTEM		node_tab
-type	ATOM_TABLE	LONG_LIVED	ATOM		atom_tab
 type	EXPORT_TABLE	LONG_LIVED	CODE		export_tab
 type	MODULE_TABLE	LONG_LIVED	CODE		module_tab
 type	TAINT		LONG_LIVED	CODE		taint_list
@@ -407,11 +404,23 @@ type	SLAVE_MODULE_REFS	SLAVE	CODE		slave_module_refs
 #
 # There might not be any shared dram available. In that case, slave_alloc will
 # explicitly proxy allocation requests of type FUN_ENTRY to type
-# FUN_ENTRY_FALLBACK
-type	FUN_ENTRY	SLAVE		CODE		fun_entry
+# FUN_ENTRY_FALLBACK.
+#
+# The same applies for the atom allocators.
+
+type	FUN_ENTRY		SLAVE		CODE	fun_entry
 type	FUN_ENTRY_FALLBACK	LONG_LIVED	CODE	fun_entry_fallback
+type	ATOM			SLAVE		ATOM	atom_entry
+type	ATOM_TXT		SLAVE		ATOM	atom_text
+type	ATOM_TABLE		SLAVE		ATOM	atom_tab
+type	ATOM_FALLBACK		LONG_LIVED	ATOM	atom_entry_fallback
+type	ATOM_TXT_FALLBACK	LONG_LIVED	ATOM	atom_text_fallback
+type	ATOM_TABLE_FALLBACK	LONG_LIVED	ATOM	atom_tab_fallback
 +else
-type	FUN_ENTRY	LONG_LIVED	CODE		fun_entry
+type	FUN_ENTRY		LONG_LIVED	CODE	fun_entry
+type	ATOM			LONG_LIVED	ATOM	atom_entry
+type	ATOM_TXT		LONG_LIVED	ATOM	atom_text
+type	ATOM_TABLE		LONG_LIVED	ATOM	atom_tab
 +endif
 
 #

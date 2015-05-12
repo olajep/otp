@@ -184,6 +184,7 @@ erts_slave_init_load(struct master_command_setup *cmd)
     slave_code_ix_init();
     slave_catches_init();
     slave_init_ranges();
+    slave_init_atom_table();
 
     if (cmd->num_instructions != num_instructions) {
 	erl_exit(1, "Error: Got %d instructions from slave emulator, expected %d\n",

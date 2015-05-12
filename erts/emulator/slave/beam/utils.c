@@ -1306,6 +1306,29 @@ not_equal:
     return 0;
 }
 
+
+/* 
+ * Lexically compare two strings of bytes (string s1 length l1 and s2 l2).
+ *
+ *	s1 < s2	return -1
+ *	s1 = s2	return  0
+ *	s1 > s2 return +1
+ */
+static int cmpbytes(byte *s1, int l1, byte *s2, int l2)
+{
+    int i;
+    i = 0;
+    while((i < l1) && (i < l2)) {
+	if (s1[i] < s2[i]) return(-1);
+	if (s1[i] > s2[i]) return(1);
+	i++;
+    }
+    if (l1 < l2) return(-1);
+    if (l1 > l2) return(1);
+    return(0);
+}
+
+
 /*
  * Compare objects.
  * Returns 0 if equal, a negative value if a < b, or a positive number a > b.
@@ -1323,7 +1346,13 @@ not_equal:
 
 static int cmp_atoms(Eterm a, Eterm b)
 {
-    EPIPHANY_STUB_FUN();
+    Atom *aa = atom_tab(atom_val(a));
+    Atom *bb = atom_tab(atom_val(b));
+    int diff = aa->ord0 - bb->ord0;
+    if (diff)
+	return diff;
+    return cmpbytes(aa->name+3, aa->len-3,
+		    bb->name+3, bb->len-3);
 }
 
 #if !HALFWORD_HEAP

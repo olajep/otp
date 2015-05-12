@@ -28,11 +28,17 @@
 #include "hash.h"
 #include "atom.h"
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_syms.h"
+static IndexTable **slave_atom_table = (void*)SLAVE_SYM_erts_atom_table;
+#endif
+
 
 #define ATOM_SIZE  3000
 
-IndexTable erts_atom_table;	/* The index table */
+IndexTable *erts_atom_table;	/* The index table */
 
+#ifndef ERTS_SLAVE
 #include "erl_smp.h"
 
 static erts_smp_rwmtx_t atom_table_lock;
@@ -72,7 +78,7 @@ void atom_info(int to, void *to_arg)
     int lock = !ERTS_IS_CRASH_DUMPING;
     if (lock)
 	atom_read_lock();
-    index_info(to, to_arg, &erts_atom_table);
+    index_info(to, to_arg, erts_atom_table);
 #ifdef ERTS_ATOM_PUT_OPS_STAT
     erts_print(to, to_arg, "atom_put_ops: %ld\n",
 	       erts_smp_atomic_read_nob(&atom_put_ops));
@@ -243,6 +249,7 @@ erts_atom_put(const byte *name, int len, ErtsAtomEncoding enc, int trunc)
     Sint no_latin1_chars;
     Atom a;
     int aix;
+    ASSERT(erts_atom_table);
 
 #ifdef ERTS_ATOM_PUT_OPS_STAT
     erts_smp_atomic_inc_nob(&atom_put_ops);
@@ -290,7 +297,7 @@ erts_atom_put(const byte *name, int len, ErtsAtomEncoding enc, int trunc)
     a.len = tlen;
     a.name = (byte *) text;
     atom_read_lock();
-    aix = index_get(&erts_atom_table, (void*) &a);
+    aix = index_get(erts_atom_table, (void*) &a);
     atom_read_unlock();
     if (aix >= 0) {
 	/* Already in table no need to verify it */
@@ -330,7 +337,7 @@ erts_atom_put(const byte *name, int len, ErtsAtomEncoding enc, int trunc)
     a.latin1_chars = (Sint16) no_latin1_chars;
     a.name = (byte *) text;
     atom_write_lock();
-    aix = index_put(&erts_atom_table, (void*) &a);
+    aix = index_put(erts_atom_table, (void*) &a);
     atom_write_unlock();
     return make_atom(aix);
 }
@@ -350,7 +357,7 @@ int atom_table_size(void)
     if (lock)
 	atom_read_lock();
 #endif
-    ret = erts_atom_table.entries;
+    ret = erts_atom_table->entries;
 #ifdef ERTS_SMP
     if (lock)
 	atom_read_unlock();
@@ -366,7 +373,8 @@ int atom_table_sz(void)
     if (lock)
 	atom_read_lock();
 #endif
-    ret = index_table_sz(&erts_atom_table);
+    ASSERT(erts_atom_table);
+    ret = index_table_sz(erts_atom_table);
 #ifdef ERTS_SMP
     if (lock)
 	atom_read_unlock();
@@ -381,6 +389,7 @@ erts_atom_get(const char *name, int len, Eterm* ap, ErtsAtomEncoding enc)
     Atom a;
     int i;
     int res;
+    ASSERT(erts_atom_table);
 
     a.len = (Sint16) len;
     a.name = (byte *)name;
@@ -389,7 +398,7 @@ erts_atom_get(const char *name, int len, Eterm* ap, ErtsAtomEncoding enc)
 	a.len = (Sint16) len;
     }
     atom_read_lock();
-    i = index_get(&erts_atom_table, (void*) &a);
+    i = index_get(erts_atom_table, (void*) &a);
     res = i < 0 ? 0 : (*ap = make_atom(i), 1);
     atom_read_unlock();
     return res;
@@ -441,13 +450,16 @@ init_atom_table(void)
     atom_space = 0;
     text_list = NULL;
 
-    erts_index_init(ERTS_ALC_T_ATOM_TABLE, &erts_atom_table,
+    erts_atom_table = erts_alloc(ERTS_ALC_T_ATOM_TABLE, sizeof(IndexTable));
+    erts_index_init(ERTS_ALC_T_ATOM_TABLE, erts_atom_table,
 		    "atom_tab", ATOM_SIZE, erts_atom_table_size, f);
     more_atom_space();
 
     /* Ordinary atoms */
     for (i = 0; erl_atom_names[i] != 0; i++) {
+#if defined(DEBUG) || !defined(ERTS_SLAVE_EMU_ENABLED)
 	int ix;
+#endif
 	a.len = strlen(erl_atom_names[i]);
 	a.latin1_chars = a.len;
 	a.name = (byte*)erl_atom_names[i];
@@ -458,24 +470,57 @@ init_atom_table(void)
 	    ASSERT((a.name[ix] & 0x80) == 0);
 	}
 #endif
-	ix = index_put(&erts_atom_table, (void*) &a);
+#if defined(DEBUG) || !defined(ERTS_SLAVE_EMU_ENABLED)
+	ix =
+#endif
+	    index_put(erts_atom_table, (void*) &a);
+	/*
+	 * Static strings (like those in erl_atom_names) do not share memory
+         * address between master and slave. Thus, this optimisation breaks the
+	 * slave emulator.
+	 */
+#ifndef ERTS_SLAVE_EMU_ENABLED
 	atom_text_pos -= a.len;
 	atom_space -= a.len;
 	atom_tab(ix)->name = (byte*)erl_atom_names[i];
+#endif
     }
 }
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void
+slave_init_atom_table(void)
+{
+    *slave_atom_table = erts_atom_table;
+}
+#endif
 
 void
 dump_atoms(int to, void *to_arg)
 {
-    int i = erts_atom_table.entries;
+    int i = erts_atom_table->entries;
 
     /*
      * Print out the atom table starting from the end.
      */
     while (--i >= 0) {
-	if (erts_index_lookup(&erts_atom_table, i)) {
+	if (erts_index_lookup(erts_atom_table, i)) {
 	    erts_print(to, to_arg, "%T\n", make_atom(i));
 	}
     }
 }
+
+#else
+int atom_table_size(void)
+{
+    /*
+     * We can't grab the rwlock from here; there's no choice but to read it
+     * anyway. Since it is only used for sanity testing (in erl_printf_term),
+     * the only effect reading a torn write would cause is an erroneous <bad
+     * atom index: ...> printed.
+     */
+    int ret = erts_atom_table->entries;
+    ASSERT(ret > 0 && ret <= ATOM_LIMIT);
+    return ret;
+}
+#endif

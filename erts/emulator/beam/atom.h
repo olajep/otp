@@ -51,9 +51,13 @@ typedef struct atom {
     Sint16 latin1_chars; /* 0-255 if atom can be encoded in latin1; otherwise, -1 */
     int ord0;        /* ordinal value of first 3 bytes + 7 bits */
     byte* name;      /* name of atom */
-} Atom;
+} SLAVE_SHARED_DATA Atom;
 
-extern IndexTable erts_atom_table;
+/*
+ * In the slave we "cheat" and put erts_atom_table in utils.o rather than create
+ * an otherwise empty atom.o.
+ */
+extern IndexTable *erts_atom_table;
 
 ERTS_GLB_INLINE Atom* atom_tab(Uint i);
 ERTS_GLB_INLINE int erts_is_atom_utf8_bytes(byte *text, size_t len, Eterm term);
@@ -63,7 +67,8 @@ ERTS_GLB_INLINE int erts_is_atom_str(const char *str, Eterm term, int is_latin1)
 ERTS_GLB_INLINE Atom*
 atom_tab(Uint i)
 {
-    return (Atom *) erts_index_lookup(&erts_atom_table, i);
+    ASSERT(erts_atom_table);
+    return (Atom *) erts_index_lookup(erts_atom_table, i);
 }
 
 ERTS_GLB_INLINE int erts_is_atom_utf8_bytes(byte *text, size_t len, Eterm term)
@@ -126,10 +131,14 @@ typedef enum {
  */
 #define ERTS_IS_ATOM_STR(LSTR, TERM) \
   (erts_is_atom_utf8_bytes((byte *) LSTR, sizeof(LSTR) - 1, (TERM)))
+
+int atom_table_size(void);	/* number of elements */
+
+#ifndef ERTS_SLAVE
+
 #define ERTS_DECL_AM(S) Eterm AM_ ## S = am_atom_put(#S, sizeof(#S) - 1)
 #define ERTS_INIT_AM(S) AM_ ## S = am_atom_put(#S, sizeof(#S) - 1)
 
-int atom_table_size(void);	/* number of elements */
 int atom_table_sz(void);	/* table size in bytes, excluding stored objects */
 
 Eterm am_atom_put(const char*, int); /* ONLY 7-bit ascii! */
@@ -141,5 +150,9 @@ void atom_info(int, void *);
 void dump_atoms(int, void *);
 int erts_atom_get(const char* name, int len, Eterm* ap, ErtsAtomEncoding enc);
 void erts_atom_get_text_space_sizes(Uint *reserved, Uint *used);
-#endif
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void slave_init_atom_table(void);
+#endif
+#endif /* !ERTS_SLAVE */
+#endif

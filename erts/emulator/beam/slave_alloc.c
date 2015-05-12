@@ -172,6 +172,27 @@ void erl_slave_alloc_fallback(void)
 
 #define SEGMENT(Ptr) ((struct segment *)((Ptr) - HEADER_SZ))
 
+/*
+ * Takes an allocator number and returns the type of the assigned fallback
+ * allocator.
+ */
+static ErtsAlcType_t
+fallback(ErtsAlcType_t n)
+{
+    switch(n) {
+    case ERTS_ALC_T2N(ERTS_ALC_T_FUN_ENTRY):
+	return ERTS_ALC_T_FUN_ENTRY_FALLBACK;
+    case ERTS_ALC_T2N(ERTS_ALC_T_ATOM):
+	return ERTS_ALC_T_ATOM_FALLBACK;
+    case ERTS_ALC_T2N(ERTS_ALC_T_ATOM_TXT):
+	return ERTS_ALC_T_ATOM_TXT_FALLBACK;
+    case ERTS_ALC_T2N(ERTS_ALC_T_ATOM_TABLE):
+	return ERTS_ALC_T_ATOM_TABLE_FALLBACK;
+    default:
+	erl_exit(1, "Bad allocator number %d in slave_alloc", n);
+    }
+}
+
 void *
 erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 {
@@ -181,8 +202,7 @@ erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 #endif
     void *res = NULL;
     if (fallback_enabled) {
-	ASSERT(t == ERTS_ALC_T2N(ERTS_ALC_T_FUN_ENTRY));
-	return erts_alloc_fnf(ERTS_ALC_T_FUN_ENTRY_FALLBACK, size);
+	return erts_alloc_fnf(fallback(t), size);
     }
 
     LOCK();
@@ -218,8 +238,7 @@ void
 erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
 {
     if (fallback_enabled) {
-	ASSERT(t == ERTS_ALC_T2N(ERTS_ALC_T_FUN_ENTRY));
-	erts_free(ERTS_ALC_T_FUN_ENTRY_FALLBACK, ptr);
+	erts_free(fallback(t), ptr);
     } else {
 	struct segment *seg = SEGMENT(ptr);
 	LOCK();
@@ -231,8 +250,7 @@ erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
 
 void *erl_slave_realloc(ErtsAlcType_t t, void *extra, void *block, Uint size) {
     if (fallback_enabled) {
-	ASSERT(t == ERTS_ALC_T2N(ERTS_ALC_T_FUN_ENTRY));
-	return erts_realloc(ERTS_ALC_T_FUN_ENTRY_FALLBACK, block, size);
+	return erts_realloc(fallback(t), block, size);
     } else {
 	void *newblock = erl_slave_alloc(t, extra, size);
 	Uint tocopy = MIN(SEGMENT(block)->length, size);
