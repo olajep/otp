@@ -29,6 +29,7 @@
 #endif
 
 extern const LoaderTarget *loader_target_slave;
+extern const TargetExportTab export_table_slave;
 extern BifEntry slave_bif_table[];
 extern Export *slave_bif_export[];
 

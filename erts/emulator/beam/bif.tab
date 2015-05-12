@@ -611,6 +611,8 @@ bif erlang:fun_info_mfa/1
 bif slave:spawn/3
 bif slave:print/1
 bif slave:boot/0
+bif slave:prepare_loading/2
+bif slave:finish_loading/1
 
 #
 # Obsolete
