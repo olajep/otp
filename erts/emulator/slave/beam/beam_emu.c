@@ -846,6 +846,7 @@ static Eterm add_stacktrace(Process* c_p, Eterm Value, Eterm exc);
 static void save_stacktrace(Process* c_p, BeamInstr* pc, Eterm* reg,
 			     BifFunction bf, Eterm args);
 static struct StackTrace * get_trace_from_exc(Eterm exc);
+static Eterm make_arglist(Process* c_p, Eterm* reg, int a);
 
 void
 init_emulator(void)
@@ -4103,14 +4104,157 @@ expand_error_value(Process* c_p, Uint freason, Eterm Value) {
 static void
 save_stacktrace(Process* c_p, BeamInstr* pc, Eterm* reg, BifFunction bf,
 		Eterm args) {
-    EPIPHANY_STUB(save_stacktrace);
+    struct StackTrace* s;
+    int sz;
+    int depth = erts_backtrace_depth;    /* max depth (never negative) */
+    if (depth > 0) {
+	/* There will always be a current function */
+	depth --;
+    }
+
+    /* Create a container for the exception data */
+    sz = (offsetof(struct StackTrace, trace) + sizeof(BeamInstr *)*depth
+          + sizeof(Eterm) - 1) / sizeof(Eterm);
+    s = (struct StackTrace *) HAlloc(c_p, 1 + sz);
+    /* The following fields are inside the bignum */
+    s->header = make_pos_bignum_header(sz);
+    s->freason = c_p->freason;
+    s->depth = 0;
+
+    /*
+     * If the failure was in a BIF other than 'error', 'exit' or
+     * 'throw', find the bif-table index and save the argument
+     * registers by consing up an arglist.
+     */
+    if (bf != NULL && bf != error_1 && bf != error_2 &&
+	bf != exit_1 && bf != throw_1) {
+        int i;
+	int a = 0;
+	for (i = 0; i < BIF_SIZE; i++) {
+	    if (bf == bif_table[i].f || bf == bif_table[i].traced) {
+		Export *ep = bif_export[i];
+		s->current = ep->code;
+	        a = bif_table[i].arity;
+		break;
+	    }
+	}
+	if (i >= BIF_SIZE) {
+	    /* 
+	     * The Bif does not really exist (no BIF entry).  It is a
+	     * TRAP and traps are called through apply_bif, which also
+	     * sets c_p->current (luckily).
+	     * OR it is a NIF called by call_nif where current is also set.
+	     */
+	    ASSERT(c_p->current);
+	    s->current = c_p->current;
+	    a = s->current[2];
+	}
+	/* Save first stack entry */
+	ASSERT(pc);
+	if (depth > 0) {
+	    s->trace[s->depth++] = pc;
+	    depth--;
+	}
+	/* Save second stack entry if CP is valid and different from pc */
+	if (depth > 0 && c_p->cp != 0 && c_p->cp != pc) {
+	    s->trace[s->depth++] = c_p->cp - 1;
+	    depth--;
+	}
+	s->pc = NULL;
+	args = make_arglist(c_p, reg, a); /* Overwrite CAR(c_p->ftrace) */
+    } else {
+	s->current = c_p->current;
+        /* 
+	 * For a function_clause error, the arguments are in the beam
+	 * registers, c_p->cp is valid, and c_p->current is set.
+	 */
+	if ( (GET_EXC_INDEX(s->freason)) ==
+	     (GET_EXC_INDEX(EXC_FUNCTION_CLAUSE)) ) {
+	    int a;
+	    ASSERT(s->current);
+	    a = s->current[2];
+	    args = make_arglist(c_p, reg, a); /* Overwrite CAR(c_p->ftrace) */
+	    /* Save first stack entry */
+	    ASSERT(c_p->cp);
+	    if (depth > 0) {
+		s->trace[s->depth++] = c_p->cp - 1;
+		depth--;
+	    }
+	    s->pc = NULL; /* Ignore pc */
+	} else {
+	    if (depth > 0 && c_p->cp != 0 && c_p->cp != pc) {
+		s->trace[s->depth++] = c_p->cp - 1;
+		depth--;
+	    }
+	    s->pc = pc;
+	}
+    }
+
+    /* Package args and stack trace */
+    {
+	Eterm *hp;
+	hp = HAlloc(c_p, 2);
+	c_p->ftrace = CONS(hp, args, make_big((Eterm *) s));
+    }
+
+    /* Save the actual stack trace */
+    erts_save_stacktrace(c_p, s, depth);
 }
 
-/* void */
-/* erts_save_stacktrace(Process* p, struct StackTrace* s, int depth) */
-/* { */
-/*     EPIPHANY_STUB(erts_save_stacktrace); */
-/* } */
+void
+erts_save_stacktrace(Process* p, struct StackTrace* s, int depth)
+{
+    if (depth > 0) {
+	Eterm *ptr;
+	BeamInstr *prev = s->depth ? s->trace[s->depth-1] : NULL;
+	BeamInstr i_return_trace = beam_return_trace[0];
+	BeamInstr i_return_to_trace = beam_return_to_trace[0];
+
+	/*
+	 * Traverse the stack backwards and add all unique continuation
+	 * pointers to the buffer, up to the maximum stack trace size.
+	 * 
+	 * Skip trace stack frames.
+	 */
+	ptr = p->stop;
+	if (ptr < STACK_START(p) &&
+	    (is_not_CP(*ptr)|| (*cp_val(*ptr) != i_return_trace &&
+				*cp_val(*ptr) != i_return_to_trace)) &&
+	    p->cp) {
+	    /* Cannot follow cp here - code may be unloaded */
+	    BeamInstr *cpp = p->cp;
+	    if (cpp == beam_exception_trace || cpp == beam_return_trace) {
+		/* Skip return_trace parameters */
+		ptr += 2;
+	    } else if (cpp == beam_return_to_trace) {
+		/* Skip return_to_trace parameters */
+		ptr += 1;
+	    }
+	}
+	while (ptr < STACK_START(p) && depth > 0) {
+	    if (is_CP(*ptr)) {
+		if (*cp_val(*ptr) == i_return_trace) {
+		    /* Skip stack frame variables */
+		    do ++ptr; while (is_not_CP(*ptr));
+		    /* Skip return_trace parameters */
+		    ptr += 2;
+		} else if (*cp_val(*ptr) == i_return_to_trace) {
+		    /* Skip stack frame variables */
+		    do ++ptr; while (is_not_CP(*ptr));
+		} else {
+		    BeamInstr *cp = cp_val(*ptr);
+		    if (cp != prev) {
+			/* Record non-duplicates only */
+			prev = cp;
+			s->trace[s->depth++] = cp - 1;
+			depth--;
+		    }
+		    ptr++;
+		}
+	    } else ptr++;
+	}
+    }
+}
 
 /*
  * Getting the relevant fields from the term pointed to by ftrace
@@ -4123,6 +4267,21 @@ static struct StackTrace *get_trace_from_exc(Eterm exc) {
 	ASSERT(is_list(exc));
 	return (struct StackTrace *) big_val(CDR(list_val(exc)));
     }
+}
+
+/*
+ * Creating a list with the argument registers
+ */
+static Eterm
+make_arglist(Process* c_p, Eterm* reg, int a) {
+    Eterm args = NIL;
+    Eterm* hp = HAlloc(c_p, 2*a);
+    while (a > 0) {
+        args = CONS(hp, reg[a-1], args);
+	hp += 2;
+	a--;
+    }
+    return args;
 }
 
 /*
