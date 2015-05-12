@@ -30,6 +30,8 @@
 
 #include "erl_alloc.h"
 
+#include "slave.h"
+
 typedef unsigned long HashValue;
 
 typedef int (*HCMP_FUN)(void*, void*);
@@ -46,7 +48,7 @@ typedef struct hash_bucket
 {
     struct hash_bucket* next;	/* Next bucket */
     HashValue hvalue;           /* Store hash value for get, rehash */
-} HashBucket;
+} SLAVE_SHARED_DATA HashBucket;
 
 typedef struct hash_functions
 {
@@ -54,7 +56,7 @@ typedef struct hash_functions
     HCMP_FUN cmp;
     HALLOC_FUN alloc;
     HFREE_FUN free;
-} HashFunctions;
+} SLAVE_SHARED_DATA HashFunctions;
 
 typedef struct {
   char *name;
@@ -62,7 +64,7 @@ typedef struct {
   int   used;
   int   objs;
   int   depth;
-} HashInfo;
+} SLAVE_SHARED_DATA HashInfo;
 
 typedef struct hash
 {
@@ -76,7 +78,7 @@ typedef struct hash
     int ix;              /* Size index in size table */
     int used;		 /* Number of slots used */
     HashBucket** bucket; /* Vector of bucket pointers (objects) */
-} Hash;
+} SLAVE_SHARED_DATA Hash;
 
 Hash* hash_new(ErtsAlcType_t, char*, int, HashFunctions);
 Hash* hash_init(ErtsAlcType_t, Hash*, char*, int, HashFunctions);
