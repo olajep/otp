@@ -148,6 +148,7 @@ tpr_wait(void __attribute__((unused)) *unused)
 
 static ErtsSchedulerData command_thead_esd;
 static volatile int slave_has_started_flag = 0;
+static erts_smp_mtx_t freeq_mtx;
 
 static void *
 command_thread_loop(void __attribute__((unused)) *arg)
@@ -191,20 +192,22 @@ command_thread_loop(void __attribute__((unused)) *arg)
     /* Since we're paranoid, we make sure all the cores are ready. */
     erts_await_slave_init();
 
+    erts_smp_mtx_init(&freeq_mtx, "slave_command_freeq_mtx");
     num_slaves = slave_workgroup.num_cores;
     slaves = calloc(num_slaves, sizeof(struct slave));
     for (y = 0; y < slave_workgroup.rows; y++) {
 	for (x = 0; x < slave_workgroup.cols; x++) {
 	    struct slave_command_buffers *buffers = alloc_slave_buffers();
+	    int ix = x + y * slave_workgroup.rows;
 #ifdef DEBUG
 	    ssize_t ret =
 #endif
 	    e_write(&slave_workgroup, y, x, buffers_addr,
 		    &buffers, sizeof(buffers));
 	    ASSERT(ret == 4);
-	    slaves[x + y * slave_workgroup.rows].buffers = buffers;
-	    slaves[x + y * slave_workgroup.rows].dummy_esdp
-		= alloc_slave_scheduler_data();
+	    slaves[ix].buffers = buffers;
+	    slaves[ix].dummy_esdp = alloc_slave_scheduler_data();
+	    erts_smp_mtx_init(&slaves[ix].command_mtx, "slave_command_mtx");
 	}
     }
 
@@ -246,11 +249,17 @@ struct slave*
 erts_slave_pop_free(void)
 {
     int slave;
+    erts_smp_mtx_lock(&freeq_mtx);
     for (slave = 0; slave < num_slaves; slave++)
 	if (slaves[slave].available) break;
-    if (slave == num_slaves) return NULL;
-    slaves[slave].available = 0;
-    return slaves + slave;
+    if (slave == num_slaves) {
+	erts_smp_mtx_unlock(&freeq_mtx);
+	return NULL;
+    } else {
+	slaves[slave].available = 0;
+	erts_smp_mtx_unlock(&freeq_mtx);
+	return slaves + slave;
+    }
 }
 
 void
@@ -263,8 +272,12 @@ void
 erts_slave_send_command(struct slave *slave, enum slave_command code,
 			const void *data, size_t size)
 {
+    /* ETODO: Use linked list intermediary buffer so we never need to block
+     * here. */
+    erts_smp_mtx_lock(&slave->command_mtx);
     erts_fifo_write_blocking(&slave->buffers->slave, &code, sizeof(code));
     erts_fifo_write_blocking(&slave->buffers->slave, data, size);
+    erts_smp_mtx_unlock(&slave->command_mtx);
 }
 
 void *

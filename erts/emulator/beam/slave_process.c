@@ -459,8 +459,7 @@ erts_slave_queue_message(Process* receiver, ErtsProcLocks *receiver_locks,
     cmd.receiver = receiver->common.id;
     erts_slave_send_command(slave, SLAVE_COMMAND_MESSAGE, &cmd, sizeof(cmd));
 
-    erts_smp_atomic32_inc_nob(&slave->msgq_len);
-    return erts_smp_atomic32_read_nob(&slave->msgq_len);
+    return erts_smp_atomic32_inc_read_nob(&slave->msgq_len);
 }
 
 void
