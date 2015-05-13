@@ -56,11 +56,6 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 
     erts_master_syscall(SLAVE_SYSCALL_BIF, cmd);
 
-    ASSERT(epiphany_in_dram(cmd->state.heap));
-    ASSERT(epiphany_in_dram(cmd->state.htop));
-    ASSERT(epiphany_in_dram(cmd->state.hend));
-    ASSERT(epiphany_in_dram(cmd->state.stop));
-
     slave_state_swapin(p, &cmd->state);
 
     result = cmd->result;

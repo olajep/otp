@@ -30,7 +30,7 @@
 #endif
 
 void
-slave_state_swapin(Process *p, struct slave_state *state)
+slave_state_swapin(Process *p, const struct slave_state *state)
 {
 #if defined(ERTS_SMP) && !defined(ERTS_SLAVE)
     /* Lock the main lock so lc is happy */
@@ -57,6 +57,9 @@ slave_state_swapin(Process *p, struct slave_state *state)
 #define X(T, F) p->F = state->F
     SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
 #undef X
+
+    if (state->msg_last_is_first) p->msg.last = &p->msg.first;
+    if (state->msg_save_is_first) p->msg.save = &p->msg.first;
 }
 
 void
@@ -65,6 +68,9 @@ slave_state_swapout(Process *p, struct slave_state *state)
 #define X(T, F) state->F = p->F
     SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
 #undef X
+
+    state->msg_last_is_first = p->msg.last == &p->msg.first;
+    state->msg_save_is_first = p->msg.save == &p->msg.first;
 
 #if defined(ERTS_SMP) && !defined(ERTS_SLAVE)
     erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);

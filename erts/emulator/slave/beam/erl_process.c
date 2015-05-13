@@ -554,7 +554,12 @@ erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
     p->initial[INITIAL_FUN] = cmd->func;
     p->initial[INITIAL_ARI] = (Uint) arity;
 
-    p->off_heap = cmd->off_heap;
+    /* slave_state_swapin locks the main lock, so we unlock it to prevent a
+     * deadlock (no other thread can reach p, because there's no process table,
+     * so we're safe to do this). */
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
+    slave_state_swapin(p, &cmd->state);
+    erts_smp_proc_lock(p, ERTS_PROC_LOCKS_ALL_MINOR);
 
 #ifdef HIPE
     hipe_init_process(&p->hipe);
@@ -562,13 +567,9 @@ erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
     hipe_init_process_smp(&p->hipe_smp);
 #endif
 #endif
-    p->heap = cmd->heap;
     p->old_hend = p->old_htop = p->old_heap = NULL;
     p->high_water = p->heap;
     p->gen_gcs = 0;
-    p->stop = p->hend = cmd->stop;
-    p->htop = cmd->htop;
-    p->heap_sz = cmd->stop - cmd->heap;
     p->catches = 0;
 
     p->bin_vheap_sz     = p->min_vheap_size;
@@ -577,8 +578,6 @@ erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
     p->bin_vheap_mature = 0;
 
     p->sys_task_qs = NULL;
-
-    /* No need to initialize p->fcalls. */
 
     p->current = p->initial+INITIAL_MOD;
 
@@ -595,9 +594,6 @@ erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
     p->arg_reg[2] = cmd->args;
     p->arity = 3;
 
-    p->fvalue = NIL;
-    p->freason = EXC_NULL;
-    p->ftrace = NIL;
     p->reds = 0;
 
 #ifdef ERTS_SMP
@@ -612,18 +608,12 @@ erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
     p->nodes_monitors = NULL;
     p->suspend_monitors = NULL;
 
-    p->msg.first = NULL;
-    p->msg.last = &p->msg.first;
-    p->msg.save = &p->msg.first;
-    p->msg.len = 0;
 #ifdef ERTS_SMP
     p->msg_inq.first = NULL;
     p->msg_inq.last = &p->msg_inq.first;
     p->msg_inq.len = 0;
 #endif
     p->u.bif_timers = NULL;
-    p->mbuf = NULL;
-    p->mbuf_sz = 0;
     p->psd = NULL;
     p->dictionary = NULL;
     p->seq_trace_lastcnt = 0;
@@ -640,24 +630,6 @@ erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
 #ifdef DEBUG
     p->last_old_htop = NULL;
 #endif
-
-    /*
-     * Check if this process should be initially linked to its parent.
-     */
-
-    /* if (so->flags & SPO_LINK) { */
-    /* 	if (IS_TRACED(parent)) { */
-    /* 	    if (ERTS_TRACE_FLAGS(parent) & (F_TRACE_SOL|F_TRACE_SOL1)) { */
-    /* 		ERTS_TRACE_FLAGS(p) |= (ERTS_TRACE_FLAGS(parent)&TRACEE_FLAGS); */
-    /* 		ERTS_TRACER_PROC(p) = ERTS_TRACER_PROC(parent); /\*maybe steal*\/ */
-
-    /* 		if (ERTS_TRACE_FLAGS(parent) & F_TRACE_SOL1) {/\*maybe override*\/ */
-    /* 		    ERTS_TRACE_FLAGS(p) &= ~(F_TRACE_SOL1 | F_TRACE_SOL); */
-    /* 		    ERTS_TRACE_FLAGS(parent) &= ~(F_TRACE_SOL1 | F_TRACE_SOL); */
-    /* 		} */
-    /* 	    } */
-    /* 	} */
-    /* } */
 
 #ifdef ERTS_SMP
     p->scheduler_data = NULL;
@@ -890,7 +862,7 @@ erts_cleanup_empty_process(Process* p)
 {
     /* We only check fields that are known to be used... */
 
-    // erts_cleanup_offheap(&p->off_heap); // ESTUB
+    /* off_heap is cleaned up in master */
     p->off_heap.first = NULL;
     p->off_heap.overhead = 0;
 
@@ -912,8 +884,6 @@ erts_cleanup_empty_process(Process* p)
 static void
 delete_process(Process* p)
 {
-    ErlMessage* mp;
-
     VERBOSE(DEBUG_PROCESSES, ("Removing process: %T\n",p->common.id));
 
     /* Cleanup psd */
@@ -921,14 +891,7 @@ delete_process(Process* p)
     if (p->psd)
 	erts_free(ERTS_ALC_T_PSD, p->psd);
 
-    /* Clean binaries and funs */
-    /* erts_cleanup_offheap(&p->off_heap); */
-
-    /*
-     * The mso list should not be used anymore, but if it is, make sure that
-     * we'll notice.
-     */
-    p->off_heap.first = (void *) 0x8DEFFACD;
+    /* off_heap is cleaned up by the master */
 
     if (p->arg_reg != p->def_arg_reg) {
 	erts_free(ERTS_ALC_T_ARG_REG, p->arg_reg);
@@ -937,31 +900,14 @@ delete_process(Process* p)
     /*
      * Free all pending message buffers.
      */
-    if (p->mbuf != NULL) {	
+    if (p->mbuf != NULL) {
 	free_message_buffer(p->mbuf);
+	p->mbuf = NULL;
     }
 
     /* erts_erase_dicts(p); */
 
-    /* free all pending messages */
-    mp = p->msg.first;
-    while(mp != NULL) {
-	ErlMessage* next_mp = mp->next;
-	if (mp->data.attached) {
-	    if (is_value(mp->m[0]))
-		free_message_buffer(mp->data.heap_frag);
-	    else {
-		if (is_not_nil(mp->m[1])) {
-		    ErlHeapFragment *heap_frag;
-		    heap_frag = (ErlHeapFragment *) mp->data.dist_ext->ext_endp;
-		    erts_cleanup_offheap(&heap_frag->off_heap);
-		}
-		erts_free_dist_ext_copy(mp->data.dist_ext);
-	    }
-	}
-	free_message(mp);
-	mp = next_mp;
-    }
+    /* pending messages are freed by the master */
 
     ASSERT(!p->nodes_monitors);
     ASSERT(!p->suspend_monitors);
@@ -1178,6 +1124,7 @@ Process *schedule(Process *p, int calls)
 	    ready_arg = erts_alloc(ERTS_ALC_T_TMP,
 				   sizeof(struct slave_syscall_ready));
 	    ready_arg->exit_reason = p->fvalue;
+	    slave_state_swapout(p, &ready_arg->state);
 
 #ifdef ERTS_SMP
 	    ASSERT(esdp->free_process == p);

@@ -44,9 +44,12 @@ struct slave_state {
 #define X(T, N) T N
     SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
 #undef X
+    /* These are boolean flags. To not screw up alignment, we use int for
+     * them. */
+    int msg_last_is_first, msg_save_is_first;
 } SLAVE_SHARED_DATA;
 
-void slave_state_swapin(Process *p, struct slave_state *state);
+void slave_state_swapin(Process *p, const struct slave_state *state);
 void slave_state_swapout(Process *p, struct slave_state *state);
 
 #endif /* !ERL_SLAVE_STATE_H__ */

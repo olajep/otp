@@ -368,7 +368,8 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     p->fp_exception = 0;
 #endif
 
-    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
+    /* The main lock is unlocked by state_slave_swapout below. */
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL_MINOR);
     res = p->common.id;
     p->slave_host = slave;
 
@@ -381,11 +382,8 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     cmd->mod = mod;
     cmd->func = func;
     cmd->id = p->common.id;
-    cmd->heap = p->heap;
-    cmd->htop = p->htop;
-    cmd->stop = p->stop;
     cmd->args = p->arg_reg[2];
-    cmd->off_heap = p->off_heap;
+    slave_state_swapout(p, &cmd->state);
     slave->c_p = p;
     erts_slave_finish_syscall(slave, SLAVE_SYSCALL_READY);
 
@@ -409,13 +407,16 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
 int
 slave_do_exit_process(Process* p, struct slave_syscall_ready *arg)
 {
-#ifdef ERTS_SMP
-    /* Lock the main lock so lc is happy */
-    erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
-#endif
     /* The exit process might yield. If it has, it has set the EXITING flag
      * first. It sets the FREE flag when it finishes. */
-    if (erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_EXITING) {
+    int is_exiting = erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_EXITING;
+    if (!is_exiting)
+	slave_state_swapin(p, &arg->state);
+#ifdef ERTS_SMP
+    /* slave_state_swaping grabs the lock the first time */
+    else erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
+#endif
+    if (is_exiting) {
 	erts_continue_exit_process(p);
     } else {
 	erts_do_exit_process(p, arg->exit_reason);
