@@ -702,9 +702,312 @@ erts_bld_atom_2uint_3tup_list(Uint **hpp, Uint *szp, Sint length,
 ** and binaries, and produces better hash values. 
 */
 
+/* some prime numbers just above 2 ^ 28 */
+
+#define FUNNY_NUMBER1  268440163
+#define FUNNY_NUMBER2  268439161
+#define FUNNY_NUMBER3  268435459
+#define FUNNY_NUMBER4  268436141
+#define FUNNY_NUMBER5  268438633
+#define FUNNY_NUMBER6  268437017
+#define FUNNY_NUMBER7  268438039
+#define FUNNY_NUMBER8  268437511
+#define FUNNY_NUMBER9  268439627
+#define FUNNY_NUMBER10 268440479
+#define FUNNY_NUMBER11 268440577
+#define FUNNY_NUMBER12 268440581
+#define FUNNY_NUMBER13 268440593
+#define FUNNY_NUMBER14 268440611
+
+static Uint32
+hash_binary_bytes(Eterm bin, Uint sz, Uint32 hash)
+{
+    byte* ptr;
+    Uint bitoffs;
+    Uint bitsize;
+
+    ERTS_GET_BINARY_BYTES(bin, ptr, bitoffs, bitsize);
+    if (bitoffs == 0) {
+	while (sz--) {
+	    hash = hash*FUNNY_NUMBER1 + *ptr++;
+	}
+	if (bitsize > 0) {
+	    byte b = *ptr;
+
+	    b >>= 8 - bitsize;
+	    hash = (hash*FUNNY_NUMBER1 + b) * FUNNY_NUMBER12 + bitsize;
+	}
+    } else {
+	Uint previous = *ptr++;
+	Uint b;
+	Uint lshift = bitoffs;
+	Uint rshift = 8 - lshift;
+	    
+	while (sz--) {
+	    b = (previous << lshift) & 0xFF;
+	    previous = *ptr++;
+	    b |= previous >> rshift;
+	    hash = hash*FUNNY_NUMBER1 + b;
+	}
+	if (bitsize > 0) {
+	    b = (previous << lshift) & 0xFF;
+	    previous = *ptr++;
+	    b |= previous >> rshift;
+	    
+	    b >>= 8 - bitsize;
+	    hash = (hash*FUNNY_NUMBER1 + b) * FUNNY_NUMBER12 + bitsize;
+	}
+    }
+    return hash;
+}
+
 Uint32 make_hash(Eterm term_arg)
 {
-    EPIPHANY_STUB_FUN();
+    DECLARE_WSTACK(stack);
+    Eterm term = term_arg;
+    Eterm hash = 0;
+    unsigned op;
+
+    /* Must not collide with the real tag_val_def's: */
+#define MAKE_HASH_TUPLE_OP 0x11
+#define MAKE_HASH_TERM_ARRAY_OP 0x12
+#define MAKE_HASH_CDR_PRE_OP 0x13
+#define	MAKE_HASH_CDR_POST_OP 0x14
+
+    /* 
+    ** Convenience macro for calculating a bytewise hash on an unsigned 32 bit 
+    ** integer.
+    ** If the endianess is known, we could be smarter here, 
+    ** but that gives no significant speedup (on a sparc at least) 
+    */
+#define UINT32_HASH_STEP(Expr, Prime1)					\
+	do {								\
+	    Uint32 x = (Uint32) (Expr);	                                \
+	    hash =							\
+		(((((hash)*(Prime1) + (x & 0xFF)) * (Prime1) + 	        \
+		((x >> 8) & 0xFF)) * (Prime1) + 			\
+		((x >> 16) & 0xFF)) * (Prime1) + 			\
+		 (x >> 24));						\
+	} while(0)
+
+#define UINT32_HASH_RET(Expr, Prime1, Prime2)   	\
+	UINT32_HASH_STEP(Expr, Prime1);			\
+        hash = hash * (Prime2);				\
+        break		 
+		
+	    
+    /* 
+     * Significant additions needed for real 64 bit port with larger fixnums.
+     */	    
+
+    /* 
+     * Note, for the simple 64bit port, not utilizing the 
+     * larger word size this function will work without modification. 
+     */
+tail_recur:
+    op = tag_val_def(term);
+
+    for (;;) {
+    switch (op) {
+    case NIL_DEF:
+	hash = hash*FUNNY_NUMBER3 + 1;
+	break;
+    case ATOM_DEF:
+	hash = hash*FUNNY_NUMBER1 + 
+	    (atom_tab(atom_val(term))->slot.bucket.hvalue);
+	break;
+    case SMALL_DEF:
+	{
+	    Sint y1 = signed_val(term);
+	    Uint y2 = y1 < 0 ? -(Uint)y1 : y1;
+
+	    UINT32_HASH_STEP(y2, FUNNY_NUMBER2);
+#if defined(ARCH_64) && !HALFWORD_HEAP
+	    if (y2 >> 32)
+		UINT32_HASH_STEP(y2 >> 32, FUNNY_NUMBER2);
+#endif
+	    hash *= (y1 < 0 ? FUNNY_NUMBER4 : FUNNY_NUMBER3);
+	    break;
+	}
+    case BINARY_DEF:
+	{
+	    Uint sz = binary_size(term);
+
+	    hash = hash_binary_bytes(term, sz, hash);
+	    hash = hash*FUNNY_NUMBER4 + sz;
+	    break;
+	}
+    case EXPORT_DEF:
+	{
+	    Export* ep = *((Export **) (export_val(term) + 1));
+
+	    hash = hash * FUNNY_NUMBER11 + ep->code[2];
+	    hash = hash*FUNNY_NUMBER1 + 
+		(atom_tab(atom_val(ep->code[0]))->slot.bucket.hvalue);
+	    hash = hash*FUNNY_NUMBER1 + 
+		(atom_tab(atom_val(ep->code[1]))->slot.bucket.hvalue);
+	    break;
+	}
+
+    case FUN_DEF:
+	{
+	    ErlFunThing* funp = (ErlFunThing *) fun_val(term);
+	    Uint num_free = funp->num_free;
+
+	    hash = hash * FUNNY_NUMBER10 + num_free;
+	    hash = hash*FUNNY_NUMBER1 + 
+		(atom_tab(atom_val(funp->fe->module))->slot.bucket.hvalue);
+	    hash = hash*FUNNY_NUMBER2 + funp->fe->old_index;
+	    hash = hash*FUNNY_NUMBER2 + funp->fe->old_uniq;
+	    if (num_free > 0) {
+		if (num_free > 1) {
+		    WSTACK_PUSH3(stack, (UWord) &funp->env[1], (num_free-1), MAKE_HASH_TERM_ARRAY_OP);
+		}
+		term = funp->env[0];
+		goto tail_recur;
+	    }
+	    break;
+	}
+    case PID_DEF:
+	UINT32_HASH_RET(internal_pid_number(term),FUNNY_NUMBER5,FUNNY_NUMBER6);
+    case EXTERNAL_PID_DEF:
+	UINT32_HASH_RET(external_pid_number(term),FUNNY_NUMBER5,FUNNY_NUMBER6);
+    case PORT_DEF:
+	/* ETODO: We can't look up the port in the port table. Should we
+	 * therefore do all hashing via syscalls? It seems such a waste. */
+	EPIPHANY_STUB_BT();
+    case EXTERNAL_PORT_DEF:
+	UINT32_HASH_RET(external_port_number(term),FUNNY_NUMBER9,FUNNY_NUMBER10);
+    case REF_DEF:
+	UINT32_HASH_RET(internal_ref_numbers(term)[0],FUNNY_NUMBER9,FUNNY_NUMBER10);
+    case EXTERNAL_REF_DEF:
+	UINT32_HASH_RET(external_ref_numbers(term)[0],FUNNY_NUMBER9,FUNNY_NUMBER10);
+    case FLOAT_DEF: 
+	{
+	    FloatDef ff;
+	    GET_DOUBLE(term, ff);
+	    hash = hash*FUNNY_NUMBER6 + (ff.fw[0] ^ ff.fw[1]);
+	    break;
+	}
+
+    case MAKE_HASH_CDR_PRE_OP:
+	term = (Eterm) WSTACK_POP(stack);
+	if (is_not_list(term)) {
+	    WSTACK_PUSH(stack, (UWord) MAKE_HASH_CDR_POST_OP);
+	    goto tail_recur;
+	}
+	/* fall through */
+    case LIST_DEF:
+	{
+	    Eterm* list = list_val(term);
+	    while(is_byte(*list)) {
+		/* Optimization for strings. 
+		** Note that this hash is different from a 'small' hash,
+		** as multiplications on a Sparc is so slow.
+		*/
+		hash = hash*FUNNY_NUMBER2 + unsigned_val(*list);
+		
+		if (is_not_list(CDR(list))) {
+		    WSTACK_PUSH(stack, MAKE_HASH_CDR_POST_OP);
+		    term = CDR(list);
+		    goto tail_recur;
+		}		
+		list = list_val(CDR(list));
+	    }
+	    WSTACK_PUSH2(stack, CDR(list), MAKE_HASH_CDR_PRE_OP);
+	    term = CAR(list);
+	    goto tail_recur;
+	}
+    case MAKE_HASH_CDR_POST_OP:
+	hash *= FUNNY_NUMBER8;
+	break;
+
+    case BIG_DEF:
+	/* Note that this is the exact same thing as the hashing of smalls.*/
+	{
+	    Eterm* ptr  = big_val(term);
+	    Uint n = BIG_SIZE(ptr);
+	    Uint k = n-1;
+	    ErtsDigit d;
+	    int is_neg = BIG_SIGN(ptr);
+	    Uint i;
+	    int j;
+
+	    for (i = 0; i < k; i++)  {
+		d = BIG_DIGIT(ptr, i);
+		for(j = 0; j < sizeof(ErtsDigit); ++j) {
+		    hash = (hash*FUNNY_NUMBER2) + (d & 0xff);
+		    d >>= 8;
+		}
+	    }
+	    d = BIG_DIGIT(ptr, k);
+	    k = sizeof(ErtsDigit);
+#if defined(ARCH_64) && !HALFWORD_HEAP
+	    if (!(d >> 32))
+		k /= 2;
+#endif
+	    for(j = 0; j < (int)k; ++j) {
+		hash = (hash*FUNNY_NUMBER2) + (d & 0xff);
+		d >>= 8;
+	    }
+	    hash *= is_neg ? FUNNY_NUMBER4 : FUNNY_NUMBER3;
+	    break;
+	}	
+    case MAP_DEF:
+	{
+	    map_t *mp = (map_t *)map_val(term);
+	    int size  = map_get_size(mp);
+	    Eterm *ks = map_get_keys(mp);
+	    Eterm *vs = map_get_values(mp);
+
+	    /* Use a prime with size to remedy some of
+	     * the {} and <<>> hash problems */
+	    hash = hash*FUNNY_NUMBER13 + FUNNY_NUMBER14 + size;
+	    if (size == 0)
+		break;
+
+	    /* push values first */
+	    WSTACK_PUSH3(stack, (UWord)vs, (UWord) size, MAKE_HASH_TERM_ARRAY_OP);
+	    WSTACK_PUSH3(stack, (UWord)ks, (UWord) size, MAKE_HASH_TERM_ARRAY_OP);
+	    break;
+	}
+    case TUPLE_DEF: 
+	{
+	    Eterm* ptr = tuple_val(term);
+	    Uint arity = arityval(*ptr);
+
+	    WSTACK_PUSH3(stack, (UWord) arity, (UWord)(ptr+1), (UWord) arity);
+	    op = MAKE_HASH_TUPLE_OP;	    
+	}/*fall through*/
+    case MAKE_HASH_TUPLE_OP:
+    case MAKE_HASH_TERM_ARRAY_OP:
+	{
+	    Uint i = (Uint) WSTACK_POP(stack);
+	    Eterm* ptr = (Eterm*) WSTACK_POP(stack);
+	    if (i != 0) {
+		term = *ptr;
+		WSTACK_PUSH3(stack, (UWord)(ptr+1), (UWord) i-1, (UWord) op);
+		goto tail_recur;
+	    }
+	    if (op == MAKE_HASH_TUPLE_OP) {
+		Uint32 arity = (Uint32) WSTACK_POP(stack);
+		hash = hash*FUNNY_NUMBER9 + arity;
+	    }
+	    break;
+	}    
+	
+    default:
+	erl_exit(1, "Invalid tag in make_hash(0x%X,0x%X)\n", term, op);
+	return 0;
+      }
+      if (WSTACK_ISEMPTY(stack)) break;
+      op = WSTACK_POP(stack);
+    }
+    DESTROY_WSTACK(stack);
+    return hash;
+
+#undef UINT32_HASH_STEP
+#undef UINT32_HASH_RET
 }
 
 
@@ -770,12 +1073,673 @@ block_hash(byte *k, unsigned length, Uint32 initval)
 Uint32
 make_hash2(Eterm term)
 {
-    EPIPHANY_STUB_FUN();
+    Uint32 hash;
+    Uint32 hash_xor_keys   = 0;
+    Uint32 hash_xor_values = 0;
+    DeclareTmpHeapNoproc(tmp_big,2);
+
+/* (HCONST * {2, ..., 16}) mod 2^32 */
+#define HCONST_2 0x3c6ef372UL
+#define HCONST_3 0xdaa66d2bUL
+#define HCONST_4 0x78dde6e4UL
+#define HCONST_5 0x1715609dUL
+#define HCONST_6 0xb54cda56UL
+#define HCONST_7 0x5384540fUL
+#define HCONST_8 0xf1bbcdc8UL
+#define HCONST_9 0x8ff34781UL
+#define HCONST_10 0x2e2ac13aUL
+#define HCONST_11 0xcc623af3UL
+#define HCONST_12 0x6a99b4acUL
+#define HCONST_13 0x08d12e65UL
+#define HCONST_14 0xa708a81eUL
+#define HCONST_15 0x454021d7UL
+#define HCONST_16 0xe3779b90UL
+
+#define HASH_MAP_TAIL (_make_header(1,_TAG_HEADER_REF))
+#define HASH_MAP_KEY  (_make_header(2,_TAG_HEADER_REF))
+#define HASH_MAP_VAL  (_make_header(3,_TAG_HEADER_REF))
+
+#define UINT32_HASH_2(Expr1, Expr2, AConst)       \
+         do {                                     \
+	    Uint32 a,b;                           \
+	    a = AConst + (Uint32) (Expr1);        \
+	    b = AConst + (Uint32) (Expr2);        \
+	    MIX(a,b,hash);                        \
+	 } while(0)
+
+#define UINT32_HASH(Expr, AConst) UINT32_HASH_2(Expr, 0, AConst)
+
+#define SINT32_HASH(Expr, AConst)                 \
+	do {					  \
+            Sint32 y = (Sint32) (Expr);           \
+	    if (y < 0) {			  \
+		UINT32_HASH(-y, AConst);          \
+                /* Negative numbers are unnecessarily mixed twice. */ \
+	    } 					  \
+	    UINT32_HASH(y, AConst);          	  \
+	} while(0)
+
+#define IS_SSMALL28(x) (((Uint) (((x) >> (28-1)) + 1)) < 2)
+    /* Optimization. Simple cases before declaration of estack. */
+    if (primary_tag(term) == TAG_PRIMARY_IMMED1) {
+	switch (term & _TAG_IMMED1_MASK) {
+	case _TAG_IMMED1_IMMED2:
+	    switch (term & _TAG_IMMED2_MASK) {
+	    case _TAG_IMMED2_ATOM:
+		/* Fast, but the poor hash value should be mixed. */
+		return atom_tab(atom_val(term))->slot.bucket.hvalue;
+	    }
+	    break;
+	case _TAG_IMMED1_SMALL:
+	  {
+	      Sint x = signed_val(term);
+
+	      if (SMALL_BITS > 28 && !IS_SSMALL28(x)) {
+		  term = small_to_big(x, tmp_big);
+		  break;
+	      }
+	      hash = 0;
+	      SINT32_HASH(x, HCONST);
+	      return hash;
+	  }
+	}
+    };
+    {
+    Eterm tmp;
+    DECLARE_ESTACK(s);
+
+    UseTmpHeapNoproc(2);
+    hash = 0;
+    for (;;) {
+	switch (primary_tag(term)) {
+	case TAG_PRIMARY_LIST:
+	{
+	    int c = 0;
+	    Uint32 sh = 0;
+	    Eterm* ptr = list_val(term);
+	    while (is_byte(*ptr)) {
+		/* Optimization for strings. */
+		sh = (sh << 8) + unsigned_val(*ptr);
+		if (c == 3) {
+		    UINT32_HASH(sh, HCONST_4);
+		    c = sh = 0;
+		} else {
+		    c++;
+		}
+		term = CDR(ptr);
+		if (is_not_list(term))
+		    break;
+		ptr = list_val(term);
+	    }
+	    if (c > 0)
+		UINT32_HASH(sh, HCONST_4);
+	    if (is_list(term)) {
+		term = *ptr;
+		tmp = *++ptr;
+		ESTACK_PUSH(s, tmp);	    
+	    }
+	}
+	break;
+	case TAG_PRIMARY_BOXED:
+	{
+	    Eterm hdr = *boxed_val(term);
+	    ASSERT(is_header(hdr));
+	    switch (hdr & _TAG_HEADER_MASK) {
+	    case ARITYVAL_SUBTAG:
+	    {
+		int i;
+		int arity = header_arity(hdr);
+		Eterm* elem = tuple_val(term);
+		UINT32_HASH(arity, HCONST_9);
+		if (arity == 0) /* Empty tuple */ 
+		    goto hash2_common;
+		for (i = arity; i >= 1; i--) {
+		    tmp = elem[i];
+		    ESTACK_PUSH(s, tmp);
+		}
+		goto hash2_common;
+	    }
+	    break;
+	    case MAP_SUBTAG:
+	    {
+		map_t *mp = (map_t *)map_val(term);
+		int i;
+		int size  = map_get_size(mp);
+		Eterm *ks = map_get_keys(mp);
+		Eterm *vs = map_get_values(mp);
+		UINT32_HASH(size, HCONST_16);
+		if (size == 0) {
+		    goto hash2_common;
+		}
+		ESTACK_PUSH(s, hash_xor_values);
+		ESTACK_PUSH(s, hash_xor_keys);
+		ESTACK_PUSH(s, hash);
+		ESTACK_PUSH(s, HASH_MAP_TAIL);
+		hash = 0;
+		hash_xor_keys = 0;
+		hash_xor_values = 0;
+		for (i = size - 1; i >= 0; i--) {
+		    tmp = vs[i];
+		    ESTACK_PUSH(s, HASH_MAP_VAL);
+		    ESTACK_PUSH(s, tmp);
+		}
+		/* We do not want to expose the tuple representation.
+		 * Do not push the keys as a tuple.
+		 */
+		for (i = size - 1; i >= 0; i--) {
+		    tmp = ks[i];
+		    ESTACK_PUSH(s, HASH_MAP_KEY);
+		    ESTACK_PUSH(s, tmp);
+		}
+		goto hash2_common;
+	    }
+	    break;
+	    case EXPORT_SUBTAG:
+	    {
+		Export* ep = *((Export **) (export_val(term) + 1));
+
+		UINT32_HASH_2
+		    (ep->code[2], 
+		     atom_tab(atom_val(ep->code[0]))->slot.bucket.hvalue,
+		     HCONST);
+		UINT32_HASH
+		    (atom_tab(atom_val(ep->code[1]))->slot.bucket.hvalue,
+		     HCONST_14);
+		goto hash2_common;
+	    }
+
+	    case FUN_SUBTAG:
+	    {
+		ErlFunThing* funp = (ErlFunThing *) fun_val(term);
+		Uint num_free = funp->num_free;
+
+		UINT32_HASH_2
+		    (num_free, 
+		     atom_tab(atom_val(funp->fe->module))->slot.bucket.hvalue,
+		     HCONST);
+		UINT32_HASH_2
+		    (funp->fe->old_index, funp->fe->old_uniq, HCONST);
+		if (num_free == 0) {
+		    goto hash2_common;
+		} else {
+		    Eterm* bptr = funp->env + num_free - 1;
+		    while (num_free-- > 1) {
+			term = *bptr--;
+			ESTACK_PUSH(s, term);
+		    }
+		    term = *bptr;
+		}
+	    }
+	    break;
+	    case REFC_BINARY_SUBTAG:
+	    case HEAP_BINARY_SUBTAG:
+	    case SUB_BINARY_SUBTAG:
+	    {
+		byte* bptr;
+		unsigned sz = binary_size(term);
+		Uint32 con = HCONST_13 + hash;
+		Uint bitoffs;
+		Uint bitsize;
+
+		ERTS_GET_BINARY_BYTES(term, bptr, bitoffs, bitsize);
+		if (sz == 0 && bitsize == 0) {
+		    hash = con;
+		} else {
+		    if (bitoffs == 0) {
+			hash = block_hash(bptr, sz, con);
+			if (bitsize > 0) {
+			    UINT32_HASH_2(bitsize, (bptr[sz] >> (8 - bitsize)),
+					  HCONST_15);
+			}
+		    } else {
+			byte* buf = (byte *) erts_alloc(ERTS_ALC_T_TMP,
+							sz + (bitsize != 0));
+			erts_copy_bits(bptr, bitoffs, 1, buf, 0, 1, sz*8+bitsize);
+			hash = block_hash(buf, sz, con);
+			if (bitsize > 0) {
+			    UINT32_HASH_2(bitsize, (buf[sz] >> (8 - bitsize)),
+					  HCONST_15);
+			}
+			erts_free(ERTS_ALC_T_TMP, (void *) buf);
+		    }
+		}
+		goto hash2_common;
+	    }
+	    break;
+	    case POS_BIG_SUBTAG:
+	    case NEG_BIG_SUBTAG:
+	    {
+		Eterm* ptr = big_val(term);
+		Uint i = 0;
+		Uint n = BIG_SIZE(ptr);
+		Uint32 con = BIG_SIGN(ptr) ? HCONST_10 : HCONST_11;
+#if D_EXP == 16
+		do {
+		    Uint32 x, y;
+		    x = i < n ? BIG_DIGIT(ptr, i++) : 0;
+		    x += (Uint32)(i < n ? BIG_DIGIT(ptr, i++) : 0) << 16;
+		    y = i < n ? BIG_DIGIT(ptr, i++) : 0;
+		    y += (Uint32)(i < n ? BIG_DIGIT(ptr, i++) : 0) << 16;
+		    UINT32_HASH_2(x, y, con);
+		} while (i < n);
+#elif D_EXP == 32
+		do {
+		    Uint32 x, y;
+		    x = i < n ? BIG_DIGIT(ptr, i++) : 0;
+		    y = i < n ? BIG_DIGIT(ptr, i++) : 0;
+		    UINT32_HASH_2(x, y, con);
+		} while (i < n);
+#elif D_EXP == 64
+		do {
+		    Uint t;
+		    Uint32 x, y;
+		    t = i < n ? BIG_DIGIT(ptr, i++) : 0;
+		    x = t & 0xffffffff;
+		    y = t >> 32;
+		    UINT32_HASH_2(x, y, con);
+		} while (i < n);
+#else
+#error "unsupported D_EXP size"
+#endif
+		goto hash2_common;
+	    }
+	    break;
+	    case REF_SUBTAG:
+		/* All parts of the ref should be hashed. */
+		UINT32_HASH(internal_ref_numbers(term)[0], HCONST_7);
+		goto hash2_common;
+		break;
+	    case EXTERNAL_REF_SUBTAG:
+		/* All parts of the ref should be hashed. */
+		UINT32_HASH(external_ref_numbers(term)[0], HCONST_7);
+		goto hash2_common;
+		break;
+	    case EXTERNAL_PID_SUBTAG:
+		/* Only 15 bits are hashed. */
+		UINT32_HASH(external_pid_number(term), HCONST_5);
+		goto hash2_common;
+	    case EXTERNAL_PORT_SUBTAG:
+		/* Only 15 bits are hashed. */
+		UINT32_HASH(external_port_number(term), HCONST_6);
+		goto hash2_common;
+	    case FLOAT_SUBTAG:
+	    {
+		FloatDef ff;
+		GET_DOUBLE(term, ff);
+#if defined(WORDS_BIGENDIAN) || defined(DOUBLE_MIDDLE_ENDIAN)
+		UINT32_HASH_2(ff.fw[0], ff.fw[1], HCONST_12);
+#else
+		UINT32_HASH_2(ff.fw[1], ff.fw[0], HCONST_12);
+#endif
+		goto hash2_common;
+	    }
+	    break;
+		    
+	    default:
+		erl_exit(1, "Invalid tag in make_hash2(0x%X)\n", term);
+	    }
+	}
+	break;
+	case TAG_PRIMARY_IMMED1:
+	    switch (term & _TAG_IMMED1_MASK) {
+	    case _TAG_IMMED1_PID:
+		/* Only 15 bits are hashed. */
+		UINT32_HASH(internal_pid_number(term), HCONST_5);
+		goto hash2_common;
+	    case _TAG_IMMED1_PORT:
+		/* ETODO: We can't look up the port in the port table. Should we
+		 * therefore do all hashing via syscalls? It seems such a
+		 * waste. */
+		EPIPHANY_STUB_BT();
+	    case _TAG_IMMED1_IMMED2:
+		switch (term & _TAG_IMMED2_MASK) {
+		case _TAG_IMMED2_ATOM:
+		    if (hash == 0)
+			/* Fast, but the poor hash value should be mixed. */
+			hash = atom_tab(atom_val(term))->slot.bucket.hvalue;
+		    else
+			UINT32_HASH(atom_tab(atom_val(term))->slot.bucket.hvalue,
+				    HCONST_3);
+		    goto hash2_common;
+		case _TAG_IMMED2_NIL:
+		    if (hash == 0)
+			hash = 3468870702UL;
+		    else
+			UINT32_HASH(NIL_DEF, HCONST_2);
+		    goto hash2_common;
+		default:
+		    erl_exit(1, "Invalid tag in make_hash2(0x%X)\n", term);
+		}
+	    case _TAG_IMMED1_SMALL:
+	      {
+		  Sint x = signed_val(term);
+
+		  if (SMALL_BITS > 28 && !IS_SSMALL28(x)) {
+		      term = small_to_big(x, tmp_big);
+		      break;
+		  }
+		  SINT32_HASH(x, HCONST);
+		  goto hash2_common;
+	      }
+	    }
+	    break;
+	default:
+	    erl_exit(1, "Invalid tag in make_hash2(0x%X)\n", term);
+	hash2_common:
+
+	    /* Uint32 hash always has the hash value of the previous term,
+	     * compounded or otherwise.
+	     */
+
+	    if (ESTACK_ISEMPTY(s)) {
+		DESTROY_ESTACK(s);
+		UnUseTmpHeapNoproc(2);
+		return hash;
+	    }
+
+	    term = ESTACK_POP(s);
+
+	    switch (term) {
+		case HASH_MAP_TAIL: {
+		    hash = (Uint32) ESTACK_POP(s);
+		    UINT32_HASH(hash_xor_keys, HCONST_16);
+		    UINT32_HASH(hash_xor_values, HCONST_16);
+		    hash_xor_keys = (Uint32) ESTACK_POP(s);
+		    hash_xor_values = (Uint32) ESTACK_POP(s);
+		    goto hash2_common;
+		}
+		case HASH_MAP_KEY:
+		    hash_xor_keys ^= hash;
+		    hash = 0;
+		    goto hash2_common;
+		case HASH_MAP_VAL:
+		    hash_xor_values ^= hash;
+		    hash = 0;
+		    goto hash2_common;
+		default:
+		    break;
+	    }
+	}
+    }
+    }
+
+#undef HASH_MAP_TAIL
+#undef HASH_MAP_KEY
+#undef HASH_MAP_VAL
+
+#undef UINT32_HASH_2
+#undef UINT32_HASH
+#undef SINT32_HASH
 }
+
+#undef HCONST
+#undef MIX
 
 Uint32 make_broken_hash(Eterm term)
 {
-    EPIPHANY_STUB_FUN();
+    Uint32 hash = 0;
+    DECLARE_WSTACK(stack);
+    unsigned op;
+tail_recur:
+    op = tag_val_def(term); 
+    for (;;) {	
+    switch (op) {
+    case NIL_DEF:
+	hash = hash*FUNNY_NUMBER3 + 1;
+	break;
+    case ATOM_DEF:
+	hash = hash*FUNNY_NUMBER1 +
+	    (atom_tab(atom_val(term))->slot.bucket.hvalue);
+	break;
+    case SMALL_DEF:
+#if defined(ARCH_64) && !HALFWORD_HEAP
+    {
+	Sint y1 = signed_val(term);
+	Uint y2 = y1 < 0 ? -(Uint)y1 : y1;
+	Uint32 y3 = (Uint32) (y2 >> 32);
+	int arity = 1;
+
+#if defined(WORDS_BIGENDIAN)
+	if (!IS_SSMALL28(y1))
+	{   /* like a bignum */
+	    Uint32 y4 = (Uint32) y2;
+	    hash = hash*FUNNY_NUMBER2 + ((y4 << 16) | (y4 >> 16));
+	    if (y3) 
+	    {
+		hash = hash*FUNNY_NUMBER2 + ((y3 << 16) | (y3 >> 16));
+		arity++;
+	    }
+	    hash = hash * (y1 < 0 ? FUNNY_NUMBER3 : FUNNY_NUMBER2) + arity;
+	} else {
+	    hash = hash*FUNNY_NUMBER2 + (((Uint) y1) & 0xfffffff);
+	}
+#else
+	if  (!IS_SSMALL28(y1))
+	{   /* like a bignum */
+	    hash = hash*FUNNY_NUMBER2 + ((Uint32) y2);
+	    if (y3)
+	    {
+		hash = hash*FUNNY_NUMBER2 + y3;
+		arity++;
+	    }
+	    hash = hash * (y1 < 0 ? FUNNY_NUMBER3 : FUNNY_NUMBER2) + arity;
+	} else {
+	    hash = hash*FUNNY_NUMBER2 + (((Uint) y1) & 0xfffffff);
+	}
+#endif
+    }
+#else
+	hash = hash*FUNNY_NUMBER2 + unsigned_val(term);
+#endif
+	break;
+
+    case BINARY_DEF:
+	{
+	    size_t sz = binary_size(term);
+	    size_t i = (sz < 15) ? sz : 15;
+
+	    hash = hash_binary_bytes(term, i, hash);
+	    hash = hash*FUNNY_NUMBER4 + sz;
+	    break;
+	}
+
+    case EXPORT_DEF:
+	{
+	    Export* ep = *((Export **) (export_val(term) + 1));
+
+	    hash = hash * FUNNY_NUMBER11 + ep->code[2];
+	    hash = hash*FUNNY_NUMBER1 + 
+		(atom_tab(atom_val(ep->code[0]))->slot.bucket.hvalue);
+	    hash = hash*FUNNY_NUMBER1 + 
+		(atom_tab(atom_val(ep->code[1]))->slot.bucket.hvalue);
+	    break;
+	}
+
+    case FUN_DEF:
+	{
+	    ErlFunThing* funp = (ErlFunThing *) fun_val(term);
+	    Uint num_free = funp->num_free;
+
+	    hash = hash * FUNNY_NUMBER10 + num_free;
+	    hash = hash*FUNNY_NUMBER1 + 
+		(atom_tab(atom_val(funp->fe->module))->slot.bucket.hvalue);
+	    hash = hash*FUNNY_NUMBER2 + funp->fe->old_index;
+	    hash = hash*FUNNY_NUMBER2 + funp->fe->old_uniq;
+	    if (num_free > 0) {
+		if (num_free > 1) {
+		    WSTACK_PUSH3(stack, (UWord) &funp->env[1], (num_free-1), MAKE_HASH_TERM_ARRAY_OP);
+		}
+		term = funp->env[0];
+		goto tail_recur;
+	    }
+	    break;
+	}
+
+    case PID_DEF:
+	hash = hash*FUNNY_NUMBER5 + internal_pid_number(term);
+	break;
+    case EXTERNAL_PID_DEF:
+	hash = hash*FUNNY_NUMBER5 + external_pid_number(term);
+        break;
+    case PORT_DEF:
+	/* ETODO: We can't look up the port in the port table. Should we
+	 * therefore do all hashing via syscalls? It seems such a waste. */
+	EPIPHANY_STUB_BT();
+	break;
+    case EXTERNAL_PORT_DEF:
+	hash = hash*FUNNY_NUMBER9 + external_port_number(term);
+	break;
+    case REF_DEF:
+	hash = hash*FUNNY_NUMBER9 + internal_ref_numbers(term)[0];
+	break;
+    case EXTERNAL_REF_DEF:
+	hash = hash*FUNNY_NUMBER9 + external_ref_numbers(term)[0];
+	break;
+    case FLOAT_DEF: 
+	{
+	    FloatDef ff;
+	    GET_DOUBLE(term, ff);
+	    hash = hash*FUNNY_NUMBER6 + (ff.fw[0] ^ ff.fw[1]);
+	}
+	break;
+
+    case MAKE_HASH_CDR_PRE_OP:
+	term = (Eterm) WSTACK_POP(stack);
+	if (is_not_list(term)) {
+	    WSTACK_PUSH(stack, (UWord) MAKE_HASH_CDR_POST_OP);
+	    goto tail_recur;
+	}
+	/*fall through*/
+    case LIST_DEF:
+	{
+	    Eterm* list = list_val(term);
+	    WSTACK_PUSH2(stack, (UWord) CDR(list),
+			 (UWord) MAKE_HASH_CDR_PRE_OP);
+	    term = CAR(list);
+	    goto tail_recur;
+	}
+
+    case MAKE_HASH_CDR_POST_OP:
+	hash *= FUNNY_NUMBER8;
+	break;
+
+     case BIG_DEF:
+	{
+	    Eterm* ptr  = big_val(term);
+	    int is_neg = BIG_SIGN(ptr);
+	    Uint arity = BIG_ARITY(ptr);
+	    Uint i = arity;
+	    ptr++;
+#if D_EXP == 16
+	    /* hash over 32 bit LE */
+
+	    while(i--) {
+		hash = hash*FUNNY_NUMBER2 + *ptr++;
+	    }
+#elif D_EXP == 32
+
+#if defined(WORDS_BIGENDIAN)
+	    while(i--) {
+		Uint d = *ptr++;
+		hash = hash*FUNNY_NUMBER2 + ((d << 16) | (d >> 16));
+	    }
+#else
+	    while(i--) {
+		hash = hash*FUNNY_NUMBER2 + *ptr++;
+	    }
+#endif
+
+#elif D_EXP == 64
+	    {
+	      Uint32 h = 0, l;
+#if defined(WORDS_BIGENDIAN)
+	      while(i--) {
+		  Uint d = *ptr++;
+		  l = d & 0xffffffff;
+		  h = d >> 32;
+		  hash = hash*FUNNY_NUMBER2 + ((l << 16) | (l >> 16));
+		  if (h || i)
+		      hash = hash*FUNNY_NUMBER2 + ((h << 16) | (h >> 16));
+	      }
+#else
+	      while(i--) {
+		  Uint d = *ptr++;
+		  l = d & 0xffffffff;
+		  h = d >> 32;
+		  hash = hash*FUNNY_NUMBER2 + l;
+		  if (h || i)
+		      hash = hash*FUNNY_NUMBER2 + h;
+	      }
+#endif
+	      /* adjust arity to match 32 bit mode */
+	      arity = (arity << 1) - (h == 0);
+	    }
+
+#else
+#error "unsupported D_EXP size"	
+#endif
+	    hash = hash * (is_neg ? FUNNY_NUMBER3 : FUNNY_NUMBER2) + arity;
+	}
+	break;
+
+    case MAP_DEF:
+	{
+	    map_t *mp = (map_t *)map_val(term);
+	    int size  = map_get_size(mp);
+	    Eterm *ks = map_get_keys(mp);
+	    Eterm *vs = map_get_values(mp);
+
+	    /* Use a prime with size to remedy some of
+	     * the {} and <<>> hash problems */
+	    hash = hash*FUNNY_NUMBER13 + FUNNY_NUMBER14 + size;
+	    if (size == 0)
+		break;
+
+	    /* push values first */
+	    WSTACK_PUSH3(stack, (UWord)vs, (UWord) size, MAKE_HASH_TERM_ARRAY_OP);
+	    WSTACK_PUSH3(stack, (UWord)ks, (UWord) size, MAKE_HASH_TERM_ARRAY_OP);
+	    break;
+	}
+    case TUPLE_DEF: 
+	{
+	    Eterm* ptr = tuple_val(term);
+	    Uint arity = arityval(*ptr);
+
+	    WSTACK_PUSH3(stack, (UWord) arity, (UWord) (ptr+1), (UWord) arity);
+	    op = MAKE_HASH_TUPLE_OP;
+	}/*fall through*/ 
+    case MAKE_HASH_TUPLE_OP:
+    case MAKE_HASH_TERM_ARRAY_OP:
+	{
+	    Uint i = (Uint) WSTACK_POP(stack);
+	    Eterm* ptr = (Eterm*) WSTACK_POP(stack);
+	    if (i != 0) {
+		term = *ptr;
+		WSTACK_PUSH3(stack, (UWord)(ptr+1), (UWord) i-1, (UWord) op);
+		goto tail_recur;
+	    }
+	    if (op == MAKE_HASH_TUPLE_OP) {
+		Uint32 arity = (UWord) WSTACK_POP(stack);
+		hash = hash*FUNNY_NUMBER9 + arity;
+	    }
+	    break;
+	}
+
+    default:
+	erl_exit(1, "Invalid tag in make_broken_hash\n");
+	return 0;
+      }
+      if (WSTACK_ISEMPTY(stack)) break;
+      op = (Uint) WSTACK_POP(stack);
+    }
+
+    DESTROY_WSTACK(stack);
+    return hash;
+    
+#undef MAKE_HASH_TUPLE_OP
+#undef MAKE_HASH_TERM_ARRAY_OP
+#undef MAKE_HASH_CDR_PRE_OP
+#undef MAKE_HASH_CDR_POST_OP
 }
 
 static int do_send_to_logger(Eterm tag, Eterm gleader, char *buf, int len)

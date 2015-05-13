@@ -1028,7 +1028,7 @@ BIF_RETTYPE purge_module_1(BIF_ALIST_1)
 	    erts_remove_from_ranges(code);
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
-	    if (slavep->old.code) {
+	    if (slavep && slavep->old.code) {
 		ASSERT(modp->old.nif == NULL);
 
 		/*
