@@ -25,12 +25,33 @@
 #include "sys.h"
 #include "slave_state.h"
 
+#if defined(ERTS_SLAVE) && defined(DEBUG)
+#  include "epiphany.h"
+#endif
+
 void
 slave_state_swapin(Process *p, struct slave_state *state)
 {
 #if defined(ERTS_SMP) && !defined(ERTS_SLAVE)
     /* Lock the main lock so lc is happy */
     erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
+#endif
+
+    /* Validate that we can reach everything */
+#if defined(ERTS_SLAVE) && defined(DEBUG)
+    ErlHeapFragment *mbuf;
+    struct erl_off_heap_header *ohh;
+    ErlMessage *msg;
+    for (mbuf = state->mbuf; mbuf; mbuf = mbuf->next)
+	ASSERT(epiphany_in_dram(mbuf));
+    for (ohh = state->off_heap.first; ohh; ohh = ohh->next)
+	ASSERT(epiphany_in_dram(ohh));
+    for (msg = state->msg.first; msg; msg = msg->next)
+	ASSERT(epiphany_in_dram(msg));
+    ASSERT(epiphany_in_dram(state->heap));
+    ASSERT(epiphany_in_dram(state->htop));
+    ASSERT(epiphany_in_dram(state->hend));
+    ASSERT(epiphany_in_dram(state->stop));
 #endif
 
 #define X(T, F) p->F = state->F

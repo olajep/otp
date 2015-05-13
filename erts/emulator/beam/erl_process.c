@@ -10618,6 +10618,7 @@ erl_create_process(Process* parent, /* Parent of process (default group leader).
      * Must initialize binary lists here before copying binaries to process.
      */
     p->off_heap.first = NULL;
+    p->off_heap.alctr = ERTS_ALC_T_HEAP_FRAG;
     p->off_heap.overhead = 0;
 
     heap_need +=

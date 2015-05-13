@@ -513,7 +513,7 @@ queue_message(Process *c_p,
 	if (locked_msgq)
 	    erts_smp_proc_unlock(receiver, ERTS_PROC_LOCK_MSGQ);
 	if (bp)
-	    free_message_buffer(bp);
+	    free_message_buffer_alctr(HEAP_FRAG_ALC(c_p), bp);
 	message_free(mp);
 	return 0;
     }
@@ -835,7 +835,7 @@ copy_done:
 	    
 
     bp->off_heap.first = NULL;
-    free_message_buffer(bp);
+    free_message_buffer_alctr(off_heap->alctr, bp);
     msg->data.heap_frag = NULL;
 
 #ifdef HARD_DEBUG
@@ -970,9 +970,10 @@ erts_send_message(Process* sender,
 	}
 #endif
 
-	bp = new_message_buffer(msize + seq_trace_size 
+	bp = new_message_buffer_alctr(HEAP_FRAG_ALC(receiver),
+				      msize + seq_trace_size
 #ifdef USE_VM_PROBES
-				+ dt_utag_size
+				      + dt_utag_size
 #endif
 				);
 	hp = bp->mem;

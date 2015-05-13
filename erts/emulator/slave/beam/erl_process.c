@@ -554,6 +554,8 @@ erl_create_process_ptr(const struct slave_syscall_ready *cmd, ErlSpawnOpts *so)
     p->initial[INITIAL_FUN] = cmd->func;
     p->initial[INITIAL_ARI] = (Uint) arity;
 
+    p->off_heap = cmd->off_heap;
+
 #ifdef HIPE
     hipe_init_process(&p->hipe);
 #ifdef ERTS_SMP

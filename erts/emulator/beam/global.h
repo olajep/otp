@@ -1229,13 +1229,8 @@ erts_alloc_message_heap_state(Uint size,
 #endif
     else {
 	ErlHeapFragment *bp;
-	ErtsAlcType_t frag_alctr;
     allocate_in_mbuf:
-	frag_alctr = ERTS_ALC_T_HEAP_FRAG;
-#ifdef ERTS_SLAVE_EMU_ENABLED
-	if (state & ERTS_PSFLG_SLAVE) frag_alctr = ERTS_ALC_T_SLAVE_HEAP_FRAG;
-#endif
-	bp = new_message_buffer_alctr(frag_alctr, size);
+	bp = new_message_buffer_alctr(HEAP_FRAG_ALC(receiver), size);
 	hp = bp->mem;
 	*bpp = bp;
 	*ohpp = &bp->off_heap;

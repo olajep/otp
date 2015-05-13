@@ -143,7 +143,7 @@ erts_heap_alloc(Process* p, Uint need, Uint xtra)
     n++;
 #endif
     bp = (ErlHeapFragment*)
-	ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP_FRAG, ERTS_HEAP_FRAG_SIZE(n));
+	ERTS_HEAP_ALLOC(HEAP_FRAG_ALC(p), ERTS_HEAP_FRAG_SIZE(n));
 
 #if defined(DEBUG) || defined(CHECK_FOR_HOLES)
     for (i = 0; i < n; i++) {

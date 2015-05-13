@@ -21,6 +21,7 @@
 #define __ERL_MESSAGE_H__
 
 #include "slave.h"
+#include "erl_alloc_types.h"
 
 struct proc_bin;
 struct external_thing_;
@@ -45,12 +46,14 @@ struct erl_off_heap_header {
 
 typedef struct erl_off_heap {
     struct erl_off_heap_header* first;
+    ErtsAlcType_t alctr;
     Uint64 overhead;     /* Administrative overhead (used to force GC). */
 } SLAVE_SHARED_DATA ErlOffHeap;
 
 #define ERTS_INIT_OFF_HEAP(OHP)			\
     do {					\
 	(OHP)->first = NULL;			\
+	(OHP)->alctr = ERTS_ALC_T_HEAP_FRAG;	\
 	(OHP)->overhead = 0;			\
     } while (0)
 #include "external.h"

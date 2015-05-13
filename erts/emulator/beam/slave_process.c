@@ -180,6 +180,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
      * Must initialize binary lists here before copying binaries to process.
      */
     p->off_heap.first = NULL;
+    p->off_heap.alctr = ERTS_ALC_T_SLAVE_HEAP_FRAG;
     p->off_heap.overhead = 0;
 
     heap_need +=
@@ -384,6 +385,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     cmd->htop = p->htop;
     cmd->stop = p->stop;
     cmd->args = p->arg_reg[2];
+    cmd->off_heap = p->off_heap;
     slave->c_p = p;
     erts_slave_finish_syscall(slave, SLAVE_SYSCALL_READY);
 

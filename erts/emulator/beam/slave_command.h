@@ -43,6 +43,7 @@ struct slave_syscall_ready {
     Eterm id, parent_id, group_leader;
     Eterm mod, func, args;
     Eterm *heap, *htop, *stop;
+    ErlOffHeap off_heap;
 } SLAVE_SHARED_DATA;
 
 /* Declared in slave_bif.h */
