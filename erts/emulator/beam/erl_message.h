@@ -198,13 +198,6 @@ do {									\
  * in process_main() and in hipe_check_get_msg().
  */
 
-#undef ERTS_SLAVE_P
-#ifdef ERTS_SLAVE
-#  define ERTS_SLAVE_P 1
-#else
-#  define ERTS_SLAVE_P 0
-#endif
-
 #define ErtsMoveMsgAttachmentIntoProc(M, P, ST, HT, FC, SWPO, SWPI)	\
 do {									\
     if ((M)->data.attached) {						\
@@ -220,7 +213,7 @@ do {									\
 	    (FC) -= erts_garbage_collect((P), 0, NULL, 0);		\
 	    { SWPI ; }							\
 	}								\
-	ASSERT(ERTS_SLAVE_P || !(M)->data.attached);			\
+	ASSERT(!(M)->data.attached);					\
     }									\
 } while (0)
 

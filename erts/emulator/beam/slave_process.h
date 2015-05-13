@@ -57,6 +57,6 @@ Sint erts_slave_queue_message(Process* receiver, ErtsProcLocks *receiver_locks,
 			 );
 struct slave;
 void slave_free_message(struct slave *slave, ErlMessage *m);
-
+void slave_free_message_buffer(struct slave *slave, ErlHeapFragment *bp);
 
 #endif /* !defined(__ERL_SLAVE_PROCESS_H__) */

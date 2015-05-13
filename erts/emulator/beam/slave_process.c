@@ -482,3 +482,9 @@ slave_free_message(struct slave *slave, ErlMessage *m)
     erts_free(ERTS_ALC_T_SLAVE_MSG_REF, m);
     erts_smp_atomic32_dec_nob(&slave->msgq_len);
 }
+
+void
+slave_free_message_buffer(struct slave *slave, ErlHeapFragment *bp)
+{
+    free_message_buffer_alctr(ERTS_ALC_T_SLAVE_HEAP_FRAG, bp);
+}

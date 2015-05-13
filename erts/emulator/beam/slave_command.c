@@ -368,30 +368,34 @@ dispatch_commands(int slave)
     if (available < sizeof(enum master_command)) return 0;
     erts_fifo_peek(fifo, &cmd, sizeof(enum master_command));
     available -= sizeof(enum master_command);
+
+#define MESSAGE(TYPE, NAME)					\
+    TYPE NAME;							\
+    if (available < sizeof(NAME)) return 0;			\
+    erts_fifo_skip(fifo, sizeof(enum master_command));		\
+    erts_fifo_read_blocking(fifo, &NAME, sizeof(NAME))
+
     switch (cmd) {
     case MASTER_COMMAND_SETUP: {
-	struct master_command_setup msg;
-	if (available < sizeof(msg)) break;
-	erts_fifo_skip(fifo, sizeof(enum master_command));
-	erts_fifo_read_blocking(fifo, &msg, sizeof(msg));
+	MESSAGE(struct master_command_setup, msg);
 	erts_slave_init_load(&msg);
 	return 1;
-	break;
     }
     case MASTER_COMMAND_FREE_MESSAGE: {
-	struct master_command_free_message msg;
-	if (available < sizeof(msg)) break;
-	erts_fifo_skip(fifo, sizeof(enum master_command));
-	erts_fifo_read_blocking(fifo, &msg, sizeof(msg));
+	MESSAGE(struct master_command_free_message, msg);
 	slave_free_message(slaves + slave, msg.m);
 	return 1;
-	break;
+    }
+    case MASTER_COMMAND_FREE_HFRAG: {
+	MESSAGE(struct master_command_free_hfrag, msg);
+	slave_free_message_buffer(slaves + slave, msg.bp);
+	return 1;
     }
     default:
 	erl_exit(1, "Cannot pop unrecognized message %d from slave %d fifo\n",
 		 (int)cmd, slave);
     }
-    return 0;
+#undef MESSAGE
 }
 
 int

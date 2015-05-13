@@ -73,7 +73,8 @@ void free_message_buffer(ErlHeapFragment *bp)
 {
     extern char __heap_start, __heap_end;
     /* Message buffers that are attached to messages are allocated on the master
-     * and must not be freed here. They are freed by free_message instead. */
+     * and must not be freed here. They are freed by free_message or
+     * erts_move_msg_mbuf_to_heap instead. */
     ASSERT((void*)&__heap_start <= (void*)bp && (void*)bp <= (void*)&__heap_end);
 
     ASSERT(bp != NULL);
@@ -85,6 +86,12 @@ void free_message_buffer(ErlHeapFragment *bp)
 		       ERTS_HEAP_FRAG_SIZE(bp->size));
 	bp = next_bp;
     } while (bp != NULL);
+}
+
+static void free_master_message_buffer(ErlHeapFragment *bp)
+{
+    struct master_command_free_hfrag cmd = { bp };
+    erts_master_send_command(MASTER_COMMAND_FREE_HFRAG, &cmd, sizeof(cmd));
 }
 
 void erts_queue_dist_message(Process *p, ErtsProcLocks *l, ErtsDistExternal *d, Eterm t)
@@ -119,10 +126,10 @@ void erts_link_mbuf_to_proc(Process *proc, ErlHeapFragment *bp)
 
 /*
  * Moves content of message buffer attached to a message into a heap.
- * The message buffer is *not* deallocated. Instead, it will be deallocated by
- * free_message.
+ * The message buffer is deallocated.
  */
-void erts_move_msg_mbuf_to_heap(Eterm** hpp, ErlOffHeap* off_heap, ErlMessage *msg)
+void
+erts_move_msg_mbuf_to_heap(Eterm** hpp, ErlOffHeap* off_heap, ErlMessage *msg)
 {
     struct erl_off_heap_header* oh;
     Eterm term, token, *fhp, *hp;
@@ -156,7 +163,7 @@ void erts_move_msg_mbuf_to_heap(Eterm** hpp, ErlOffHeap* off_heap, ErlMessage *m
 			 2
 #endif
 			 );
-	return;
+	goto copy_done;
     }
 
     OH_OVERHEAD(off_heap, bp->off_heap.overhead);
@@ -255,6 +262,12 @@ void erts_move_msg_mbuf_to_heap(Eterm** hpp, ErlOffHeap* off_heap, ErlMessage *m
 	ERL_MESSAGE_DT_UTAG(msg) = offset_ptr(utag, offs);
     }
 #endif
+
+copy_done:
+
+    bp->off_heap.first = NULL;
+    free_master_message_buffer(bp);
+    msg->data.heap_frag = NULL;
 }
 
 Uint erts_msg_attached_data_size_aux(ErlMessage *msg)

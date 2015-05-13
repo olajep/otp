@@ -93,6 +93,7 @@ struct slave {
 enum master_command {
     MASTER_COMMAND_SETUP,
     MASTER_COMMAND_FREE_MESSAGE,
+    MASTER_COMMAND_FREE_HFRAG,
 };
 
 struct master_command_setup {
@@ -104,6 +105,10 @@ struct master_command_setup {
 
 struct master_command_free_message {
     ErlMessage *m;
+} SLAVE_SHARED_DATA;
+
+struct master_command_free_hfrag {
+    ErlHeapFragment *bp;
 } SLAVE_SHARED_DATA;
 
 enum slave_command {
