@@ -4974,8 +4974,8 @@ new_fun(Process* p, Eterm* reg, ErlFunEntry* fe, int num_free)
     hp = funp->env;
     /* erts_refc_inc(&fe->refc, 2); */
     funp->thing_word = HEADER_FUN;
-    funp->next = MSO(p).first;
-    MSO(p).first = (struct erl_off_heap_header*) funp;
+    /* funp->next = MSO(p).first; */
+    /* MSO(p).first = (struct erl_off_heap_header*) funp; */
     funp->fe = fe;
     funp->num_free = num_free;
     funp->creator = p->common.id;

@@ -195,12 +195,16 @@ erts_erase_fun_entry(ErlFunEntry* fe)
 #ifdef ERTS_SLAVE_EMU_ENABLED
 	    || fe->slave_address != unloaded_fun
 #endif
-	    )
+	    ) {
+	    /* We will cause LC to report an lock-order violation if we don't
+	     * unlock */
+	    erts_fun_write_unlock();
 	    erl_exit(1,
 		     "Internal error: "
 		     "Invalid reference count found on #Fun<%T.%d.%d>: "
 		     " About to erase fun still referred by code.\n",
 		     fe->module, fe->old_index, fe->old_uniq);
+	}
 	erts_erase_fun_entry_unlocked(fe);
     }
     erts_fun_write_unlock();

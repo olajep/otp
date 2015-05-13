@@ -1519,7 +1519,14 @@ static void
 remove_message_buffers(Process* p)
 {
     if (MBUF(p) != NULL) {
-	free_message_buffer(MBUF(p));
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	/*
+	 * Message buffers on slave processes are allocated on the slave, and
+	 * must be freed on the slave. erts_garbage_collect does that.
+	 */
+	if (!IS_SLAVE_PROCESS(p))
+#endif
+	    free_message_buffer(MBUF(p));
 	MBUF(p) = NULL;
     }    
     MBUF_SIZE(p) = 0;    

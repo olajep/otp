@@ -105,7 +105,7 @@ typedef struct {
      */
     BeamInstr* mark;		/* address to rec_loop/2 instruction */
     ErlMessage** saved_last;	/* saved last pointer */
-} ErlMessageQueue;
+} SLAVE_SHARED_DATA ErlMessageQueue;
 
 #ifdef ERTS_SMP
 

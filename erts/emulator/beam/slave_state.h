@@ -26,12 +26,18 @@
 
 /* This is the "X macro" pattern */
 #define SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER \
+    X(ErlMessageQueue, msg);				 \
+    X(ErlOffHeap, off_heap);				 \
+    X(ErlHeapFragment*, mbuf);				 \
+    X(Uint, mbuf_sz);					 \
     X(Eterm*, heap);					 \
     X(Eterm*, htop);					 \
     X(Eterm*, hend);					 \
     X(Eterm*, stop);					 \
     X(Uint, heap_sz);					 \
     X(Uint, freason);					 \
+    X(Eterm, fvalue);					 \
+    X(Eterm, ftrace);					 \
     X(Sint, fcalls)
 
 struct slave_state {

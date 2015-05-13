@@ -64,6 +64,15 @@ erts_garbage_collect(Process* p, int need, Eterm* objv, int nobj)
 	erts_free(ERTS_ALC_T_TMP, dram_objv);
     }
 
+    /*
+     * The garbage collector will have set mbuf to NULL without freeing it. We
+     * do so here. See remove_message_buffers in the master.
+     */
+    if (MBUF(p) != NULL) {
+	free_message_buffer(MBUF(p));
+	ASSERT(cmd->state.mbuf == NULL);
+    }
+
     slave_state_swapin(p, &cmd->state);
     ret = cmd->ret;
     erts_free(ERTS_ALC_T_TMP, cmd);
