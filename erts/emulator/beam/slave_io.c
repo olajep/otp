@@ -86,8 +86,11 @@ static int map_shm(void) {
     unsigned phy_base  = 0x3e000000;
     unsigned size      = 0x02000000;
     unsigned ephy_base = 0x8e000000;
-    unsigned slave_static_sz = 0x00100000;
-    unsigned slave_heap_sz =   0x00100000;
+    void *slave_data_end = (void*)SLAVE_SYM_end;
+    void *slave_heap_start = (void*)SLAVE_SYM___heap_start;
+    ASSERT((void*)ephy_base < slave_data_end);
+    ASSERT(slave_data_end < slave_heap_start);
+    ASSERT(slave_heap_start < (void*)(ephy_base + size));
 
     // The old way, for devices without the Epiphany kernel driver
     memfd = open("/dev/mem", O_RDWR | O_SYNC);
@@ -110,8 +113,7 @@ static int map_shm(void) {
 		(unsigned)ephy_base, (unsigned)ret);
 	return -1;
     }
-    erl_slave_alloc_submit((void*)(ephy_base + slave_static_sz),
-			   size - slave_static_sz - slave_heap_sz);
+    erl_slave_alloc_submit(slave_data_end, slave_heap_start - slave_data_end);
     return 0;
 }
 

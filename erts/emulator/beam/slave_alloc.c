@@ -31,12 +31,15 @@
 #include "slave_alloc.h"
 #include "erl_smp.h"
 
+#define MISALIGNMENT(X, A) (X % A ? A - X % A : 0)
+
 #define ALIGN(X, A)				\
     ({						\
 	__typeof(X) _x = (X);			\
 	__typeof(A) _a = (A);			\
-	_x % _a ? _x + _a - _x % _a : _x;	\
+	_x + MISALIGNMENT(_x, _a);		\
     })
+
 
 #define ALIGNMENT 16
 #define SPLIT_THRESHOLD 64
@@ -147,7 +150,10 @@ void
 erl_slave_alloc_submit(void *seg, size_t size)
 {
     struct segment *free;
+    size_t misalignment = MISALIGNMENT((size_t)seg, ALIGNMENT);
     ASSERT(!fallback_enabled);
+    seg += misalignment;
+    size -= misalignment;
     if (size <= HEADER_SZ) return;
     free = seg;
     sys_memzero(free, HEADER_SZ);

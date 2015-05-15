@@ -616,7 +616,6 @@ ifeq ($(BUILD_SLAVE_EMU), yes)
 $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 # Note: the $(GREP) literals contain the tab (\t) character
 	$(gen_verbose)$(SLAVE_OBJDUMP) -t $< \
-		| $(GREP) -e '.bss	' -e '.data	' -e '.data_bank0	' -e '.text	' \
 		| $(EGREP) '^[0-9a-f]{8} (g | w).* [^ .]+$$' \
 		| $(SED) 's/^\([^ ]*\).* \([^ ]*\)$$/#define SLAVE_SYM\2 0x\1/g' \
 		> $@
