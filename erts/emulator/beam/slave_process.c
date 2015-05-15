@@ -412,18 +412,14 @@ slave_do_exit_process(Process* p, struct slave_syscall_ready *arg)
     int is_exiting = erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_EXITING;
     if (!is_exiting)
 	slave_state_swapin(p, &arg->state);
-#ifdef ERTS_SMP
     /* slave_state_swaping grabs the lock the first time */
     else erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
-#endif
     if (is_exiting) {
 	erts_continue_exit_process(p);
     } else {
 	erts_do_exit_process(p, arg->exit_reason);
     }
-#ifdef ERTS_SMP
     erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);
-#endif
 
     return !(erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_FREE);
 }

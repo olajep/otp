@@ -4528,11 +4528,14 @@ final_touch(LoaderState* stp)
 #ifdef HIPE
 		hipe_set_closure_stub(fe, stp->lambdas[i].num_free);
 #endif
-	    } else {
+	    }
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	    else {
 		if (fe->slave_address[0] != 0)
 		    erts_refc_dec(&fe->refc, 1);
 		fe->slave_address = code_ptr;
 	    }
+#endif
 	}
     }
 }

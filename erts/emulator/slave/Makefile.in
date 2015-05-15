@@ -153,19 +153,19 @@ space+=
 # NOTE: When adding a new type update ERL_BUILD_TYPE_MARKER in sys/unix/sys.c
 #
 
-ifeq ($(FLAVOR),smp)
-FLAVOR_MARKER=.smp
-FLAVOR_FLAGS=-DERTS_SMP
-ENABLE_ALLOC_TYPE_VARS += smp nofrag
-M4FLAGS += -DERTS_SMP=1
-else
-
-# If flavor isn't one of the above, it *is* plain flavor...
-override FLAVOR=plain
+ifeq ($(FLAVOR),plain)
 FLAVOR_MARKER=
 FLAVOR_FLAGS=
 ENABLE_ALLOC_TYPE_VARS += nofrag
 M4FLAGS +=
+else
+
+# If flavor isn't one of the above, it *is* smp flavor...
+override FLAVOR=smp
+FLAVOR_MARKER=.smp
+FLAVOR_FLAGS=-DERTS_SMP
+ENABLE_ALLOC_TYPE_VARS += smp nofrag
+M4FLAGS += -DERTS_SMP=1
 
 endif
 

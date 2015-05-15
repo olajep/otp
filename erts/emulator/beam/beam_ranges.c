@@ -110,7 +110,9 @@ static void check_consistency(struct ranges* p)
 #endif
 
 #ifndef ERTS_SLAVE
-IF_DEBUG(static int staging = 0);
+#  if defined(ERTS_SLAVE_EMU_ENABLED) && defined(DEBUG)
+static int staging = 0;
+#  endif
 
 static void table_init_ranges(struct ranges* r)
 {

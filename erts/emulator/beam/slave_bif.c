@@ -36,9 +36,7 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     erts_aint32_t old_state = 0;
     BifEntry *bif = bif_table + arg->bif_no;
     Eterm (*f)(Process*, Eterm*);
-#ifdef ERTS_SMP
     ErtsThrPrgrDelayHandle delay;
-#endif
     ASSERT(p);
     ASSERT(arg->bif_no < BIF_SIZE);
     old_state = erts_smp_atomic32_read_acqb(&p->state);
@@ -54,16 +52,12 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 
     slave_state_swapin(p, &arg->state);
 
-#ifdef ERTS_SMP
     delay = erts_thr_progress_unmanaged_delay();
-#endif
 
     f = bif->f;
     arg->result = f(p, arg->args);
 
-#ifdef ERTS_SMP
     erts_thr_progress_unmanaged_continue(delay);
-#endif
 
     if (old_state != erts_smp_atomic32_read_acqb(&p->state)) {
 	erl_exit(1, "Process state changed by bif %T:%T/%d!\nWas: %#x, Now: %#x",

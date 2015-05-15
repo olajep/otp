@@ -5027,7 +5027,6 @@ fi
 ERTS_BUILD_SLAVE_EMU=no
 if test X$enable_slave_emulator != Xno; then
    ERTS_BUILD_SLAVE_EMU=yes
-   AC_DEFINE(ERTS_SLAVE_EMU_ENABLED, 1, [Define if the slave emulator is available])
 fi
 AC_SUBST(ERTS_BUILD_SLAVE_EMU)
 

@@ -171,10 +171,8 @@ command_thread_loop(void __attribute__((unused)) *arg)
     command_thead_esd.ssi
 	= erts_alloc_permanent_cache_aligned(ERTS_ALC_T_SCHDLR_SLP_INFO,
 					     sizeof(ErtsSchedulerSleepInfo));
-#ifdef ERTS_SMP
     erts_smp_atomic32_init_nob(&command_thead_esd.ssi->flags, 0);
     command_thead_esd.ssi->event = erts_tse_fetch();
-#endif
     erts_smp_atomic32_init_nob(&command_thead_esd.ssi->aux_work, 0);
     erts_thr_progress_register_managed_thread(NULL, &callbacks, 0);
 #ifdef ERTS_ENABLE_LOCK_CHECK

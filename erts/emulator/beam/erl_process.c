@@ -10155,7 +10155,7 @@ int
 erts_set_gc_state(Process *c_p, int enable)
 {
     ErtsProcSysTaskQs *dgc_tsk_qs;
-    ASSERT(erts_smp_atomic32_read_nob(&c_p->state) & ERTS_PSFLG_SLAVE
+    ASSERT(IS_SLAVE_PROCESS(c_p)
 	   || c_p == erts_get_current_process());
     ASSERT((ERTS_PSFLG_RUNNING|ERTS_PSFLG_RUNNING_SYS)
 	   & erts_smp_atomic32_read_nob(&c_p->state));
@@ -12023,7 +12023,7 @@ erts_continue_exit_process(Process *p)
     {
 	/* Do *not* use erts_get_runq_proc() */
 	ErtsRunQueue *rq = NULL;
-	if (!(erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_SLAVE)) {
+	if (!IS_SLAVE_PROCESS(p)) {
 	    rq = erts_get_runq_current(ERTS_GET_SCHEDULER_DATA_FROM_PROC(p));
 
 	    erts_smp_runq_lock(rq);

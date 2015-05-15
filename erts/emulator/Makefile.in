@@ -216,9 +216,17 @@ endif
 
 ERTS_ENABLE_KERNEL_POLL=@ERTS_ENABLE_KERNEL_POLL@
 
-# This script requires $(TF_MARKER), so we include it down here
+BUILD_SLAVE_EMU=no
 ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
+# We only include slave support in the smp build
+ifeq ($(FLAVOR),smp)
+# This script requires $(TF_MARKER), so we include it down here
 include slave/info.mk
+
+BUILD_SLAVE_EMU=yes
+ENABLE_ALLOC_TYPE_VARS += slave
+FLAVOR_FLAGS+=-DERTS_SLAVE_EMU_ENABLED
+endif
 endif
 
 #
@@ -457,7 +465,7 @@ clean:
 	$(RM) -rf zlib/obj/$(TARGET)
 	$(RM) -rf bin/$(TARGET)
 	cd $(ERTS_LIB_DIR) && $(MAKE) clean
-ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
+ifeq ($(BUILD_SLAVE_EMU), yes)
 	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) clean )
 endif
 
@@ -601,7 +609,7 @@ GENERATE += $(TARGET)/erl_version.h
 $(TTF_DIR)/driver_tab.c: Makefile.in utils/make_driver_tab
 	$(gen_verbose)LANG=C $(PERL) utils/make_driver_tab -o $@ -nifs $(STATIC_NIF_LIBS) -drivers $(DRV_OBJS) $(STATIC_DRIVER_LIBS)
 
-ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
+ifeq ($(BUILD_SLAVE_EMU), yes)
 # Poor mans cross-architecture linking; we generate a header file that, for each
 # symbol [symbol] in the slave emulator, defines SLAVE_SYM_[symbol] to a numeric
 # literal of the address of [symbol].
@@ -613,7 +621,6 @@ $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 		| $(SED) 's/^\([^ ]*\).* \([^ ]*\)$$/#define SLAVE_SYM\2 0x\1/g' \
 		> $@
 
-ENABLE_ALLOC_TYPE_VARS += slave
 GENERATE += $(TTF_DIR)/slave_syms.h
 endif
 
@@ -960,7 +967,7 @@ ifdef HIPE_ENABLED
 EXTRA_BASE_OBJS += $(HIPE_OBJS)
 endif
 
-ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
+ifeq ($(BUILD_SLAVE_EMU), yes)
 SLAVE_OBJS = \
 	$(OBJDIR)/slave_ix.o \
 	$(OBJDIR)/slave_module.o \
@@ -1074,7 +1081,7 @@ $(OBJDIR)/hipe_arm.o:           hipe/hipe_arm.c
 # end of HiPE section
 ########################################
 
-ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
+ifeq ($(BUILD_SLAVE_EMU), yes)
 
 $(SLAVE_EXECUTABLE): FORCE
 	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) )

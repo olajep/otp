@@ -2657,14 +2657,22 @@ erts_alloc_util_allocators(void *proc)
      * Currently all allocators except sys_alloc and slave_alloc are
      * alloc_util allocators.
      */
-    sz = ((ERTS_ALC_A_MAX + 1 - ERTS_ALC_A_MIN) - 2)*2;
+    sz = ((ERTS_ALC_A_MAX + 1 - ERTS_ALC_A_MIN) -
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	  2
+#else
+	  1
+#endif
+	  )*2;
     ASSERT(sz > 0);
     hp = HAlloc((Process *) proc, sz);
     res = NIL;
     for (i = ERTS_ALC_A_MAX; i >= ERTS_ALC_A_MIN; i--) {
 	switch (i) {
 	case ERTS_ALC_A_SYSTEM:
+#ifdef ERTS_SLAVE_EMU_ENABLED
 	case ERTS_ALC_A_SLAVE:
+#endif
 	    break;
 	default: {
 	    char *alc_str = (char *) ERTS_ALC_A2AD(i);
