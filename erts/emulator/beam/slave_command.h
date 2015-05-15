@@ -94,6 +94,7 @@ enum master_command {
     MASTER_COMMAND_SETUP,
     MASTER_COMMAND_FREE_MESSAGE,
     MASTER_COMMAND_FREE_HFRAG,
+    MASTER_COMMAND_REFC,
 };
 
 struct master_command_setup {
@@ -109,6 +110,18 @@ struct master_command_free_message {
 
 struct master_command_free_hfrag {
     ErlHeapFragment *bp;
+} SLAVE_SHARED_DATA;
+
+enum master_refc_op {
+    MASTER_REFC_OP_INIT,
+    MASTER_REFC_OP_INC,
+    MASTER_REFC_OP_DEC,
+    MASTER_REFC_OP_ADD,
+};
+struct master_command_refc {
+    erts_refc_t *refcp;
+    erts_aint_t arg, min_val;
+    enum master_refc_op op;
 } SLAVE_SHARED_DATA;
 
 enum slave_command {
@@ -133,7 +146,11 @@ void erts_slave_send_command(struct slave *slave, enum slave_command code,
 void *erts_slave_syscall_arg(struct slave *slave, enum slave_syscall no);
 void erts_slave_finish_syscall(struct slave *slave, enum slave_syscall no);
 
+/* slave_bif.c */
 void erts_slave_serve_gc(struct slave *slave, struct slave_syscall_gc *arg);
+
+/* slave_refc.c */
+void erts_slave_serve_refc(struct master_command_refc *cmd);
 
 int erts_dispatch_slave_commands(void);
 #else

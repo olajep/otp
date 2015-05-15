@@ -359,21 +359,18 @@ Eterm copy_struct(Eterm obj, Uint sz, Eterm** hpp, ErlOffHeap* off_heap)
 		break;
 	    case FUN_SUBTAG:
 		{
-		    EPIPHANY_STUB_BT();
-/* 		    ErlFunThing* funp = (ErlFunThing *) objp; */
+		    ErlFunThing* funp = (ErlFunThing *) objp;
 
-/* 		    i =  thing_arityval(hdr) + 2 + funp->num_free; */
-/* 		    tp = htop; */
-/* 		    while (i--)  { */
-/* 			*htop++ = *objp++; */
-/* 		    } */
-/* 		    funp = (ErlFunThing *) tp; */
-/* 		    funp->next = off_heap->first; */
-/* 		    off_heap->first = (struct erl_off_heap_header*) funp; */
-/* #if 0		    /\* ETODO: Make sure reference counting works from slave *\/ */
-/* 		    erts_refc_inc(&funp->fe->refc, 2); */
-/* #endif */
-/* 		    *argp = make_fun_rel(tp, dst_base); */
+		    i =  thing_arityval(hdr) + 2 + funp->num_free;
+		    tp = htop;
+		    while (i--)  {
+			*htop++ = *objp++;
+		    }
+		    funp = (ErlFunThing *) tp;
+		    funp->next = off_heap->first;
+		    off_heap->first = (struct erl_off_heap_header*) funp;
+		    erts_refc_inc(&funp->fe->refc, 2);
+		    *argp = make_fun_rel(tp, dst_base);
 		}
 		break;
 	    case EXTERNAL_PID_SUBTAG:

@@ -4958,10 +4958,6 @@ new_fun(Process* p, Eterm* reg, ErlFunEntry* fe, int num_free)
     Eterm* hp;
     int i;
 
-    /* ETODO: Fix reference counting */
-    erts_printf("new_fun: Can't bump reference counter on fun from %T! "
-		"Instability may ensue...\n", fe->module);
-
     if (HEAP_LIMIT(p) - HEAP_TOP(p) <= needed) {
 	PROCESS_MAIN_CHK_LOCKS(p);
 	erts_garbage_collect(p, needed, reg, num_free);
@@ -4972,10 +4968,10 @@ new_fun(Process* p, Eterm* reg, ErlFunEntry* fe, int num_free)
     p->htop = hp + needed;
     funp = (ErlFunThing *) hp;
     hp = funp->env;
-    /* erts_refc_inc(&fe->refc, 2); */
+    erts_refc_inc(&fe->refc, 2);
     funp->thing_word = HEADER_FUN;
-    /* funp->next = MSO(p).first; */
-    /* MSO(p).first = (struct erl_off_heap_header*) funp; */
+    funp->next = MSO(p).first;
+    MSO(p).first = (struct erl_off_heap_header*) funp;
     funp->fe = fe;
     funp->num_free = num_free;
     funp->creator = p->common.id;

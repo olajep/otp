@@ -537,6 +537,7 @@ SLAVE_OBJS = \
 	$(OBJDIR)/slave_io.o \
 	$(OBJDIR)/slave_command.o \
 	$(OBJDIR)/slave_state.o \
+	$(OBJDIR)/slave_refc.o \
 	$(OBJDIR)/slave_bif.o
 
 

@@ -59,13 +59,8 @@ typedef struct erl_fun_entry {
     Uint arity;			/* The arity of the fun. */
     Eterm module;		/* Tagged atom for module. */
 
-#ifndef ERTS_SLAVE
     erts_refc_t refc;		/* Reference count: One for code + one for each
 				   fun object in each process. */
-#else
-    /* I must not be altered, and preferrably not even read */
-    volatile const int refc;
-#endif
 } SLAVE_SHARED_DATA ErlFunEntry;
 
 /*

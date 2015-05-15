@@ -332,7 +332,11 @@ serve_syscalls(int i)
 
     no = buffers->syscall;
     if (no == SLAVE_SYSCALL_NONE) return 0; /* Avoid the memory barrier */
-    ETHR_MEMBAR(ETHR_LoadLoad); /* buffers->syscall -> buffers->syscall_arg */
+    /* buffers->syscall -> buffers->master, buffers->syscall_arg */
+    ETHR_MEMBAR(ETHR_LoadLoad);
+
+    /* We need to have served all pending commands before serving a syscall. */
+    if (erts_fifo_available(&buffers->master)) return 0;
     arg = buffers->syscall_arg;
 
     switch (buffers->syscall) {
@@ -387,6 +391,11 @@ dispatch_commands(int slave)
     case MASTER_COMMAND_FREE_HFRAG: {
 	MESSAGE(struct master_command_free_hfrag, msg);
 	slave_free_message_buffer(slaves + slave, msg.bp);
+	return 1;
+    }
+    case MASTER_COMMAND_REFC: {
+	MESSAGE(struct master_command_refc, msg);
+	erts_slave_serve_refc(&msg);
 	return 1;
     }
     default:
