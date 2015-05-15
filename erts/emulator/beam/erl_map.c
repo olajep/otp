@@ -192,14 +192,12 @@ BIF_RETTYPE maps_get_2(BIF_ALIST_2) {
     if (is_map(BIF_ARG_2)) {
 	Eterm *hp;
 	Eterm value, error;
-	char *s_error;
 
 	if (erts_maps_get(BIF_ARG_1, BIF_ARG_2, &value)) {
 	    BIF_RET(value);
 	}
 
-	s_error = "bad_key";
-	error = am_atom_put(s_error, sys_strlen(s_error));
+	error = am_bad_key;
 
 	hp = HAlloc(BIF_P, 3);
 	BIF_P->fvalue = TUPLE2(hp, error, BIF_ARG_1);

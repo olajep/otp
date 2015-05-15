@@ -524,7 +524,7 @@ RUN_OBJS = \
 	$(OBJDIR)/erl_bif_slave.o	$(OBJDIR)/export.o \
 	$(OBJDIR)/beam_load.o		$(OBJDIR)/hash.o \
 	$(OBJDIR)/index.o		$(OBJDIR)/module.o \
-	$(OBJDIR)/atom.o
+	$(OBJDIR)/atom.o		$(OBJDIR)/erl_map.o
 
 OS_OBJS = \
 	$(OBJDIR)/elib_memmove.o	$(OBJDIR)/sys.o \

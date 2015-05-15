@@ -105,6 +105,7 @@ atom awaiting_load
 atom awaiting_unload
 atom backtrace backtrace_depth
 atom badarg badarith badarity badfile badmatch badsig badfun
+atom bad_key
 atom bag
 atom band
 atom big
