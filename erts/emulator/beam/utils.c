@@ -171,6 +171,7 @@ erts_heap_alloc(Process* p, Uint need, Uint xtra)
     bp->used_size = need;
     MBUF_SIZE(p) += n;
     bp->off_heap.first = NULL;
+    bp->off_heap.alctr = HEAP_FRAG_ALC(p);
     bp->off_heap.overhead = 0;
     return bp->mem;
 }

@@ -90,21 +90,27 @@ erts_dispatch_slave_commands(Process *c_p)
     erts_fifo_peek(fifo, &cmd, sizeof(enum slave_command));
     available -= sizeof(enum slave_command);
 
+#define MESSAGE(TYPE, NAME)					\
+    TYPE NAME;							\
+    if (available < sizeof(NAME)) return 0;			\
+    erts_fifo_skip(fifo, sizeof(enum slave_command));		\
+    erts_fifo_read_blocking(fifo, &NAME, sizeof(NAME))
+
     switch (cmd) {
     case SLAVE_COMMAND_MESSAGE: {
-	struct slave_command_message msg;
-	if (available < sizeof(msg)) break;
-	erts_fifo_skip(fifo, sizeof(enum slave_command));
-	erts_fifo_read_blocking(fifo, &msg, sizeof(msg));
+	MESSAGE(struct slave_command_message, msg);
 	slave_serve_message(c_p, &msg);
 	return 1;
-	break;
+    }
+    case SLAVE_COMMAND_EXIT: {
+	MESSAGE(struct slave_command_exit, msg);
+	slave_serve_exit(c_p, &msg);
+	return 1;
     }
     default:
 	erl_exit(1,
 		 "Cannot pop unrecognized message %d from master fifo\n",
 		 (int)cmd);
     }
-
-    return 1;
+#undef MESSAGE
 }

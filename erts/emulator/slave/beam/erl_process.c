@@ -1136,6 +1136,9 @@ Process *schedule(Process *p, int calls)
 
 	    erts_free_proc(p);
 	} else {
+	    if (state & ERTS_PSFLG_PENDING_EXIT)
+		erts_handle_pending_exit(p, ERTS_PROC_LOCK_MAIN);
+
 	    p->fcalls = COMMAND_POLL_REDUCTION_INTERVAL;
 	    return p;
 	}
@@ -1193,6 +1196,32 @@ erts_set_gc_state(Process *c_p, int enable)
     return 1;
 }
 
+static ERTS_INLINE void
+set_proc_exiting(Process *p,
+		 erts_aint32_t in_state,
+		 Eterm reason,
+		 ErlHeapFragment *bp)
+{
+    erts_aint32_t state = in_state;
+    ERTS_SMP_LC_ASSERT(erts_proc_lc_my_proc_locks(p) == ERTS_PROC_LOCKS_ALL);
+
+    change_proc_schedule_state(p,
+			       ERTS_PSFLG_SUSPENDED|ERTS_PSFLG_PENDING_EXIT,
+			       ERTS_PSFLG_EXITING|ERTS_PSFLG_ACTIVE,
+			       &state);
+
+    p->fvalue = reason;
+    if (bp)
+	erts_link_mbuf_to_proc(p, bp);
+    /*
+     * We used to set freason to EXC_EXIT here, but there is no need to
+     * save the stack trace since this process irreversibly is going to
+     * exit.
+     */
+    p->freason = EXTAG_EXIT;
+    KILL_CATCHES(p);
+    p->i = (BeamInstr *) beam_exit;
+}
 
 static ERTS_INLINE erts_aint32_t
 set_proc_self_exiting(Process *c_p)
@@ -1210,6 +1239,38 @@ set_proc_self_exiting(Process *c_p)
 			       &state);
 
     return state;
+}
+
+void
+erts_handle_pending_exit(Process *c_p, ErtsProcLocks locks)
+{
+    ErtsProcLocks xlocks;
+    ASSERT(is_value(c_p->pending_exit.reason));
+    ERTS_SMP_LC_ASSERT(erts_proc_lc_my_proc_locks(c_p) == locks);
+    ERTS_SMP_LC_ASSERT(locks & ERTS_PROC_LOCK_MAIN);
+    ERTS_SMP_LC_ASSERT(!((ERTS_PSFLG_EXITING|ERTS_PSFLG_FREE)
+			 & erts_smp_atomic32_read_nob(&c_p->state)));
+
+    /* Ensure that all locks on c_p are locked before proceeding... */
+    if (locks == ERTS_PROC_LOCKS_ALL)
+	xlocks = 0;
+    else {
+	xlocks = ~locks & ERTS_PROC_LOCKS_ALL;
+	if (erts_smp_proc_trylock(c_p, xlocks) == EBUSY) {
+	    erts_smp_proc_unlock(c_p, locks & ~ERTS_PROC_LOCK_MAIN);
+	    erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_ALL_MINOR);
+	}
+    }
+
+    set_proc_exiting(c_p,
+		     erts_smp_atomic32_read_acqb(&c_p->state),
+		     c_p->pending_exit.reason,
+		     c_p->pending_exit.bp);
+    c_p->pending_exit.reason = THE_NON_VALUE;
+    c_p->pending_exit.bp = NULL;
+
+    if (xlocks)
+	erts_smp_proc_unlock(c_p, xlocks);
 }
 
 /* this function fishishes a process and propagates exit messages - called
@@ -1492,3 +1553,18 @@ erts_dbg_check_halloc_lock(Process *p)
     return 0;
 }
 #endif
+
+void
+slave_serve_exit(Process *c_p, struct slave_command_exit *cmd)
+{
+    if (cmd->receiver != c_p->common.id
+	|| (erts_smp_atomic32_read_nob(&c_p->state) & ERTS_PSFLG_EXITING)) {
+	/* The message is for an already dead process; drop it */
+	if (cmd->bp) free_master_message_buffer(cmd->bp);
+    }
+
+    /* We might want to copy the reason to heap, since we're able to */
+    c_p->pending_exit.reason = cmd->reason;
+    c_p->pending_exit.bp = cmd->bp;
+    erts_smp_atomic32_read_bor_nob(&c_p->state, ERTS_PSFLG_PENDING_EXIT);
+}

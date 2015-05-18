@@ -404,6 +404,36 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     return res;
 }
 
+void
+slave_set_pending_exit(Process *p, Eterm reason)
+{
+    struct slave *slave = p->slave_host;
+    erts_aint32_t state;
+    ErlHeapFragment *bp = NULL;
+    struct slave_command_exit cmd;
+    ASSERT(IS_SLAVE_PROCESS(p));
+
+    /* In order to prevent races with unlinking, we need the status lock. */
+    ERTS_SMP_LC_ASSERT(erts_proc_lc_my_proc_locks(p) & ERTS_PROC_LOCK_STATUS);
+
+    state = erts_smp_atomic32_read_bor_nob(&p->state, ERTS_PSFLG_PENDING_EXIT);
+    if (state & ERTS_PSFLG_PENDING_EXIT)
+	return; /* Already exiting */
+
+    if (!is_immed(reason)) {
+	Eterm *hp;
+	Uint sz = size_object(reason);
+	bp = new_message_buffer_alctr(ERTS_ALC_T_SLAVE_HEAP_FRAG, sz);
+	hp = bp->mem;
+	reason = copy_struct(reason, sz, &hp, &bp->off_heap);
+    }
+
+    cmd.bp = bp;
+    cmd.reason = reason;
+    cmd.receiver = p->common.id;
+    erts_slave_send_command(slave, SLAVE_COMMAND_EXIT, &cmd, sizeof(cmd));
+}
+
 int
 slave_do_exit_process(Process* p, struct slave_syscall_ready *arg)
 {
@@ -438,7 +468,7 @@ erts_slave_queue_message(Process* receiver, ErtsProcLocks *receiver_locks,
     struct slave_command_message cmd;
     erts_aint_t state = erts_smp_atomic32_read_acqb(&receiver->state);
 
-    ASSERT(erts_smp_atomic32_read_acqb(&receiver->state) & ERTS_PSFLG_SLAVE);
+    ASSERT(IS_SLAVE_PROCESS(receiver));
     if (state & (ERTS_PSFLG_EXITING|ERTS_PSFLG_PENDING_EXIT)) {
 	erts_free(ERTS_ALC_T_SLAVE_MSG_REF, mp);
 	return 0;

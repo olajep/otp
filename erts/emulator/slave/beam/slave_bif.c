@@ -31,6 +31,8 @@
 
 #define HARDDEBUG 0
 
+extern BeamInstr beam_exit[];
+
 static Eterm
 syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 {
@@ -57,6 +59,14 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     erts_master_syscall(SLAVE_SYSCALL_BIF, cmd);
 
     slave_state_swapin(p, &cmd->state);
+
+    erts_smp_atomic32_read_bor_nob(&p->state, cmd->state_flags);
+    if (cmd->state_flags & ERTS_PSFLG_EXITING) {
+	KILL_CATCHES(p);
+	p->i = (BeamInstr *) beam_exit;
+	p->pending_exit.reason = THE_NON_VALUE;
+	p->pending_exit.bp = NULL;
+    }
 
     result = cmd->result;
 #if HARDDEBUG

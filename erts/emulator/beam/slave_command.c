@@ -168,6 +168,7 @@ command_thread_loop(void __attribute__((unused)) *arg)
     callbacks.finalize_wait = tpr_fin_wait;
     memzero(&command_thead_esd, sizeof(command_thead_esd));
     command_thead_esd.cpu_id = -1;
+    command_thead_esd.current_process = NULL;
     command_thead_esd.ssi
 	= erts_alloc_permanent_cache_aligned(ERTS_ALC_T_SCHDLR_SLP_INFO,
 					     sizeof(ErtsSchedulerSleepInfo));
@@ -310,8 +311,10 @@ erts_slave_finish_syscall(struct slave *slave, enum slave_syscall no)
 static int
 serve_ready(int i, struct slave_syscall_ready *arg)
 {
-    if (slaves[i].c_p && !slave_do_exit_process(slaves[i].c_p, arg))
+    if (slaves[i].c_p && !slave_do_exit_process(slaves[i].c_p, arg)) {
 	slaves[i].c_p = NULL;
+	command_thead_esd.current_process = NULL;
+    }
 
     if (!slaves[i].c_p) {
 	erts_slave_push_free(slaves + i);
@@ -355,7 +358,8 @@ serve_syscalls(int i)
     }
 
     if (served) {
-	ETHR_MEMBAR(ETHR_StoreStore); /* *buffers->syscall_arg -> buffers->syscall */
+	/* *buffers->syscall_arg -> buffers->syscall */
+	ETHR_MEMBAR(ETHR_StoreStore);
 	buffers->syscall = SLAVE_SYSCALL_NONE;
     }
     return served;

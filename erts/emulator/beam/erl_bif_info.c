@@ -713,7 +713,15 @@ pi_pid2proc(Process *c_p, Eterm pid, ErtsProcLocks info_locks)
      * is currently running.
      */
 
-    if (info_locks & ERTS_PROC_LOCK_MAIN)
+    /* ETODO:
+     *
+     * However, since slave processes do not suspend regularly nor hold the MAIN
+     * lock while running, we work around the issue of waiting indefinitely for
+     * suspend by not using erts_pid2proc_not_running()
+     */
+
+    if ((info_locks & ERTS_PROC_LOCK_MAIN)
+	&& !IS_SLAVE_PROCESS(erts_pid2proc(c_p, ERTS_PROC_LOCK_MAIN, pid, 0)))
 	return erts_pid2proc_not_running(c_p, ERTS_PROC_LOCK_MAIN,
 					 pid, info_locks);
     else

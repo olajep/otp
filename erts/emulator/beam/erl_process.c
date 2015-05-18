@@ -44,6 +44,9 @@
 #include "dtrace-wrapper.h"
 #include "erl_ptab.h"
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_process.h"
+#endif
 
 #define ERTS_DELAYED_WAKEUP_INFINITY (~(Uint64) 0)
 #define ERTS_DELAYED_WAKEUP_REDUCTIONS ((Uint64) CONTEXT_REDS/2)
@@ -8057,6 +8060,14 @@ add_pend_suspend(Process *suspendee,
     else
 	suspendee->pending_suspenders = psp;
     suspendee->pending_suspenders->end = psp;
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (IS_SLAVE_PROCESS(suspendee)) {
+	/* ETODO */
+	erts_printf("Warning, %T is now waiting for the suspension of slave "
+		    "process %T\n", originator_pid, suspendee->common.id);
+    }
+#endif
 }
 
 static void
@@ -10877,6 +10888,7 @@ void erts_init_empty_process(Process *p)
 #endif
     p->next = NULL;
     p->off_heap.first = NULL;
+    p->off_heap.alctr = ERTS_ALC_T_HEAP_FRAG;
     p->off_heap.overhead = 0;
     p->common.u.alive.reg = NULL;
     p->heap_sz = 0;
@@ -11139,12 +11151,22 @@ set_proc_exiting(Process *p,
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
     if (state & ERTS_PSFLG_SLAVE) {
-	erts_printf(__FILE__ ":%d:%s(): Slaves can't be killed yet, sorry!\n",
-		    __LINE__, __FUNCTION__);
-	return;
-    }
+	/*
+	 * We can only safely exit slaves immediately that are blocked in a
+	 * syscall on this thread.
+	 *
+	 * Some of the process struct field touched below (i and catches) are
+	 * not synchronised by slave_state but are instead set by slave_bif when
+	 * the syscall completes if the EXITING flag was set.
+	 */
+	ASSERT(p == erts_get_current_process());
+	state = erts_atomic32_read_bset_nob(&p->state,
+					    ERTS_PSFLG_EXITING|ERTS_PSFLG_PENDING_EXIT,
+					    ERTS_PSFLG_EXITING);
+	state = (state & ~ERTS_PSFLG_PENDING_EXIT) | ERTS_PSFLG_EXITING;
+	enqueue = 0;
+    } else
 #endif
-
     enqueue = change_proc_schedule_state(p,
 					 ERTS_PSFLG_SUSPENDED|ERTS_PSFLG_PENDING_EXIT,
 					 ERTS_PSFLG_EXITING|ERTS_PSFLG_ACTIVE,
@@ -11472,6 +11494,11 @@ send_exit_signal(Process *c_p,		/* current process if and only
 		}
 		set_proc_exiting(c_p, state, rsn, NULL);
 	    }
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	    else if (state & ERTS_PSFLG_SLAVE) {
+		slave_set_pending_exit(rp, rsn);
+	    }
+#endif
 	    else if (!(state & (ERTS_PSFLG_RUNNING|ERTS_PSFLG_RUNNING_SYS))) {
 		/* Process not running ... */
 		ErtsProcLocks need_locks = ~(*rp_locks) & ERTS_PROC_LOCKS_ALL;

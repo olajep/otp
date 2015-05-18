@@ -201,7 +201,7 @@ erts_cleanup_offheap(ErlOffHeap *offheap)
 void
 free_message_buffer(ErlHeapFragment* bp)
 {
-    free_message_buffer_alctr(ERTS_ALC_T_HEAP_FRAG, bp);
+    free_message_buffer_alctr(bp->off_heap.alctr, bp);
 }
 
 void

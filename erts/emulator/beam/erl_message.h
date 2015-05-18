@@ -222,13 +222,14 @@ do {									\
 #define ERTS_HEAP_FRAG_SIZE(DATA_WORDS) \
    (sizeof(ErlHeapFragment) - sizeof(Eterm) + (DATA_WORDS)*sizeof(Eterm))
 
-#define ERTS_INIT_HEAP_FRAG(HEAP_FRAG_P, DATA_WORDS)	\
-do {							\
-    (HEAP_FRAG_P)->next = NULL;				\
-    (HEAP_FRAG_P)->alloc_size = (DATA_WORDS);		\
-    (HEAP_FRAG_P)->used_size = (DATA_WORDS);            \
-    (HEAP_FRAG_P)->off_heap.first = NULL; 	        \
-    (HEAP_FRAG_P)->off_heap.overhead = 0;		\
+#define ERTS_INIT_HEAP_FRAG(HEAP_FRAG_P, DATA_WORDS)		\
+do {								\
+    (HEAP_FRAG_P)->next = NULL;					\
+    (HEAP_FRAG_P)->alloc_size = (DATA_WORDS);			\
+    (HEAP_FRAG_P)->used_size = (DATA_WORDS);			\
+    (HEAP_FRAG_P)->off_heap.first = NULL;			\
+    (HEAP_FRAG_P)->off_heap.alctr = ERTS_ALC_T_HEAP_FRAG;	\
+    (HEAP_FRAG_P)->off_heap.overhead = 0;			\
 } while (0)
 
 void init_message(void);

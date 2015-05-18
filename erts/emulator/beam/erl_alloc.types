@@ -479,4 +479,14 @@ type	CON_VPRINTF_BUF	TEMPORARY	SYSTEM		con_vprintf_buf
 
 +endif
 
++if epiphany
+
+type	SYS_READ_BUF	TEMPORARY	SYSTEM		sys_read_buf
+type	FD_ENTRY_BUF	STANDARD	SYSTEM		fd_entry_buf
+type	ENVIRONMENT	TEMPORARY	SYSTEM		environment
+type	FD_TAB		LONG_LIVED	SYSTEM		fd_tab
+type	PUTENV_STR	SYSTEM		SYSTEM		putenv_string
+
++endif
+
 # ----------------------------------------------------------------------------

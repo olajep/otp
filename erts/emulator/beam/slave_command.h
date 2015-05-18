@@ -126,11 +126,17 @@ struct master_command_refc {
 
 enum slave_command {
     SLAVE_COMMAND_MESSAGE,
+    SLAVE_COMMAND_EXIT,
 };
 
 struct slave_command_message {
     ErlMessage *m;
     Eterm receiver;
+} SLAVE_SHARED_DATA;
+
+struct slave_command_exit {
+    Eterm receiver, reason;
+    ErlHeapFragment *bp;
 } SLAVE_SHARED_DATA;
 
 #ifndef ERTS_SLAVE
@@ -160,8 +166,10 @@ void erts_master_send_command(enum master_command code, const void *data,
 void erts_master_syscall(enum slave_syscall no, void *arg);
 
 void erts_master_setup(void);
+void free_master_message_buffer(ErlHeapFragment *bp);
 
 void slave_serve_message(Process *c_p, struct slave_command_message *cmd);
+void slave_serve_exit(Process *c_p, struct slave_command_exit *cmd);
 
 int erts_dispatch_slave_commands(Process *c_p);
 #endif

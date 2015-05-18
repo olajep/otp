@@ -88,7 +88,7 @@ void free_message_buffer(ErlHeapFragment *bp)
     } while (bp != NULL);
 }
 
-static void free_master_message_buffer(ErlHeapFragment *bp)
+void free_master_message_buffer(ErlHeapFragment *bp)
 {
     struct master_command_free_hfrag cmd = { bp };
     erts_master_send_command(MASTER_COMMAND_FREE_HFRAG, &cmd, sizeof(cmd));

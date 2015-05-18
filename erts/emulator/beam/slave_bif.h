@@ -33,6 +33,7 @@ struct slave_syscall_bif {
     /* Bidirectional */
     struct slave_state state;
     /* To slave */
+    Uint32 state_flags;
     Eterm result;
 } SLAVE_SHARED_DATA;
 

@@ -393,7 +393,7 @@ $(TARGET)/TABLES-GENERATED: $(ATOMS) $(BIFS) ../utils/make_tables
 		$(ATOMS) $(BIFS) && echo $? >$(TARGET)/TABLES-GENERATED
 GENERATE += $(TARGET)/TABLES-GENERATED
 
-$(TTF_DIR)/erl_alloc_types.h: beam/erl_alloc.types ../utils/make_alloc_types
+$(TTF_DIR)/erl_alloc_types.h: ../beam/erl_alloc.types ../utils/make_alloc_types
 	$(gen_verbose)LANG=C $(PERL) ../utils/make_alloc_types -src $< -dst $@ $(ENABLE_ALLOC_TYPE_VARS)
 GENERATE += $(TTF_DIR)/erl_alloc_types.h
 

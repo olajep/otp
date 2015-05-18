@@ -47,6 +47,7 @@
 #undef ERL_THR_PROGRESS_TSD_TYPE_ONLY
 
 Eterm erl_create_slave_process(Process*, Eterm, Eterm, Eterm, ErlSpawnOpts*);
+void slave_set_pending_exit(Process *p, Eterm reason);
 int slave_do_exit_process(Process* p, struct slave_syscall_ready *arg);
 Sint erts_slave_queue_message(Process* receiver, ErtsProcLocks *receiver_locks,
 			      ErlHeapFragment* bp, Eterm message,

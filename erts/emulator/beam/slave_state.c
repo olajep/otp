@@ -35,6 +35,9 @@ slave_state_swapin(Process *p, const struct slave_state *state)
 #ifndef ERTS_SLAVE
     /* Lock the main lock so lc is happy */
     erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
+    ASSERT(ERTS_SCHEDULER_IS_SLAVE_CMDER(erts_get_scheduler_data()));
+    ASSERT(erts_get_scheduler_data()->current_process == NULL);
+    erts_get_scheduler_data()->current_process = p;
 #endif
 
     /* Validate that we can reach everything */
@@ -73,6 +76,11 @@ slave_state_swapout(Process *p, struct slave_state *state)
     state->msg_save_is_first = p->msg.save == &p->msg.first;
 
 #ifndef ERTS_SLAVE
+    if (ERTS_SCHEDULER_IS_SLAVE_CMDER(erts_get_scheduler_data())) {
+	ASSERT(erts_get_scheduler_data()->current_process == p
+	       || erts_get_scheduler_data()->current_process == NULL);
+	erts_get_scheduler_data()->current_process = NULL;
+    }
     erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);
 #endif
 }

@@ -29,17 +29,19 @@
 
 #define HARDDEBUG 0
 
+static const erts_aint32_t ignored_psflgs = ERTS_PSFLG_PENDING_EXIT;
+
 void
 erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 {
     Process *p = slave->c_p;
-    erts_aint32_t old_state = 0;
+    erts_aint32_t old_state, new_state;
     BifEntry *bif = bif_table + arg->bif_no;
     Eterm (*f)(Process*, Eterm*);
     ErtsThrPrgrDelayHandle delay;
     ASSERT(p);
     ASSERT(arg->bif_no < BIF_SIZE);
-    old_state = erts_smp_atomic32_read_acqb(&p->state);
+    old_state = erts_smp_atomic32_read_acqb(&p->state) & ~ignored_psflgs;
 
 #if HARDDEBUG
     switch (bif->arity) {
@@ -59,10 +61,13 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 
     erts_thr_progress_unmanaged_continue(delay);
 
-    if (old_state != erts_smp_atomic32_read_acqb(&p->state)) {
+    arg->state_flags = 0;
+    new_state = erts_smp_atomic32_read_nob(&p->state) & ~ignored_psflgs;
+    if (new_state == (old_state | ERTS_PSFLG_EXITING)) {
+	arg->state_flags |= ERTS_PSFLG_EXITING;
+    } else if (new_state != old_state) {
 	erl_exit(1, "Process state changed by bif %T:%T/%d!\nWas: %#x, Now: %#x",
-		 bif->module, bif->name, bif->arity, old_state,
-		 erts_smp_atomic32_read_acqb(&p->state));
+		 bif->module, bif->name, bif->arity, old_state, new_state);
     }
 
     slave_state_swapout(p, &arg->state);
