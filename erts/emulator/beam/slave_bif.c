@@ -45,10 +45,10 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 
 #if HARDDEBUG
     switch (bif->arity) {
-    case 0: erts_printf("Proxying bif %T:%T()\n", bif->module, bif->name); break;
-    case 1: erts_printf("Proxying bif %T:%T(%T)\n", bif->module, bif->name, arg->args[0]);break;
-    case 2: erts_printf("Proxying bif %T:%T(%T,%T)\n", bif->module, bif->name, arg->args[0], arg->args[1]);break;
-    case 3: erts_printf("Proxying bif %T:%T(%T,%T,%T)\n", bif->module, bif->name, arg->args[0], arg->args[1], arg->args[2]);break;
+    case 0: erts_printf("Proxying (for slave %d) bif %T:%T()\n", slave->no, bif->module, bif->name); break;
+    case 1: erts_printf("Proxying (for slave %d) bif %T:%T(%T)\n", slave->no, bif->module, bif->name, arg->args[0]); break;
+    case 2: erts_printf("Proxying (for slave %d) bif %T:%T(%T,%T)\n", slave->no, bif->module, bif->name, arg->args[0], arg->args[1]); break;
+    case 3: erts_printf("Proxying (for slave %d) bif %T:%T(%T,%T,%T)\n", slave->no, bif->module, bif->name, arg->args[0], arg->args[1], arg->args[2]); break;
     }
 #endif
 

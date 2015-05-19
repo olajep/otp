@@ -957,6 +957,8 @@ init_scheduler_data(ErtsSchedulerData* esdp, int num,
 
     esdp->reductions = 0;
 
+    esdp->timer_reference = 0;
+
     erts_port_task_handle_init(&esdp->nosuspend_port_task_handle);
 }
 
@@ -1526,16 +1528,68 @@ erts_continue_exit_process(Process *p)
 }
 
 void
+slave_serve_timeout(Process *p, struct slave_command_timeout *cmd)
+{
+    BeamInstr** pi = (BeamInstr **) p->def_arg_reg;
+    ERTS_SMP_LC_ASSERT(ERTS_PROC_LOCK_MAIN & erts_proc_lc_my_proc_locks(p));
+    if (!(p->flags & F_INSLPQUEUE)
+	|| p->scheduler_data->timer_reference != cmd->reference
+	|| p->common.id != cmd->process) {
+	 /* The timeout is late, drop it */
+	return;
+    }
+
+    p->i = *pi;
+    p->flags |= F_TIMO;
+    p->flags &= ~F_INSLPQUEUE;
+    erts_smp_atomic32_read_bor_nob(&p->state, ERTS_PSFLG_ACTIVE);
+}
+
+void
 cancel_timer(Process* p)
 {
+    struct master_command_timer cmd = {
+	.op = MASTER_TIMER_OP_CANCEL,
+	.process = p->common.id,
+	.reference = p->scheduler_data->timer_reference,
+    };
     ERTS_SMP_LC_ASSERT(ERTS_PROC_LOCK_MAIN & erts_proc_lc_my_proc_locks(p));
     p->flags &= ~(F_INSLPQUEUE|F_TIMO);
-#ifdef ERTS_SMP
-    erts_cancel_smp_ptimer(p->common.u.alive.ptimer);
-#else
-    EPIPHANY_STUB_BT();
-    /* erts_cancel_timer(&p->common.u.alive.tm); */
-#endif
+
+    /*
+     * We don't /need/ to send a cancel message. Clearing the F_INSLPQUEUE flag
+     * is sufficient to inhibit the timeout when it arrives. Indeed, it must be
+     * that way to prevent races with timeout messages that are sent before the
+     * cancel message is received.
+     */
+    erts_master_send_command(MASTER_COMMAND_TIMER, &cmd, sizeof(cmd));
+}
+
+/*
+ * Insert a process into the time queue, with a timeout 'timeout' in ms.
+ */
+void
+set_timer(Process* p, Uint timeout)
+{
+    struct master_command_timer cmd = {
+	.op = MASTER_TIMER_OP_SET,
+	.process = p->common.id,
+	.timeout = timeout,
+    };
+    ERTS_SMP_LC_ASSERT(ERTS_PROC_LOCK_MAIN & erts_proc_lc_my_proc_locks(p));
+
+    /* check for special case timeout=0 DONT ADD TO time queue */
+    if (timeout == 0) {
+	p->flags |= F_TIMO;
+	return;
+    }
+    p->flags |= F_INSLPQUEUE;
+    p->flags &= ~F_TIMO;
+
+    p->scheduler_data->timer_reference++;
+    cmd.reference = p->scheduler_data->timer_reference;
+
+    erts_master_send_command(MASTER_COMMAND_TIMER, &cmd, sizeof(cmd));
 }
 
 #if defined(ERTS_SMP) && defined(ERTS_ENABLE_LOCK_CHECK)

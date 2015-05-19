@@ -605,6 +605,8 @@ struct ErtsSchedulerData_ {
     erts_alloc_verify_func_t verify_unused_temp_alloc;
     Allctr_t *verify_unused_temp_alloc_data;
 #endif
+
+    Uint timer_reference;
 };
 
 typedef union {

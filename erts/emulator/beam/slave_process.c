@@ -514,3 +514,46 @@ slave_free_message_buffer(struct slave *slave, ErlHeapFragment *bp)
 {
     free_message_buffer_alctr(ERTS_ALC_T_SLAVE_HEAP_FRAG, bp);
 }
+
+/* Callback for process timeout */
+static void
+timeout_proc(Process* p)
+{
+    struct slave *slave = p->slave_host;
+    struct slave_command_timeout cmd = {
+	.process = p->common.id,
+	.reference = slave->timer_reference,
+    };
+    p->flags &= ~F_INSLPQUEUE;
+
+    erts_slave_send_command(slave, SLAVE_COMMAND_TIMEOUT, &cmd, sizeof(cmd));
+}
+
+void
+erts_slave_serve_timer(struct slave *slave, struct master_command_timer *cmd)
+{
+    Process *p = slave->c_p;
+    /* Outdated messages are dropped */
+    if (cmd->process != p->common.id) return;
+    erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
+
+    switch (cmd->op) {
+    case MASTER_TIMER_OP_SET: {
+	p->flags |= F_INSLPQUEUE;
+	slave->timer_reference = cmd->reference;
+	erts_create_smp_ptimer(&p->common.u.alive.ptimer,
+			       p->common.id,
+			       (ErlTimeoutProc) timeout_proc,
+			       cmd->timeout);
+	break;
+    }
+    case MASTER_TIMER_OP_CANCEL: {
+	p->flags &= ~F_INSLPQUEUE;
+	erts_cancel_smp_ptimer(p->common.u.alive.ptimer);
+	break;
+    }
+    default:
+	erl_exit(1, "Unexpected op %d in erts_slave_serve_timer()", cmd->op);
+    }
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);
+}

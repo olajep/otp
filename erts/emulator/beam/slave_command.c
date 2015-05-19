@@ -402,6 +402,11 @@ dispatch_commands(int slave)
 	erts_slave_serve_refc(&msg);
 	return 1;
     }
+    case MASTER_COMMAND_TIMER: {
+	MESSAGE(struct master_command_timer, msg);
+	erts_slave_serve_timer(slaves + slave, &msg);
+	return 1;
+    }
     default:
 	erl_exit(1, "Cannot pop unrecognized message %d from slave %d fifo\n",
 		 (int)cmd, slave);

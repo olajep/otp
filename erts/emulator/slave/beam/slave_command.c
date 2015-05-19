@@ -107,6 +107,11 @@ erts_dispatch_slave_commands(Process *c_p)
 	slave_serve_exit(c_p, &msg);
 	return 1;
     }
+    case SLAVE_COMMAND_TIMEOUT: {
+	MESSAGE(struct slave_command_timeout, msg);
+	slave_serve_timeout(c_p, &msg);
+	return 1;
+    }
     default:
 	erl_exit(1,
 		 "Cannot pop unrecognized message %d from master fifo\n",

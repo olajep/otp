@@ -154,8 +154,8 @@ int erts_slave_online = 0;
 static int ehal_initialised = 0;
 e_epiphany_t slave_workgroup;
 
-#define ROWS 2
-#define COLS 2
+#define ROWS 4
+#define COLS 4
 static void *pump_thread_loop(void __attribute__((unused)) *arg) {
     char *binary;
     e_platform_t platform;

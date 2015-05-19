@@ -88,6 +88,7 @@ struct slave {
     int available;
     int pending_syscall;
     erts_smp_atomic32_t msgq_len;
+    int timer_reference;
 };
 
 enum master_command {
@@ -95,6 +96,7 @@ enum master_command {
     MASTER_COMMAND_FREE_MESSAGE,
     MASTER_COMMAND_FREE_HFRAG,
     MASTER_COMMAND_REFC,
+    MASTER_COMMAND_TIMER,
 };
 
 struct master_command_setup {
@@ -124,9 +126,20 @@ struct master_command_refc {
     enum master_refc_op op;
 } SLAVE_SHARED_DATA;
 
+enum master_timer_op {
+    MASTER_TIMER_OP_SET,
+    MASTER_TIMER_OP_CANCEL,
+};
+struct master_command_timer {
+    Uint timeout, reference;
+    Eterm process;
+    enum master_timer_op op;
+} SLAVE_SHARED_DATA;
+
 enum slave_command {
     SLAVE_COMMAND_MESSAGE,
     SLAVE_COMMAND_EXIT,
+    SLAVE_COMMAND_TIMEOUT,
 };
 
 struct slave_command_message {
@@ -137,6 +150,11 @@ struct slave_command_message {
 struct slave_command_exit {
     Eterm receiver, reason;
     ErlHeapFragment *bp;
+} SLAVE_SHARED_DATA;
+
+struct slave_command_timeout {
+    Eterm process;
+    Uint reference;
 } SLAVE_SHARED_DATA;
 
 #ifndef ERTS_SLAVE
@@ -158,6 +176,10 @@ void erts_slave_serve_gc(struct slave *slave, struct slave_syscall_gc *arg);
 /* slave_refc.c */
 void erts_slave_serve_refc(struct master_command_refc *cmd);
 
+/* slave_process.c */
+void erts_slave_serve_timer(struct slave *slave,
+			    struct master_command_timer *cmd);
+
 int erts_dispatch_slave_commands(void);
 #else
 
@@ -170,7 +192,13 @@ void free_master_message_buffer(ErlHeapFragment *bp);
 
 void slave_serve_message(Process *c_p, struct slave_command_message *cmd);
 void slave_serve_exit(Process *c_p, struct slave_command_exit *cmd);
+void slave_serve_timeout(Process *c_p, struct slave_command_timeout *cmd);
 
+/*
+ * Command handlers may touch protected process fields such as the instruction
+ * pointer or state flags. erts_dispatch_slave_commands() must thus only be
+ * called from contexts where this is acceptable.
+ */
 int erts_dispatch_slave_commands(Process *c_p);
 #endif
 

@@ -40,17 +40,18 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 	= erts_alloc(ERTS_ALC_T_TMP, sizeof(struct slave_syscall_bif));
     Eterm result;
     int i;
-    ASSERT(epiphany_in_dram(cmd));
 
 #if HARDDEBUG
+    BifEntry *bif = bif_table + bif_no;
     switch (arity) {
-    case 0: erts_printf("Proxying BIF %d()...\n", bif_no); break;
-    case 1: erts_printf("Proxying BIF %d(%T)...\n", bif_no, args[0]); break;
-    case 2: erts_printf("Proxying BIF %d(%T,%T)...\n", bif_no, args[0], args[1]); break;
-    case 3: erts_printf("Proxying BIF %d(%T,%T,%T)...\n", bif_no, args[0], args[1], args[2]); break;
+    case 0: erts_printf("Proxying BIF %T:%T()...\n", bif->module, bif->name); break;
+    case 1: erts_printf("Proxying BIF %T:%T(%T)...\n", bif->module, bif->name, args[0]); break;
+    case 2: erts_printf("Proxying BIF %T:%T(%T,%T)...\n", bif->module, bif->name, args[0], args[1]); break;
+    case 3: erts_printf("Proxying BIF %T:%T(%T,%T,%T)...\n", bif->module, bif->name, args[0], args[1], args[2]); break;
     }
 #endif
 
+    ASSERT(epiphany_in_dram(cmd));
     cmd->bif_no = bif_no;
     for (i = 0; i < arity; i++) cmd->args[i] = args[i];
 
@@ -84,6 +85,8 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     X(link_1, 1)				\
     X(monitor_2, 2)				\
     X(net_kernel_dflag_unicode_io_1, 1)		\
+    X(node_0, 0)				\
+    X(node_1, 1)				\
     X(process_flag_2, 2)			\
     X(process_flag_3, 3)			\
     X(send_2, 2)				\

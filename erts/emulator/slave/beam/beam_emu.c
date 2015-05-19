@@ -1861,7 +1861,7 @@ void process_main(void)
 
 
  OpCase(i_wait_timeout_fs): {
-     EPIPHANY_STUB(OpCase(i_wait_timeout_fs));
+     erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
 
      /* Fall through */
  }
@@ -1888,16 +1888,28 @@ void process_main(void)
 	     1
 #endif
 	     ) {
-             EPIPHANY_STUB(OpCase(i_wait_timeout_locked_fs));
+	     /*
+	      * The timer routiner will set c_p->i to the value in
+	      * c_p->def_arg_reg[0].  Note that it is safe to use this
+	      * location because there are no living x registers in
+	      * a receive statement.
+	      * Note that for the halfword emulator, the two first elements
+	      * of the array are used.
+	      */
+	     BeamInstr** pi = (BeamInstr**) c_p->def_arg_reg;
+	     *pi = I+3;
+	     set_timer(c_p, unsigned_val(timeout_value));
 	 } else if (timeout_value == am_infinity) {
 	     c_p->flags |= F_TIMO;
 #if !defined(ARCH_64) || HALFWORD_HEAP
 	 } else if (term_to_Uint(timeout_value, &time_val)) {
-             EPIPHANY_STUB(OpCase(i_wait_timeout_locked_fs));
+	     BeamInstr** pi = (BeamInstr**) c_p->def_arg_reg;
+	     *pi = I+3;
+	     set_timer(c_p, time_val);
 #endif
 	 } else {		/* Wrong time */
 	     OpCase(i_wait_error_locked): {
-		 EPIPHANY_STUB(OpCase(i_wait_error_locked));
+		 erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
 		 /* Fall through */
 	     }
 	     OpCase(i_wait_error): {
@@ -1934,16 +1946,25 @@ void process_main(void)
 	     goto wait2;
 	 }
      }
-     EPIPHANY_STUB(OpCase(i_wait_timeout_locked_fs));
+     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
      Next(2);
  }
 
  OpCase(i_wait_timeout_fI): {
-     EPIPHANY_STUB(OpCase(i_wait_timeout_fI));
+     erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
  }
 
  OpCase(i_wait_timeout_locked_fI): {
-    EPIPHANY_STUB(OpCase(i_wait_timeout_locked_fI));
+     /*
+      * If we have already set the timer, we must NOT set it again.  Therefore,
+      * we must test the F_INSLPQUEUE flag as well as the F_TIMO flag.
+      */
+     if ((c_p->flags & (F_INSLPQUEUE | F_TIMO)) == 0) {
+	 BeamInstr** p = (BeamInstr **) c_p->def_arg_reg;
+	 *p = I+3;
+	 set_timer(c_p, Arg(1));
+     }
+     goto wait2;
  }
 
     /*
@@ -1951,7 +1972,7 @@ void process_main(void)
      * receive statement will examine the first message first.
      */
  OpCase(timeout_locked): {
-     EPIPHANY_STUB(OpCase(timeout_locked));
+     erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
  }
 
  OpCase(timeout): {

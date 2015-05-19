@@ -3056,45 +3056,6 @@ is_string(Eterm list)
     return 0;
 }
 
-#ifdef ERTS_SMP
-
-/*
- * Process and Port timers in smp case
- */
-
-#define ERTS_PTMR_FLGS_ALLCD_SIZE \
-  2
-#define ERTS_PTMR_FLGS_ALLCD_MASK \
-  ((((Uint32) 1) << ERTS_PTMR_FLGS_ALLCD_SIZE) - 1)
-
-#define ERTS_PTMR_FLGS_PREALLCD	((Uint32) 1)
-#define ERTS_PTMR_FLGS_SLALLCD	((Uint32) 2)
-#define ERTS_PTMR_FLGS_LLALLCD	((Uint32) 3)
-#define ERTS_PTMR_FLG_CANCELLED	(((Uint32) 1) << (ERTS_PTMR_FLGS_ALLCD_SIZE+0))
-
-static void
-init_ptimers(void)
-{
-    // ESTUB
-}
-
-void
-erts_create_smp_ptimer(ErtsSmpPTimer **timer_ref,
-		       Eterm id,
-		       ErlTimeoutProc timeout_func,
-		       Uint timeout)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-void
-erts_cancel_smp_ptimer(ErtsSmpPTimer *ptimer)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-#endif
-
 static int trim_threshold;
 static int top_pad;
 static int mmap_threshold;
@@ -3104,9 +3065,6 @@ Uint tot_bin_allocated;
 
 void erts_init_utils(void)
 {
-#ifdef ERTS_SMP
-    init_ptimers();
-#endif
 }
 
 void erts_init_utils_mem(void) 

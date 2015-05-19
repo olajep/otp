@@ -1040,7 +1040,13 @@ erts_send_message(Process* sender,
 	if (!ERTS_PROC_PENDING_EXIT(receiver))
 #endif
 	{
-	    ErlMessage* mp = message_alloc();
+	    ErlMessage* mp;
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	    if (IS_SLAVE_PROCESS(receiver))
+		mp = erts_alloc(ERTS_ALC_T_SLAVE_MSG_REF, sizeof(*mp));
+	    else
+#endif
+		mp = message_alloc();
 
             DTRACE6(message_send, sender_name, receiver_name,
                     size_object(message), tok_label, tok_lastcnt, tok_serial);
