@@ -80,9 +80,18 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 #define SLAVE_PROXIED_BIFS_DEFINER		\
     X(demonitor_1, 1)				\
     X(demonitor_2, 2)				\
+    X(exit_2, 2)				\
+    X(link_1, 1)				\
     X(monitor_2, 2)				\
     X(net_kernel_dflag_unicode_io_1, 1)		\
+    X(process_flag_2, 2)			\
+    X(process_flag_3, 3)			\
     X(send_2, 2)				\
+    X(send_3, 3)				\
+    X(spawn_3, 3)				\
+    X(spawn_link_3, 3)				\
+    X(spawn_opt_1, 1)				\
+    X(unlink_1, 1)				\
     X(whereis_1, 1)
 
 #define X(NAME, ARITY)					\

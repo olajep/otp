@@ -51,19 +51,6 @@ Export* erts_format_cpu_topology_trap = NULL;
  * each individual BIF does.
  */
 
-BIF_RETTYPE spawn_3(BIF_ALIST_3)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-/**********************************************************************/
-
-/* create a link to the process */
-BIF_RETTYPE link_1(BIF_ALIST_1)
-{
-    EPIPHANY_STUB_FUN();
-}
-
 /* Type must be atomic object! */
 void
 erts_queue_monitor_message(Process *p,
@@ -106,29 +93,6 @@ erts_queue_monitor_message(Process *p,
 		       , NIL
 #endif
 		       );
-}
-
-/**********************************************************************/
-/* this is a combination of the spawn and link BIFs */
-
-BIF_RETTYPE spawn_link_3(BIF_ALIST_3)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-/**********************************************************************/
-
-BIF_RETTYPE spawn_opt_1(BIF_ALIST_1)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-  
-/**********************************************************************/
-/* remove a link from a process */
-BIF_RETTYPE unlink_1(BIF_ALIST_1)
-{
-    EPIPHANY_STUB_FUN();
 }
 
 BIF_RETTYPE hibernate_3(BIF_ALIST_3)
@@ -370,26 +334,6 @@ BIF_RETTYPE raise_3(BIF_ALIST_3)
 }
 
 /**********************************************************************/
-/* send an exit message to another process (if trapping exits) or
-   exit the other process */
-
-BIF_RETTYPE exit_2(BIF_ALIST_2)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-BIF_RETTYPE process_flag_2(BIF_ALIST_2)
-{
-    EPIPHANY_STUB_FUN();
-}
-
-BIF_RETTYPE process_flag_3(BIF_ALIST_3)
-{
-    // We need locks on the process
-    EPIPHANY_STUB_FUN();
-}
-
-/**********************************************************************/
 
 /*
  * erlang:'!'/2
@@ -413,19 +357,6 @@ ebif_bang_2(BIF_ALIST_2)
 #define SEND_USER_ERROR		(-5)
 #define SEND_INTERNAL_ERROR	(-6)
 #define SEND_AWAIT_RESULT	(-7)
-
-Sint do_send(Process *p, Eterm to, Eterm msg, int suspend, Eterm *refp);
-
-Sint
-do_send(Process *p, Eterm to, Eterm msg, int suspend, Eterm *refp) {
-    EPIPHANY_STUB_FUN();
-}
-
-
-BIF_RETTYPE send_3(BIF_ALIST_3)
-{
-    EPIPHANY_STUB_FUN();
-}
 
 Eterm erl_send(Process *p, Eterm to, Eterm msg)
 {
