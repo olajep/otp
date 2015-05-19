@@ -10585,6 +10585,11 @@ erl_create_process(Process* parent, /* Parent of process (default group leader).
     state |= (((prio & ERTS_PSFLGS_PRIO_MASK) << ERTS_PSFLGS_ACT_PRIO_OFFSET)
 	      | ((prio & ERTS_PSFLGS_PRIO_MASK) << ERTS_PSFLGS_USR_PRIO_OFFSET));
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (IS_SLAVE_PROCESS(parent) && !rq)
+	rq = ERTS_RUNQ_IX(0);
+#endif
+
     if (!rq)
 	rq = erts_get_runq_proc(parent);
 

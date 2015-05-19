@@ -145,19 +145,16 @@ BIF_RETTYPE slave_host_0(BIF_ALIST_0)
 BIF_RETTYPE slave_state_0(BIF_ALIST_0)
 {
 #ifdef ERTS_SLAVE_EMU_ENABLED
-    ERTS_DECL_AM(online);
     ERTS_DECL_AM(offline);
     ERTS_DECL_AM(booting);
     if (erts_slave_online) {
-	if (erts_slave_booted) BIF_RET(AM_online);
+	if (erts_slave_booted) BIF_RET(am_online);
 	else BIF_RET(AM_booting);
     } else {
 	BIF_RET(AM_offline);
     }
 #elif defined(ERTS_SLAVE)
-    /* We can't access the atom table yet; so we can't construct the atom
-     * 'online' */
-    EPIPHANY_STUB_FUN();
+    return am_online;
 #else
     ERTS_DECL_AM(unavailable);
     BIF_RET(AM_unavailable);
@@ -166,7 +163,7 @@ BIF_RETTYPE slave_state_0(BIF_ALIST_0)
 
 BIF_RETTYPE slave_module_loaded_1(BIF_ALIST_1)
 {
-#ifdef ERTS_SLAVE_EMU_ENABLED
+#if defined(ERTS_SLAVE_EMU_ENABLED) || defined(ERTS_SLAVE)
     Module* modp;
     ErtsCodeIndex code_ix;
     Eterm res = am_false;
@@ -175,15 +172,17 @@ BIF_RETTYPE slave_module_loaded_1(BIF_ALIST_1)
 	BIF_ERROR(BIF_P, BADARG);
     }
     code_ix = erts_active_code_ix();
+#ifdef ERTS_SLAVE
+    if ((modp = erts_get_module(BIF_ARG_1, code_ix)) != NULL) {
+#else
     if ((modp = slave_get_module(BIF_ARG_1, code_ix)) != NULL) {
+#endif
 	if (modp->curr.code != NULL
 	    && modp->curr.code[MI_ON_LOAD_FUNCTION_PTR] == 0) {
 	    res = am_true;
 	}
     }
     BIF_RET(res);
-#elif defined(ERTS_SLAVE)
-    EPIPHANY_STUB_FUN();
 #else
     BIF_RET(am_false);
 #endif

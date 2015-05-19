@@ -523,4 +523,4 @@ int atom_table_size(void)
     ASSERT(ret > 0 && ret <= ATOM_LIMIT);
     return ret;
 }
-#endif
+#endif /* !ERTS_SLAVE */

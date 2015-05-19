@@ -413,6 +413,7 @@ atom ok
 atom old_heap_block_size
 atom old_heap_size
 atom on_load
+atom online
 atom open
 atom open_error
 atom opt

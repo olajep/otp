@@ -53,10 +53,6 @@ typedef struct atom {
     byte* name;      /* name of atom */
 } SLAVE_SHARED_DATA Atom;
 
-/*
- * In the slave we "cheat" and put erts_atom_table in utils.o rather than create
- * an otherwise empty atom.o.
- */
 extern IndexTable *erts_atom_table;
 
 ERTS_GLB_INLINE Atom* atom_tab(Uint i);
