@@ -535,7 +535,7 @@ extern int count_instructions;
 #endif
 
 #define Self(R) R = c_p->common.id
-#define Node(R) EPIPHANY_STUB(erts_this_node)
+#define Node(R) R = erts_this_node->sysname
 
 #define Arg(N)       I[(N)+1]
 #define Next(N)                \

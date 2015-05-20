@@ -416,6 +416,8 @@ type	ATOM_TABLE		SLAVE		ATOM	atom_tab
 type	ATOM_FALLBACK		LONG_LIVED	ATOM	atom_entry_fallback
 type	ATOM_TXT_FALLBACK	LONG_LIVED	ATOM	atom_text_fallback
 type	ATOM_TABLE_FALLBACK	LONG_LIVED	ATOM	atom_tab_fallback
+type	SLAVE_MISC		SLAVE		SYSTEM	slave_misc
+type	SLAVE_MISC_FALLBACK	STANDARD	SYSTEM	slave_misc_fallback
 +else
 type	FUN_ENTRY		LONG_LIVED	CODE	fun_entry
 type	ATOM			LONG_LIVED	ATOM	atom_entry

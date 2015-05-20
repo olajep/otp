@@ -40,6 +40,7 @@
 
 #include "sys.h"
 #include "hash.h"
+#include "slave.h"
 #include "erl_process.h"
 #include "erl_monitors.h"
 #include "erl_smp.h"
@@ -147,8 +148,11 @@ typedef struct erl_node_ {
   Eterm	sysname;		/* name@host atom for efficiency */
   Uint32 creation;		/* Creation */
   DistEntry *dist_entry;	/* Corresponding dist entry */
-} ErlNode;
+} SLAVE_SHARED_DATA ErlNode;
 
+extern ErlNode *erts_this_node;
+
+#ifndef ERTS_SLAVE
 
 extern Hash erts_dist_table;
 extern Hash erts_node_table;
@@ -163,7 +167,6 @@ extern Sint erts_no_of_visible_dist_entries;
 extern Sint erts_no_of_not_connected_dist_entries;
 
 extern DistEntry *erts_this_dist_entry;
-extern ErlNode *erts_this_node;
 extern char *erts_this_node_sysname; /* must match erl_node_tables.c */
 
 DistEntry *erts_channel_no_to_dist_entry(Uint);
@@ -187,17 +190,28 @@ Eterm erts_get_node_and_dist_references(struct process *);
 int erts_lc_is_de_rwlocked(DistEntry *);
 int erts_lc_is_de_rlocked(DistEntry *);
 #endif
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void slave_init_node_tables(void);
+#endif
 
-ERTS_GLB_INLINE void erts_deref_dist_entry(DistEntry *dep);
-ERTS_GLB_INLINE void erts_deref_node_entry(ErlNode *np);
-ERTS_GLB_INLINE void erts_smp_de_rlock(DistEntry *dep);
-ERTS_GLB_INLINE void erts_smp_de_runlock(DistEntry *dep);
-ERTS_GLB_INLINE void erts_smp_de_rwlock(DistEntry *dep);
-ERTS_GLB_INLINE void erts_smp_de_rwunlock(DistEntry *dep);
-ERTS_GLB_INLINE void erts_smp_de_links_lock(DistEntry *dep);
-ERTS_GLB_INLINE void erts_smp_de_links_unlock(DistEntry *dep);
+#endif /* !ERTS_SLAVE */
 
-#if ERTS_GLB_INLINE_INCL_FUNC_DEF
+#ifdef ERTS_SLAVE
+#  define ERTS_GLB_INLINE_MASTER
+#else
+#  define ERTS_GLB_INLINE_MASTER ERTS_GLB_INLINE
+#endif
+
+ERTS_GLB_INLINE_MASTER void erts_deref_dist_entry(DistEntry *dep);
+ERTS_GLB_INLINE_MASTER void erts_deref_node_entry(ErlNode *np);
+ERTS_GLB_INLINE_MASTER void erts_smp_de_rlock(DistEntry *dep);
+ERTS_GLB_INLINE_MASTER void erts_smp_de_runlock(DistEntry *dep);
+ERTS_GLB_INLINE_MASTER void erts_smp_de_rwlock(DistEntry *dep);
+ERTS_GLB_INLINE_MASTER void erts_smp_de_rwunlock(DistEntry *dep);
+ERTS_GLB_INLINE_MASTER void erts_smp_de_links_lock(DistEntry *dep);
+ERTS_GLB_INLINE_MASTER void erts_smp_de_links_unlock(DistEntry *dep);
+
+#if ERTS_GLB_INLINE_INCL_FUNC_DEF && !defined(ERTS_SLAVE)
 
 ERTS_GLB_INLINE void
 erts_deref_dist_entry(DistEntry *dep)

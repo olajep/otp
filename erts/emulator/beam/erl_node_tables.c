@@ -29,6 +29,11 @@
 #include "erl_thr_progress.h"
 #include "dtrace-wrapper.h"
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_syms.h"
+static ErlNode **const slave_this_node = (void*)SLAVE_SYM_erts_this_node;
+#endif
+
 Hash erts_dist_table;
 Hash erts_node_table;
 erts_smp_rwmtx_t erts_dist_table_rwmtx;
@@ -786,7 +791,11 @@ void erts_init_node_tables(void)
 
     hash_init(ERTS_ALC_T_NODE_TABLE, &erts_node_table, "node_table", 11, f);
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    erts_this_node = erts_alloc(ERTS_ALC_T_SLAVE_MISC, sizeof(ErlNode));
+#else
     erts_this_node = erts_alloc(ERTS_ALC_T_NODE_ENTRY, sizeof(ErlNode));
+#endif
     node_entries = 1;
 
     erts_refc_init(&erts_this_node->refc, 1); /* The system itself */
@@ -1705,3 +1714,10 @@ delete_reference_table(void)
     }
 }
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void
+slave_init_node_tables(void)
+{
+    *slave_this_node = erts_this_node;
+}
+#endif
