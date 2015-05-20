@@ -204,6 +204,7 @@ command_thread_loop(void __attribute__((unused)) *arg)
 	    e_write(&slave_workgroup, y, x, buffers_addr,
 		    &buffers, sizeof(buffers));
 	    ASSERT(ret == 4);
+	    slaves[ix].no = ix;
 	    slaves[ix].buffers = buffers;
 	    slaves[ix].dummy_esdp = alloc_slave_scheduler_data();
 	    erts_smp_mtx_init(&slaves[ix].command_mtx, "slave_command_mtx");

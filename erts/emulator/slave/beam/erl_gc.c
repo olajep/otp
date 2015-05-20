@@ -74,6 +74,27 @@ erts_garbage_collect(Process* p, int need, Eterm* objv, int nobj)
     }
 
     slave_state_swapin(p, &cmd->state);
+
+#ifdef CHECK_FOR_HOLES
+    /*
+     * We intentionally do not rescan the areas copied by the GC.
+     * We trust the GC not to leave any holes.
+     */
+    p->last_htop = p->htop;
+    p->last_mbuf = 0;
+#endif
+
+#ifdef DEBUG
+    /*
+     * The scanning for pointers from the old_heap into the new_heap or
+     * heap fragments turned out to be costly, so we remember how far we
+     * have scanned this time and will start scanning there next time.
+     * (We will not detect wild writes into the old heap, or modifications
+     * of the old heap in-between garbage collections.)
+     */
+    p->last_old_htop = p->old_htop;
+#endif
+
     ret = cmd->ret;
     erts_free(ERTS_ALC_T_TMP, cmd);
     return ret;

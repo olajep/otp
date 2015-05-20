@@ -81,6 +81,7 @@ struct slave_command_buffers {
 } SLAVE_SHARED_DATA;
 
 struct slave {
+    int no;
     struct slave_command_buffers *buffers;
     erts_smp_mtx_t command_mtx;
     Process *c_p;
