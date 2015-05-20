@@ -36,12 +36,14 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 {
     Process *p = slave->c_p;
     erts_aint32_t old_state, new_state;
+    BeamInstr *old_i;
     BifEntry *bif = bif_table + arg->bif_no;
     Eterm (*f)(Process*, Eterm*);
     ErtsThrPrgrDelayHandle delay;
     ASSERT(p);
     ASSERT(arg->bif_no < BIF_SIZE);
     old_state = erts_smp_atomic32_read_acqb(&p->state) & ~ignored_psflgs;
+    old_i = p->i;
 
 #if HARDDEBUG
     switch (bif->arity) {
@@ -68,6 +70,10 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     } else if (new_state != old_state) {
 	erl_exit(1, "Process state changed by bif %T:%T/%d!\nWas: %#x, Now: %#x",
 		 bif->module, bif->name, bif->arity, old_state, new_state);
+    }
+    if (p->i != old_i) {
+	erl_exit(1, "IP changed by bif %T:%T/%d!\nWas: %#x, Now: %#x",
+		 bif->module, bif->name, bif->arity, old_i, p->i);
     }
 
     slave_state_swapout(p, &arg->state);

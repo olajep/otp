@@ -94,6 +94,9 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     X(spawn_3, 3)				\
     X(spawn_link_3, 3)				\
     X(spawn_opt_1, 1)				\
+    X(unicode_characters_to_binary_2, 2)	\
+    X(unicode_characters_to_list_2, 2)		\
+    X(unicode_bin_is_7bit_1, 1)			\
     X(unlink_1, 1)				\
     X(whereis_1, 1)
 
