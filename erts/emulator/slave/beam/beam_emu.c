@@ -3135,8 +3135,6 @@ get_map_elements_fail:
      Eterm* argp;
      int i;
 
-     erts_printf("Context switch!\n");
-
      /*
       * Make sure that there is enough room for the argument registers to be saved.
       */
