@@ -35,6 +35,7 @@
     X(Eterm*, hend);					 \
     X(Eterm*, stop);					 \
     X(Uint, heap_sz);					 \
+    X(ProcDict*, dictionary);				 \
     X(Uint, freason);					 \
     X(Eterm, fvalue);					 \
     X(Eterm, ftrace);					 \

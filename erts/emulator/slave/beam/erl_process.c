@@ -905,7 +905,7 @@ delete_process(Process* p)
 	p->mbuf = NULL;
     }
 
-    /* erts_erase_dicts(p); */
+    erts_erase_dicts(p);
 
     /* pending messages are freed by the master */
 

@@ -3408,7 +3408,14 @@ get_map_elements_fail:
     }
 
  OpCase(i_get_sd):
-    EPIPHANY_STUB(OpCase(i_get_sd));
+    {
+	Eterm arg;
+	Eterm result;
+
+	GetArg1(0, arg);
+	result = erts_pd_hash_get(c_p, arg);
+	StoreBifResult(1, result);
+    }
 
     {
 	Eterm case_end_val;

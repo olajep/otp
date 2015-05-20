@@ -20,6 +20,7 @@
 #ifndef _ERL_PROCESS_DICT_H
 #define _ERL_PROCESS_DICT_H
 #include "sys.h"
+#include "slave.h"
 
 typedef struct proc_dict {
     unsigned int size;
@@ -28,7 +29,7 @@ typedef struct proc_dict {
     unsigned int splitPosition;
     Uint numElements;
     Eterm data[1]; /* The beginning of an array of erlang terms */
-} ProcDict;
+} SLAVE_SHARED_DATA ProcDict;
 
 Uint erts_dicts_mem_size(struct process *p);
 void erts_erase_dicts(struct process *p);

@@ -55,6 +55,7 @@ slave_state_swapin(Process *p, const struct slave_state *state)
     ASSERT(epiphany_in_dram(state->htop));
     ASSERT(epiphany_in_dram(state->hend));
     ASSERT(epiphany_in_dram(state->stop));
+    ASSERT(!state->dictionary || epiphany_in_dram(state->dictionary));
 #endif
 
 #define X(T, F) p->F = state->F
