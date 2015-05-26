@@ -1,0 +1,29 @@
+#! /bin/sh
+ROOT=`readlink -f ..`
+ERL="$ROOT/bin/erl -noshell"
+SLAVE_BIN="$ROOT/bin/epiphany-unknown-elf/slave.debug.smp.srec"
+BINDIR="$ROOT/bin/armv7l-unknown-linux-gnueabihf/"
+
+TEST_ERL="sudo -E LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+TEST_ERL="$TEST_ERL SLAVE_BINARY=$SLAVE_BIN BINDIR=$BINDIR"
+TEST_ERL="$TEST_ERL $BINDIR/beam.debug.smp -- -root $ROOT -- -noshell"
+
+echo " ==> Running unit:test()"
+$TEST_ERL -eval 'case unit:test() of error -> halt(1); _ -> init:stop() end' || {
+    echo "FAILURE"
+    exit 1
+}
+sleep 1 # We do what we can to prevent bus lockups, even voodoo like this
+
+TESTS=`$ERL -s regressions working -s erlang halt`
+
+for t in $TESTS; do
+    echo " --> Running test $t"
+    $TEST_ERL -s regressions run $t || {
+        echo "FAILURE"
+        exit 1
+    }
+    sleep 1
+done
+
+echo "OK"
