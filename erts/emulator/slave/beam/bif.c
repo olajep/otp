@@ -1562,6 +1562,36 @@ BIF_RETTYPE ref_to_list_1(BIF_ALIST_1)
     BIF_RET(term2list_dsprintf(BIF_P, BIF_ARG_1));
 }
 
+/*
+ * ETODO: Syscall when export==NULL (or always) (requires fix to extern fun
+ * format first)
+ */
+BIF_RETTYPE make_fun_3(BIF_ALIST_3)
+{
+    Eterm* hp;
+    Export *export;
+    Sint arity;
+
+    if (is_not_atom(BIF_ARG_1) || is_not_atom(BIF_ARG_2) || is_not_small(BIF_ARG_3)) {
+    error:
+	BIF_ERROR(BIF_P, BADARG);
+    }
+    arity = signed_val(BIF_ARG_3);
+    if (arity < 0) {
+	goto error;
+    }
+    export = erts_find_function(BIF_ARG_1, BIF_ARG_2, (Uint) arity,
+				erts_active_code_ix());
+    if (export == NULL) {
+	EPIPHANY_STUB_FUN();
+    }
+
+    hp = HAlloc(BIF_P, 2);
+    hp[0] = HEADER_EXPORT;
+    hp[1] = (Eterm) export;
+    BIF_RET(make_export(hp));
+}
+
 BIF_RETTYPE fun_to_list_1(BIF_ALIST_1)
 {
     Process* p = BIF_P;
