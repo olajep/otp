@@ -27,7 +27,7 @@
 	 get_path/0, 
 	 load_file/1,
 	 ensure_loaded/1,
-	 ensure_loaded_slave/1,
+	 ensure_loaded_epiphany/1,
 	 load_abs/1,
 	 load_abs/2,
 	 load_binary/3,
@@ -139,11 +139,11 @@ load_file(Mod) when is_atom(Mod) ->
 ensure_loaded(Mod) when is_atom(Mod) -> 
     call({ensure_loaded,Mod}).
 
--spec ensure_loaded_slave(Module) -> {module, Module} | {error, What} when
+-spec ensure_loaded_epiphany(Module) -> {module, Module} | {error, What} when
       Module :: module(),
       What :: embedded | badfile | native_code | nofile | on_load.
-ensure_loaded_slave(Mod) when is_atom(Mod) ->
-    call({ensure_loaded_slave,Mod}).
+ensure_loaded_epiphany(Mod) when is_atom(Mod) ->
+    call({ensure_loaded_epiphany,Mod}).
 
 %% XXX File as an atom is allowed only for backwards compatibility.
 -spec load_abs(Filename) -> load_ret() when
@@ -370,7 +370,7 @@ load_code_server_prerequisites() ->
 	      hipe_unified_loader,
 	      lists,
 	      os,
-	      slave,
+	      epiphany,
 	      unicode],
     _ = [M = M:module_info(module) || M <- Needed],
     ok.

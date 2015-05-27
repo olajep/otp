@@ -529,6 +529,7 @@ atom separate
 atom shared
 atom silent
 atom size
+atom slave
 atom sl_alloc
 atom spawn_executable
 atom spawn_driver

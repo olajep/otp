@@ -111,8 +111,8 @@ MODULES = \
 	ram_file \
 	rpc \
 	seq_trace \
-	slave \
-	slave_server \
+	epiphany \
+	epiphany_server \
 	standard_error \
 	user \
 	user_drv \

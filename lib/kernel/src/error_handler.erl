@@ -114,8 +114,8 @@ crash(Tuple) ->
 %% is handled by init.
 ensure_loaded(Module) ->
     Self = self(),
-    Fun = case slave:host() of
-              slave -> ensure_loaded_slave;
+    Fun = case epiphany:host() of
+              slave -> ensure_loaded_epiphany;
               _     -> ensure_loaded
           end,
     case whereis(code_server) of
@@ -133,7 +133,7 @@ ensure_loaded(Module) ->
         _ ->
             case Fun of
                 ensure_loaded -> init:ensure_loaded(Module);
-                ensure_loaded_slave ->
+                ensure_loaded_epiphany ->
                     Error = "A slave called the unloaded module `" ++
                         atom_to_list(Module) ++ "' before code_server was up",
                     halt(Error)

@@ -521,7 +521,7 @@ RUN_OBJS = \
 	$(OBJDIR)/erl_process_lock.o	$(OBJDIR)/erl_thr_progress.o \
 	$(OBJDIR)/io.o			$(OBJDIR)/erl_time_sup.o \
 	$(OBJDIR)/erl_bif_table.o	$(OBJDIR)/erl_bif_wrap.o \
-	$(OBJDIR)/erl_bif_slave.o	$(OBJDIR)/export.o \
+	$(OBJDIR)/erl_bif_epiphany.o	$(OBJDIR)/export.o \
 	$(OBJDIR)/beam_load.o		$(OBJDIR)/hash.o \
 	$(OBJDIR)/index.o		$(OBJDIR)/module.o \
 	$(OBJDIR)/atom.o		$(OBJDIR)/erl_map.o \

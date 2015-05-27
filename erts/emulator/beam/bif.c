@@ -41,6 +41,10 @@
 #include "erl_ptab.h"
 #include "erl_bits.h"
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_process.h"
+#endif
+
 static Export* flush_monitor_message_trap = NULL;
 static Export* set_cpu_topology_trap = NULL;
 static Export* await_proc_exit_trap = NULL;
@@ -856,6 +860,8 @@ BIF_RETTYPE spawn_opt_1(BIF_ALIST_1)
 	    so.flags |= SPO_LINK;
 	} else if (arg == am_monitor) {
 	    so.flags |= SPO_MONITOR;
+	} else if (arg == am_epiphany) {
+	    so.flags |= SPO_SLAVE;
 	} else if (is_tuple(arg)) {
 	    Eterm* tp2 = tuple_val(arg);
 	    Eterm val;
@@ -919,7 +925,15 @@ BIF_RETTYPE spawn_opt_1(BIF_ALIST_1)
     /*
      * Spawn the process.
      */
-    pid = erl_create_process(BIF_P, tp[1], tp[2], tp[3], &so);
+    if (so.flags & SPO_SLAVE) {
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	pid = erl_create_slave_process(BIF_P, tp[1], tp[2], tp[3], &so);
+#else
+	BIF_ERROR(BIF_P, EXC_NOTSUP);
+#endif
+    } else {
+	pid = erl_create_process(BIF_P, tp[1], tp[2], tp[3], &so);
+    }
     if (is_non_value(pid)) {
 	BIF_ERROR(BIF_P, so.error_code);
     } else if (so.flags & SPO_MONITOR) {

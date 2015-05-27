@@ -18,7 +18,7 @@
  */
 
 /*
- * BIFs belonging to the 'slave' module.
+ * BIFs belonging to the 'epiphany' module.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -40,13 +40,14 @@
 #  include "slave_io.h" /* For erts_slave_online */
 #endif
 
-BIF_RETTYPE slave_internal_spawn_3(BIF_ALIST_3)
+#ifndef ERTS_SLAVE
+BIF_RETTYPE epiphany_internal_spawn_3(BIF_ALIST_3)
 {
 #ifdef ERTS_SLAVE_EMU_ENABLED
     ErlSpawnOpts so;
     Eterm pid;
 
-    so.flags = 0;
+    so.flags = SPO_SLAVE;
     pid = erl_create_slave_process(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3, &so);
     if (is_non_value(pid)) {
 	BIF_ERROR(BIF_P, so.error_code);
@@ -57,14 +58,9 @@ BIF_RETTYPE slave_internal_spawn_3(BIF_ALIST_3)
     BIF_ERROR(BIF_P, EXC_NOTSUP);
 #endif
 }
+#endif /* !ERTS_SLAVE */
 
-BIF_RETTYPE slave_print_1(BIF_ALIST_1)
-{
-    erts_printf("slave:print/1: %T\n", BIF_ARG_1);
-    BIF_RET(am_ok);
-}
-
-BIF_RETTYPE slave_boot_0(BIF_ALIST_0)
+BIF_RETTYPE epiphany_boot_0(BIF_ALIST_0)
 {
 #ifdef ERTS_SLAVE_EMU_ENABLED
     Eterm can;
@@ -79,7 +75,7 @@ BIF_RETTYPE slave_boot_0(BIF_ALIST_0)
     }
 
     if (!erts_try_seize_code_write_permission(BIF_P)) {
-	ERTS_BIF_YIELD0(bif_export[BIF_slave_boot_0], BIF_P);
+	ERTS_BIF_YIELD0(bif_export[BIF_epiphany_boot_0], BIF_P);
     }
     erts_slave_bootstrap();
     erts_release_code_write_permission();
@@ -90,7 +86,7 @@ BIF_RETTYPE slave_boot_0(BIF_ALIST_0)
 #endif
 }
 
-BIF_RETTYPE slave_prepare_loading_2(BIF_ALIST_2)
+BIF_RETTYPE epiphany_prepare_loading_2(BIF_ALIST_2)
 {
 #ifdef ERTS_SLAVE_EMU_ENABLED
     byte* temp_alloc = NULL;
@@ -132,7 +128,7 @@ BIF_RETTYPE slave_prepare_loading_2(BIF_ALIST_2)
 #endif
 }
 
-BIF_RETTYPE slave_host_0(BIF_ALIST_0)
+BIF_RETTYPE epiphany_host_0(BIF_ALIST_0)
 {
 #ifdef ERTS_SLAVE
     BIF_RET(am_slave);
@@ -142,7 +138,7 @@ BIF_RETTYPE slave_host_0(BIF_ALIST_0)
 #endif
 }
 
-BIF_RETTYPE slave_state_0(BIF_ALIST_0)
+BIF_RETTYPE epiphany_state_0(BIF_ALIST_0)
 {
 #ifdef ERTS_SLAVE_EMU_ENABLED
     ERTS_DECL_AM(offline);
@@ -161,7 +157,7 @@ BIF_RETTYPE slave_state_0(BIF_ALIST_0)
 #endif
 }
 
-BIF_RETTYPE slave_module_loaded_1(BIF_ALIST_1)
+BIF_RETTYPE epiphany_module_loaded_1(BIF_ALIST_1)
 {
 #if defined(ERTS_SLAVE_EMU_ENABLED) || defined(ERTS_SLAVE)
     Module* modp;

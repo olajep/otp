@@ -81,6 +81,7 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 #define SLAVE_PROXIED_BIFS_DEFINER		\
     X(demonitor_1, 1)				\
     X(demonitor_2, 2)				\
+    X(epiphany_internal_spawn_3, 3)		\
     X(exit_2, 2)				\
     X(link_1, 1)				\
     X(monitor_2, 2)				\

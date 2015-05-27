@@ -1135,6 +1135,7 @@ void erts_check_for_holes(Process* p);
 #define SPO_LINK 1
 #define SPO_USE_ARGS 2
 #define SPO_MONITOR 4
+#define SPO_SLAVE 8
 
 /*
  * The following struct contains options for a process to be spawned.

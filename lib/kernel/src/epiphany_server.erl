@@ -16,7 +16,7 @@
 %%
 %% %CopyrightEnd%
 %%
--module(slave_server).
+-module(epiphany_server).
 
 %%%-------------------------------------------------------------------
 %%% Author  : Magnus Lång <margnus1@telia.com>
@@ -32,7 +32,7 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+	 terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
 -define(TIMEOUT, 10000).
@@ -46,9 +46,9 @@
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     %% We don't use gen_server:start_link because we want to initialise
-    %% asynchronously (indeed, that is the reason slave_server exists in the
+    %% asynchronously (indeed, that is the reason epiphany_server exists in the
     %% first place; so that the slave emulator can be booted asynchronously
-    %% without races to slave:spawn/3).
+    %% without races to epiphany:spawn/3).
     proc_lib:start_link(?MODULE, init, [[]]).
 
 -spec call(tuple()) -> term().
@@ -61,7 +61,7 @@ call(Cmd) ->
 
 -spec init([]) -> {ok, #state{}} | {stop, term()}.
 init([]) ->
-    case slave:state() of
+    case epiphany:state() of
 	booting ->
 	    register(?SERVER, self()),
 	    proc_lib:init_ack({ok, self()}),
@@ -76,7 +76,7 @@ init([]) ->
 
 -spec init_loop() -> {ok, #state{}} | {stop, term()}.
 init_loop() ->
-    case slave:boot() of
+    case epiphany:boot() of
 	ok ->
 	    init_loop_2(prerequisite_modules());
 	{error, wait} ->
@@ -90,7 +90,7 @@ init_loop() ->
 init_loop_2([]) ->
     init_finish();
 init_loop_2([Mod|Mods]) ->
-    case code:ensure_loaded_slave(Mod) of
+    case code:ensure_loaded_epiphany(Mod) of
 	{module, Mod} ->
 	    init_loop_2(Mods);
 	{error, What} ->
@@ -108,8 +108,8 @@ init_stop(Reason) ->
     exit(Reason).
 
 %% @doc The set of modules that we require to be loaded (in addition to the
-%% preloaded modules, which are already loaded by slave:boot()) before any
-%% processes are spawn on the slaves.
+%% preloaded modules, which are already loaded by epiphany:boot()) before any
+%% processes are spawn on the epiphanys.
 -spec prerequisite_modules() -> [module()].
 prerequisite_modules() ->
     [code, code_server, error_handler].
@@ -120,8 +120,8 @@ prerequisite_modules() ->
 
 -spec handle_call(term(), term(), #state{}) -> {reply, Reply, #state{}} when
       Reply :: ok | pid().
-handle_call({spawn, M, F, A}, _From, State) ->
-    {reply, wrap(fun() -> slave:internal_spawn(M,F,A) end), State};
+handle_call(wait_ready, _From, State) ->
+    {reply, ok, State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -140,14 +140,3 @@ terminate(_Reason, _State) ->
 -spec code_change(term(), #state{}, term()) -> {ok, #state{}}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
-wrap(Fun) ->
-    try {ok, Fun()}
-    catch throw:E -> {throw, E};
-          error:E -> {error, E};
-          exit:E -> {exit, E}
-    end.

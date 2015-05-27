@@ -608,13 +608,12 @@ bif erlang:fun_info_mfa/1
 #
 # New in ??
 #
-bif slave:internal_spawn/3
-bif slave:print/1
-bif slave:boot/0
-bif slave:prepare_loading/2
-bif slave:module_loaded/1
-bif slave:host/0
-bif slave:state/0
+bif epiphany:internal_spawn/3
+bif epiphany:boot/0
+bif epiphany:prepare_loading/2
+bif epiphany:module_loaded/1
+bif epiphany:host/0
+bif epiphany:state/0
 
 #
 # Obsolete

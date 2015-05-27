@@ -90,7 +90,7 @@ init(Ref, Parent, [Root,Mode0]) ->
 	end,
 
     SlaveDb =
-	case slave:state() of
+	case epiphany:state() of
 	    No when No =:= unavailable; No =:= offline -> undefined;
 	    _Yes ->
 		Tab = ets:new(code_slave, [private]),
@@ -359,18 +359,18 @@ handle_call({ensure_loaded,Mod0}, Caller, St0) ->
 	  end,
     do_mod_call(Fun, Mod0, {error,badarg}, St0);
 
-handle_call({ensure_loaded_slave, _}, _, St=#state{slavedb=undefined}) ->
-    {reply, {error, slave:state()}, St};
-handle_call({ensure_loaded_slave,Mod0}, Caller, St0) ->
+handle_call({ensure_loaded_epiphany, _}, _, St=#state{slavedb=undefined}) ->
+    {reply, {error, epiphany:state()}, St};
+handle_call({ensure_loaded_epiphany,Mod0}, Caller, St0) ->
     Fun = fun (M, St) ->
-		  case slave:module_loaded(M) of
+		  case epiphany:module_loaded(M) of
 		      true ->
 			  {reply,{module,M},St};
 		      false when St#state.mode =:= interactive ->
 			  case ets:lookup(St#state.slavedb, M) of
 			      [{M, Bin}] ->
 				  [{M, File}] = ets:lookup(St#state.moddb, M),
-				  slave_load_binary(M, File, Bin, Caller, St);
+				  epiphany_load_binary(M, File, Bin, Caller, St);
 			      [] ->
 				  ets:insert(St#state.slavedb, {M, want}),
 				  case erlang:module_loaded(M) of
@@ -379,7 +379,7 @@ handle_call({ensure_loaded_slave,Mod0}, Caller, St0) ->
 				      %% else than init or code_server has
 				      %% loaded a module.
 				      true ->
-					  slave_load_uncached(M, Caller, St);
+					  epiphany_load_uncached(M, Caller, St);
 				      false ->
 					  load_file(M, Caller, St)
 				  end
@@ -394,7 +394,7 @@ handle_call({delete,Mod0}, {_From,_Tag}, S) ->
     Fun = fun (M, St) ->
 		  case catch erlang:delete_module(M) of
 		      true ->
-			  %% ETODO: delete slave module
+			  %% ETODO: delete epiphany module
 			  ets:delete(St#state.moddb, M),
 			  {reply,true,St};
 		      _ -> 
@@ -1259,10 +1259,10 @@ do_load_binary(Module, File, Binary, Caller, St) ->
 	    {reply,{error,badarg},St}
     end.
 
-slave_load_binary(Mod, File, Bin, _Caller, #state{slavedb=SlaveDb}=St) ->
+epiphany_load_binary(Mod, File, Bin, _Caller, #state{slavedb=SlaveDb}=St) ->
     case modp(Mod) andalso is_binary(Bin) of
 	true ->
-	    case slave:load_module(Mod, Bin) of
+	    case epiphany:load_module(Mod, Bin) of
 		{module,Mod} = Module ->
 		    ets:insert(SlaveDb, {Mod,want}),
 		    {reply,Module,St};
@@ -1274,7 +1274,7 @@ slave_load_binary(Mod, File, Bin, _Caller, #state{slavedb=SlaveDb}=St) ->
 	    {reply,{error,badarg},St}
     end.
 
-slave_load_uncached(Mod, From,
+epiphany_load_uncached(Mod, From,
 		    #state{path=Path, slavedb=SlaveDb, moddb=Db}=St0) ->
     case modp(Mod) of
 	true ->
@@ -1297,7 +1297,7 @@ slave_load_uncached(Mod, From,
 		    case LoadRes of
 			error -> {reply,{error,nofile},St0};
 			{_, Bin, FullName} ->
-			    slave_load_binary(Mod, FullName, Bin, From, St0)
+			    epiphany_load_binary(Mod, FullName, Bin, From, St0)
 		    end;
 		{yes,St} ->
 		    ets:insert(SlaveDb, {Mod,want}),
@@ -1355,13 +1355,13 @@ try_load_module_1(File, Mod, Bin, Caller, #state{moddb=Db}=St) ->
 	    case catch load_native_code(Mod, Bin) of
 		{module,Mod} ->
 		    ets:insert(Db, {Mod,File}),
-		    slave_handle_loaded(Mod, File, Bin, Caller, St);
+		    epiphany_handle_loaded(Mod, File, Bin, Caller, St);
 		no_native ->
 		    case erlang:load_module(Mod, Bin) of
 			{module,Mod} ->
 			    ets:insert(Db, {Mod,File}),
 			    post_beam_load(Mod),
-			    slave_handle_loaded(Mod, File, Bin, Caller, St);
+			    epiphany_handle_loaded(Mod, File, Bin, Caller, St);
 			{error,on_load} ->
 			    handle_on_load(Mod, File, Caller, St);
 			{error,What} = Error ->
@@ -1412,12 +1412,12 @@ post_beam_load(Mod) ->
 	false -> ok
     end.
 
-slave_handle_loaded(Mod, File, Bin, Caller, #state{slavedb=SlaveDb}=St) ->
-    case slave:state() of
+epiphany_handle_loaded(Mod, File, Bin, Caller, #state{slavedb=SlaveDb}=St) ->
+    case epiphany:state() of
 	online ->
 	    case ets:lookup(SlaveDb, Mod) of
 		[{Mod, want}] ->
-		    slave_load_binary(Mod, File, Bin, Caller, St);
+		    epiphany_load_binary(Mod, File, Bin, Caller, St);
 		_ ->
 		    ets:insert(SlaveDb, {Mod, Bin}),
 		    {reply,{module,Mod},St}
