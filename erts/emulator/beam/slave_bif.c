@@ -37,6 +37,7 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     Process *p = slave->c_p;
     erts_aint32_t old_state, new_state;
     BeamInstr *old_i;
+    Sint old_fcalls;
     BifEntry *bif = bif_table + arg->bif_no;
     Eterm (*f)(Process*, Eterm*);
     ErtsThrPrgrDelayHandle delay;
@@ -56,11 +57,14 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 
     slave_state_swapin(p, &arg->state);
 
+    old_fcalls = p->fcalls;
+    p->fcalls = INT_MAX;
     delay = erts_thr_progress_unmanaged_delay();
 
     f = bif->f;
     arg->result = f(p, arg->args);
 
+    p->fcalls = MAX(1, old_fcalls - (INT_MAX - p->fcalls));
     erts_thr_progress_unmanaged_continue(delay);
 
     arg->state_flags = 0;
