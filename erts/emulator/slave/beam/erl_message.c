@@ -121,7 +121,26 @@ Sint erts_send_message(Process *p, Process *p2, ErtsProcLocks *l, Eterm t, unsig
 
 void erts_link_mbuf_to_proc(Process *proc, ErlHeapFragment *bp)
 {
-    EPIPHANY_STUB_BT();
+    if (bp) {
+	/* Link the message buffer */
+	bp->next = MBUF(proc);
+	MBUF(proc) = bp;
+	MBUF_SIZE(proc) += bp->used_size;
+	/* ETODO: Is this needed on master too? Do we sync flags? */
+	FLAGS(proc) |= F_FORCE_GC;
+
+	/* Move any off_heap's into the process */
+	if (bp->off_heap.first != NULL) {
+	    struct erl_off_heap_header** next_p = &bp->off_heap.first;
+	    while (*next_p != NULL) {
+		next_p = &((*next_p)->next);
+	    }
+	    *next_p = MSO(proc).first;
+	    MSO(proc).first = bp->off_heap.first;
+	    bp->off_heap.first = NULL;
+	    OH_OVERHEAD(&(MSO(proc)), bp->off_heap.overhead);
+	}
+    }
 }
 
 /*
