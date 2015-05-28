@@ -126,6 +126,8 @@ slave_get_module(Eterm mod, ErtsCodeIndex code_ix)
 
     ASSERT(is_atom(mod));
 
+    if (!initialized) return NULL;
+
     mod_tab = &module_tables[code_ix];
 
     e.module = atom_val(mod);
