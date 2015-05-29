@@ -211,7 +211,7 @@ command_thread_loop(void __attribute__((unused)) *arg)
 	}
     }
 
-    while(1) {
+    while(erts_slave_online) {
 	if (erts_dispatch_slave_commands() == 0) {
 	    /* ETODO: We might need to limit the number of operations to
 	     * ensure a good rate of thread progress reports. */
@@ -221,7 +221,6 @@ command_thread_loop(void __attribute__((unused)) *arg)
 	    erts_milli_sleep(1);
 	}
     }
-    erl_exit(1, "Slave commander thread exited");
     return NULL;
 }
 

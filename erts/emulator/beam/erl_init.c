@@ -2087,6 +2087,10 @@ system_cleanup(int flush_async)
 #endif
 #endif
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    erts_stop_slave_io();
+#endif
+
     erts_exit_flush_async();
 }
 

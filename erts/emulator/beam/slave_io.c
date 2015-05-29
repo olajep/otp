@@ -196,7 +196,7 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
 
     erts_signal_slave_command();
 
-    while(1) {
+    while(erts_slave_online) {
 	if (pump_output() == 0) {
 	    /* ETODO: Exponential sleep duration increase */
 	    erts_milli_sleep(10);
@@ -215,24 +215,13 @@ void erts_init_slave_io(void) {
 
     erts_slave_online = 1;
     if (start_pump_thread()) {
-	fprintf(stderr, "Could not spin up pump thread\n");
-	erts_stop_slave_io();
+	erl_exit(1, "Could not spin up pump thread\n");
     }
 }
 
 void erts_stop_slave_io(void) {
     int ret;
     erts_slave_online = 0;
-
-    if (memfd > 0) {
-        const unsigned size      = 0x02000000;
-        const unsigned ephy_base = 0x8e000000;
-        ret = munmap((void*)ephy_base, size);
-	if (ret != 0) perror("munmap");
-	ret = close(memfd);
-	if (ret != 0) perror("close: memfd");
-        spoof_mmap();
-    }
 
     if (!ehal_initialised) return;
     ret = e_finalize();
