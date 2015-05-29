@@ -92,12 +92,12 @@ static int map_shm(void) {
     ASSERT(slave_data_end < slave_heap_start);
     ASSERT(slave_heap_start < (void*)(ephy_base + size));
 
-    // The old way, for devices without the Epiphany kernel driver
-    memfd = open("/dev/mem", O_RDWR | O_SYNC);
+    memfd = open("/dev/epiphany", O_RDWR | O_SYNC);
     if (memfd == -1) {
-	/* perror("open: /dev/mem"); */
-	return -1;
+	/* The old way, for devices without the Epiphany kernel driver */
+	memfd = open("/dev/mem", O_RDWR | O_SYNC);
     }
+    if (memfd == -1) return -1;
 
     // We avoid using MAP_FIXED because we'd rather know if there is another
     // mapping in the way than overwrite it.
@@ -168,14 +168,12 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
 	erts_stop_slave_io();
 	return NULL;
     }
-    erts_printf("Running e-hal platform ver %#x\n", platform.hal_ver);
 
     if (e_reset_system() != E_OK) {
 	perror("Not loading slave emulator: e_reset_system");
 	erts_stop_slave_io();
 	return NULL;
     }
-    printf("Opening %dx%d workgroup\n", ROWS, COLS);
     if (e_open(&slave_workgroup, 0, 0, ROWS, COLS) != E_OK) {
 	perror("Not loading slave emulator: e_open");
 	erts_stop_slave_io();
@@ -190,7 +188,6 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
 	return NULL;
     }
 
-    printf("Loading and starting program\n");
     if (e_load_group(binary, &slave_workgroup, 0, 0, ROWS, COLS, E_TRUE) != E_OK) {
 	perror("Not loading slave emulator: e_load");
 	erts_stop_slave_io();
@@ -211,7 +208,7 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
 void erts_init_slave_io(void) {
     // We make things easy for ourselves by mapping in the shared memory area at
     // *the same* address as it is observed by the Epiphany chip.
-    if (map_shm()) {
+    if (getenv("SLAVE_BINARY") == NULL || map_shm()) {
 	spoof_mmap();
 	return;
     }
