@@ -31,6 +31,8 @@
 
 static const erts_aint32_t ignored_psflgs = ERTS_PSFLG_PENDING_EXIT;
 
+#define INFINITE_REDS ((1 << 27) - 1)
+
 void
 erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 {
@@ -58,13 +60,13 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     slave_state_swapin(p, &arg->state);
 
     old_fcalls = p->fcalls;
-    p->fcalls = INT_MAX;
+    p->fcalls = INFINITE_REDS;
     delay = erts_thr_progress_unmanaged_delay();
 
     f = bif->f;
     arg->result = f(p, arg->args);
 
-    p->fcalls = MAX(1, old_fcalls - (INT_MAX - p->fcalls));
+    p->fcalls = MAX(1, old_fcalls - (INFINITE_REDS - p->fcalls));
     erts_thr_progress_unmanaged_continue(delay);
 
     arg->state_flags = 0;
