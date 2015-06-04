@@ -222,10 +222,13 @@ ethr_abort__(void)
     abort();
 }
 
-/* Atomics */
-#define PETERSON_MAGIC 0xBCBD1264
-
+#if !ETHR_DISABLE_EPIPHANY_BARRIER
 volatile char epiphany_dram_write_barrier_data[16];
+#endif
+
+/* Atomics */
+#if !ETHR_DISABLE_EPIPHANY_ATOMICS
+#define PETERSON_MAGIC 0xBCBD1264
 
 /*
  * The "atomics" are implemented by acquiring a Peterson's algorithm mutex. The
@@ -304,7 +307,10 @@ ethr_native_atomic32_cmpxchg(ethr_native_atomic32_t *var,
     return read_val;
 }
 
+#endif /* !ETHR_DISABLE_EPIPHANY_ATOMICS */
+
 /* Spinlocks */
+#if !ETHR_DISABLE_EPIPHANY_SPINLOCK
 #include "epiphany.h"
 
 #define MUTEX_COUNT 16
@@ -488,3 +494,5 @@ ethr_native_spin_lock(ethr_native_spinlock_t *lock)
     /* We barrier just because consumers might assume a barrier is implied in a lock. */
     ETHR_MEMBAR(ETHR_LoadLoad|ETHR_LoadStore|ETHR_StoreLoad|ETHR_StoreStore);
 }
+
+#endif /* !ETHR_DISABLE_EPIPHANY_SPINLOCK */
