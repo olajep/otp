@@ -13,17 +13,16 @@ $TEST_ERL -eval 'case unit:test() of error -> halt(1); _ -> init:stop() end' || 
     echo "FAILURE"
     exit 1
 }
-sleep 1 # We do what we can to prevent bus lockups, even voodoo like this
 
 TESTS=`$ERL -s regressions working -s erlang halt`
 
 for t in $TESTS; do
-    echo " --> Running test $t"
+    sleep 1 # We do what we can to prevent bus lockups, even voodoo like this
+    echo " --> Running regressions:$t()"
     $TEST_ERL -s regressions run $t || {
         echo "FAILURE"
         exit 1
     }
-    sleep 1
 done
 
 echo "OK"

@@ -57,7 +57,7 @@ typedef struct {
 #endif
     Export* (*put_export)(Eterm mod, Eterm func, unsigned int arity);
     Export* (*active_entry)(Eterm mod, Eterm func, unsigned int arity);
-    Export** bif;
+    Export* SLAVE_SHARED_DATA* bif;
     Module* (*put_module)(Eterm mod);
     unsigned (*catches_cons)(BeamInstr* cp, unsigned cdr);
     Eterm (*make_current_old)(Process *c_p, ErtsProcLocks c_p_locks,

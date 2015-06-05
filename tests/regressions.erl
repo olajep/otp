@@ -58,15 +58,18 @@ fun_gc() ->
 mbuf_gc() ->
     Fun = eval("fun() -> dict:to_list({dict,a,a,a,a,a,a,a,a}) end."),
     P1 = epiphany:spawn(Fun),
-    %% An unrelated bug causes the exit tuples to be corrupted; let's not
-    %% monitor these processes, for now.
-    %% Ref1 = monitor(process, P1),
-    %% receive {'DOWN', Ref1, process, P1, _} -> ok end,
-    wait_for_exit(P1),
+    Ref1 = monitor(process, P1),
+    %% Another regression tested by this case is the corruption of stacktraces
+    %% that starts in BIFs. Just to be on the safe side, we match it a bit, too.
+    receive {'DOWN', Ref1, process, P1, Reason1} ->
+	    {badarg,[{erlang,tuple_size, _, _}|_]} = Reason1
+    end,
     P2 = epiphany:spawn(Fun),
-    %% Ref2 = monitor(process, P2),
-    %% receive {'DOWN', Ref2, process, P2, _} -> ok end.
-    wait_for_exit(P2).
+    Ref2 = monitor(process, P2),
+    receive {'DOWN', Ref2, process, P2, Reason2} ->
+	    {badarg,[{erlang,tuple_size, _, _}|_]} = Reason2
+    end,
+    ok.
 
 %% Known to be broken
 map_hole() ->
@@ -78,15 +81,6 @@ display_server() ->
     receive stop -> ok;
 	    T -> erlang:display(T),
 		 display_server()
-    end.
-
-%% Wait for the exit of P without using monitors.
-wait_for_exit(P) ->
-    case process_info(P) of
-	undefined -> ok;
-	_ ->
-	    timer:sleep(10),
-	    wait_for_exit(P)
     end.
 
 eval(Str) ->

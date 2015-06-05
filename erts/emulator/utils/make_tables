@@ -167,7 +167,7 @@ typedef struct bif_entry {
 } SLAVE_SHARED_DATA BifEntry;
 
 extern BifEntry bif_table[];
-extern Export* bif_export[];
+extern Export* SLAVE_SHARED_DATA bif_export[];
 
 #define BIF_SIZE $bif_size
 

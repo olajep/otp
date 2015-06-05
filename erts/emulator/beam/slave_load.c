@@ -32,20 +32,26 @@
 #include "slave_ix.h"
 #include "slave_module.h"
 
+#include "slave_syms.h"
+
 LoaderTarget loader_target_slave = {
 #ifndef NO_JUMP_TABLE
     NULL,
 #endif
     slave_export_put,
     slave_active_export_entry,
-    slave_bif_export,
+    /*
+     * slave_bif_export does not count as a constant, so we inline its
+     * definition here
+     */
+    (Export *SLAVE_SHARED_DATA*)SLAVE_SYM_bif_export,
     slave_put_module,
     slave_catches_cons,
     slave_make_current_old,
     slave_update_ranges,
 };
 BifEntry slave_bif_table[BIF_SIZE];
-Export *slave_bif_export[BIF_SIZE];
+Export *SLAVE_SHARED_DATA* const slave_bif_export = (Export *SLAVE_SHARED_DATA*)SLAVE_SYM_bif_export;
 
 int erts_slave_booted = 0;
 static int slave_load_initialised = 0;

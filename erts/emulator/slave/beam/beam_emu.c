@@ -4116,7 +4116,7 @@ handle_error(Process* c_p, BeamInstr* pc, Eterm* reg, BifFunction bf)
  */
 static BeamInstr*
 next_catch(Process* c_p, Eterm *reg) {
-    // ESTUB: Tracing omitted
+    /* ESTUB: Tracing omitted */
     int active_catches = c_p->catches > 0;
     Eterm *ptr, *prev = NULL;
     ptr = prev = c_p->stop;
@@ -4127,9 +4127,10 @@ next_catch(Process* c_p, Eterm *reg) {
     while (ptr < STACK_START(c_p)) {
 	if (is_catch(*ptr)) {
 	    if (active_catches) goto found_catch;
-	    ptr++;
+	} else if (is_CP(*ptr)) {
+	    prev = ptr;
 	}
-	else ptr++;
+	ptr++;
     }
     return NULL;
     
