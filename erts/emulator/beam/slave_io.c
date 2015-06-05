@@ -153,10 +153,14 @@ static int start_pump_thread(void) {
 int erts_slave_online = 0;
 static int ehal_initialised = 0;
 e_epiphany_t slave_workgroup;
+volatile int restart_slave_io_flag = 0;
 
 #define ROWS 4
 #define COLS 4
-static void *pump_thread_loop(void __attribute__((unused)) *arg) {
+static void *
+pump_thread_loop(void __attribute__((unused)) *arg)
+{
+    int restart_tries = 0;
     char *binary;
     e_platform_t platform;
 
@@ -169,6 +173,7 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
 	return NULL;
     }
 
+ restart_2:
     if (e_reset_system() != E_OK) {
 	perror("Not loading slave emulator: e_reset_system");
 	erts_stop_slave_io();
@@ -194,15 +199,59 @@ static void *pump_thread_loop(void __attribute__((unused)) *arg) {
 	return NULL;
     }
 
+    {
+	int count = 0;
+	const off_t barrier_addr = SLAVE_SYM_start_barrier;
+	unsigned x, y;
+	for (y = 0; y < slave_workgroup.rows; y++) {
+	    for (x = 0; x < slave_workgroup.cols; x++) {
+		while(1) {
+		    int core_barrier;
+#ifdef DEBUG
+		    ssize_t ret =
+#endif
+			e_read(&slave_workgroup, y, x, barrier_addr,
+			       &core_barrier, sizeof(core_barrier));
+		    ASSERT(ret == 4);
+		    if (core_barrier == 1) break;
+		    while (pump_output() != 0);
+
+		    count++;
+		    if (count > 100) {
+			if (++restart_tries > 5) {
+			    erts_fprintf(stderr, "Couldn't start slaves\n");
+			    erts_stop_slave_io();
+			    return NULL;
+			}
+			erts_fprintf(stderr, "Timed out waiting for slaves to "
+				     "come online. Resetting.\n");
+			goto restart;
+		    }
+		    erts_milli_sleep(1);
+		}
+	    }
+	}
+    }
+
     erts_signal_slave_command();
 
     while(erts_slave_online) {
 	if (pump_output() == 0) {
+	    if (restart_slave_io_flag) {
+		restart_slave_io_flag = 0;
+		goto restart;
+	    }
 	    /* ETODO: Exponential sleep duration increase */
 	    erts_milli_sleep(10);
 	}
     }
     return NULL;
+ restart:
+    if (e_close(&slave_workgroup) != E_OK) {
+	erts_stop_slave_io();
+	return NULL;
+    }
+    goto restart_2;
 }
 
 void erts_init_slave_io(void) {
@@ -217,6 +266,10 @@ void erts_init_slave_io(void) {
     if (start_pump_thread()) {
 	erl_exit(1, "Could not spin up pump thread\n");
     }
+}
+
+void erts_restart_slave_io(void) {
+    restart_slave_io_flag = 1;
 }
 
 void erts_stop_slave_io(void) {

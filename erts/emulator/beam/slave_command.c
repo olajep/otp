@@ -80,34 +80,6 @@ alloc_slave_scheduler_data(void)
     return esdp;
 }
 
-static void
-erts_await_slave_init(void)
-{
-    const off_t barrier_addr = SLAVE_SYM_start_barrier;
-    unsigned x, y;
-    for (y = 0; y < slave_workgroup.rows; y++) {
-	for (x = 0; x < slave_workgroup.cols; x++) {
-	    while(1) {
-		int core_barrier;
-#ifdef DEBUG
-		ssize_t ret =
-#endif
-		e_read(&slave_workgroup, y, x, barrier_addr,
-		       &core_barrier, sizeof(core_barrier));
-		ASSERT(ret == 4);
-		if (core_barrier == 1) break;
-
-		/* Since we're already a managed thread, we're required to
-		 * frequently report progress */
-		if (erts_thr_progress_update(NULL)) {
-		    erts_thr_progress_leader_update(NULL);
-		}
-		erts_milli_sleep(1);
-	    };
-	}
-    }
-}
-
 static int tpr_wait_flag;
 static erts_smp_mtx_t tpr_mtx;
 static erts_smp_cnd_t tpr_cnd;
@@ -153,6 +125,7 @@ static erts_smp_mtx_t freeq_mtx;
 static void *
 command_thread_loop(void __attribute__((unused)) *arg)
 {
+    int restart_tries = 0;
     ErtsThrPrgrCallbacks callbacks;
     const off_t buffers_addr = SLAVE_SYM_slave_command_buffers;
     unsigned x, y;
@@ -180,7 +153,9 @@ command_thread_loop(void __attribute__((unused)) *arg)
     erts_lc_set_thread_name("slave command thread");
 #endif
     erts_proc_register_slave_command_thread(&command_thead_esd);
+    erts_smp_mtx_init(&freeq_mtx, "slave_command_freeq_mtx");
 
+ restart:
     while(!slave_has_started_flag) {
 	if (erts_thr_progress_update(NULL)) {
 	    erts_thr_progress_leader_update(NULL);
@@ -188,26 +163,53 @@ command_thread_loop(void __attribute__((unused)) *arg)
 	erts_milli_sleep(10);
     }
 
-    /* Since we're paranoid, we make sure all the cores are ready. */
-    erts_await_slave_init();
-
-    erts_smp_mtx_init(&freeq_mtx, "slave_command_freeq_mtx");
-    num_slaves = slave_workgroup.num_cores;
-    slaves = calloc(num_slaves, sizeof(struct slave));
+    if (num_slaves == 0) {
+	num_slaves = slave_workgroup.num_cores;
+	slaves = calloc(num_slaves, sizeof(struct slave));
+	for (y = 0; y < slave_workgroup.rows; y++) {
+	    for (x = 0; x < slave_workgroup.cols; x++) {
+		struct slave_command_buffers *buffers = alloc_slave_buffers();
+		int ix = x + y * slave_workgroup.rows;
+		slaves[ix].no = ix;
+		slaves[ix].buffers = buffers;
+		slaves[ix].dummy_esdp = alloc_slave_scheduler_data();
+		erts_smp_mtx_init(&slaves[ix].command_mtx, "slave_command_mtx");
+	    }
+	}
+    } else {
+	ASSERT(num_slaves == slave_workgroup.num_cores);
+    }
     for (y = 0; y < slave_workgroup.rows; y++) {
 	for (x = 0; x < slave_workgroup.cols; x++) {
-	    struct slave_command_buffers *buffers = alloc_slave_buffers();
 	    int ix = x + y * slave_workgroup.rows;
+	    struct slave_command_buffers *buffers = slaves[ix].buffers;
 #ifdef DEBUG
 	    ssize_t ret =
 #endif
 	    e_write(&slave_workgroup, y, x, buffers_addr,
 		    &buffers, sizeof(buffers));
 	    ASSERT(ret == 4);
-	    slaves[ix].no = ix;
-	    slaves[ix].buffers = buffers;
-	    slaves[ix].dummy_esdp = alloc_slave_scheduler_data();
-	    erts_smp_mtx_init(&slaves[ix].command_mtx, "slave_command_mtx");
+	}
+    }
+
+    {
+	int count = 0;
+	/* Await the initial SETUP message */
+	while (erts_dispatch_slave_commands() == 0) {
+	    erts_milli_sleep(10);
+	    if (++count > 200) {
+		slave_has_started_flag = 0;
+		if (++restart_tries > 5) {
+		    erts_fprintf(stderr, "Slaves timed out sending SETUP too "
+				 "many times, giving up.\n");
+		    erts_stop_slave_io();
+		} else {
+		    erts_fprintf(stderr, "Slaves timed out sending SETUP, "
+				 "restarting.\n");
+		    erts_restart_slave_io();
+		}
+		goto restart;
+	    }
 	}
     }
 

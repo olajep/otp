@@ -36,11 +36,11 @@
 
 void erts_init_slave_io(void);
 
-extern int erts_slave_online;
-
 #ifndef ERTS_SLAVE
 void erts_stop_slave_io(void);
+void erts_restart_slave_io(void);
 extern e_epiphany_t slave_workgroup;
+extern int erts_slave_online;
 #endif
 
 #endif /* ERL_SLAVE_IO_H__ */
