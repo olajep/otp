@@ -71,11 +71,13 @@ ErlHeapFragment* erts_resize_message_buffer(ErlHeapFragment *, Uint,
 					    Eterm *, Uint);
 void free_message_buffer(ErlHeapFragment *bp)
 {
+#ifdef DEBUG
     extern char __heap_start, __heap_end;
     /* Message buffers that are attached to messages are allocated on the master
      * and must not be freed here. They are freed by free_message or
      * erts_move_msg_mbuf_to_heap instead. */
     ASSERT((void*)&__heap_start <= (void*)bp && (void*)bp <= (void*)&__heap_end);
+#endif
 
     ASSERT(bp != NULL);
     do {

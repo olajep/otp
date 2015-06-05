@@ -897,13 +897,7 @@ delete_process(Process* p)
 	erts_free(ERTS_ALC_T_ARG_REG, p->arg_reg);
     }
 
-    /*
-     * Free all pending message buffers.
-     */
-    if (p->mbuf != NULL) {
-	free_message_buffer(p->mbuf);
-	p->mbuf = NULL;
-    }
+    /* mbuf is cleaned up later, since it might contain reason */
 
     erts_erase_dicts(p);
 
@@ -1085,24 +1079,31 @@ cancel_suspend_of_suspendee(Process *p, ErtsProcLocks p_locks)
 {
     if (is_not_nil(p->suspendee)) {
 	EPIPHANY_STUB_BT();
-	/* Process *rp; */
-	/* if (!(p_locks & ERTS_PROC_LOCK_STATUS)) */
-	/*     erts_smp_proc_lock(p, ERTS_PROC_LOCK_STATUS); */
-	/* rp = erts_pid2proc(p, p_locks|ERTS_PROC_LOCK_STATUS, */
-	/* 		   p->suspendee, ERTS_PROC_LOCK_STATUS); */
-	/* if (rp) { */
-	/*     erts_resume(rp, ERTS_PROC_LOCK_STATUS); */
-	/*     erts_smp_proc_unlock(rp, ERTS_PROC_LOCK_STATUS); */
-	/* } */
-	/* if (!(p_locks & ERTS_PROC_LOCK_STATUS)) */
-	/*     erts_smp_proc_unlock(p, ERTS_PROC_LOCK_STATUS); */
-	/* p->suspendee = NIL; */
     }
 }
 
 #endif
 
-#define COMMAND_POLL_REDUCTION_INTERVAL 10000
+static void
+final_proc_cleanup(ErtsSchedulerData *esdp, Process *p)
+{
+#ifdef ERTS_SMP
+    ASSERT(esdp->free_process == p);
+    esdp->free_process = NULL;
+#else
+    state = erts_smp_atomic32_read_nob(&p->state);
+    ASSERT(!(state & ERTS_PSFLG_IN_RUNQ));
+#endif
+    /*
+     * Free all pending message buffers.
+     */
+    if (p->mbuf != NULL) {
+	free_message_buffer(p->mbuf);
+	p->mbuf = NULL;
+    }
+
+    erts_free_proc(p);
+}
 
 Process *schedule(Process *p, int calls)
 {
@@ -1127,35 +1128,30 @@ Process *schedule(Process *p, int calls)
 				   sizeof(struct slave_syscall_ready));
 	    ready_arg->exit_reason = p->fvalue;
 	    slave_state_swapout(p, &ready_arg->state);
+	    ready_arg->state.mbuf = NULL; /* We will free mbuf */
+	    erts_master_syscall(SLAVE_SYSCALL_READY, ready_arg);
 
-#ifdef ERTS_SMP
-	    ASSERT(esdp->free_process == p);
-	    esdp->free_process = NULL;
-#else
-	    state = erts_smp_atomic32_read_nob(&p->state);
-	    ASSERT(!(state & ERTS_PSFLG_IN_RUNQ));
-#endif
-
-	    erts_free_proc(p);
+	    final_proc_cleanup(esdp, p);
 	} else {
 	    if (state & ERTS_PSFLG_PENDING_EXIT)
 		erts_handle_pending_exit(p, ERTS_PROC_LOCK_MAIN);
 
-	    p->fcalls = COMMAND_POLL_REDUCTION_INTERVAL;
+	    p->fcalls = CONTEXT_REDS;
 	    return p;
 	}
     }
     {
 	ErlSpawnOpts so;
 	ErtsSchedulerData *esdp = erts_get_scheduler_data();
-	if (!ready_arg)
+	if (!ready_arg) {
 	    ready_arg = erts_alloc(ERTS_ALC_T_TMP,
 				   sizeof(struct slave_syscall_ready));
+	    erts_master_syscall(SLAVE_SYSCALL_READY, ready_arg);
+	}
 	so.flags = 0;
-	erts_master_syscall(SLAVE_SYSCALL_READY, ready_arg);
 	p = erl_create_process_ptr(ready_arg, &so);
 	ASSERT(epiphany_in_dram(p));
-	p->fcalls = COMMAND_POLL_REDUCTION_INTERVAL;
+	p->fcalls = CONTEXT_REDS;
 
 #ifndef ERTS_SMP
 	erts_scheduler_data = calloc(1, sizeof(ErtsSchedulerData));
@@ -1165,7 +1161,7 @@ Process *schedule(Process *p, int calls)
 	p->scheduler_data = esdp;
 	esdp->current_process = p;
 
-	// Lock the main lock so lc is happy
+	/* Lock the main lock so lc is happy */
 	erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
 #endif
 	erts_smp_atomic32_set_nob(&p->state, erts_smp_atomic32_read_nob(&p->state) | ERTS_PSFLG_RUNNING);
@@ -1333,8 +1329,6 @@ erts_do_exit_process(Process* p, Eterm reason)
 
     /* ASSERT((ERTS_TRACE_FLAGS(p) & F_INITIAL_TRACE_FLAGS) */
     /* 	   == F_INITIAL_TRACE_FLAGS); */
-
-    /* cancel_timer(p);		/\* Always cancel timer just in case *\/ */
 
     if (p->u.bif_timers)
 	EPIPHANY_STUB_BT();

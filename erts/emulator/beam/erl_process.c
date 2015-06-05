@@ -11948,7 +11948,6 @@ erts_do_exit_process(Process* p, Eterm reason)
      */
     p->u.terminate = NULL;
 
-
     erts_continue_exit_process(p);
 }
 

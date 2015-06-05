@@ -34,7 +34,7 @@ EPIPHANY_SRAM_FUNC static void __attribute__((interrupt)) handl(int);
 
 static int is_leader() {
     if (epiphany_in_emulator()) {
-        // Hardcoded coordinates 32,8
+	/* Hardcoded coordinates 32,8 */
         return e_get_coreid() == 04010;
     } else {
         return e_group_config.core_row == 0
@@ -56,8 +56,9 @@ static void grab_barrier() {
     const int rows = e_group_config.group_rows;
     const int cols = e_group_config.group_cols;
     if (epiphany_in_emulator()) {
-	// The barrier does not fix the problem in the emulator, and we don't
-	// know the workgroup size anyway (the fields above are always 0).
+	/* The barrier does not fix the problem in the emulator, and we don't
+	 * know the workgroup size anyway (the fields above are always 0).
+	 */
 	return;
     }
     start_barrier = 1;
@@ -73,7 +74,7 @@ static void grab_barrier() {
 int
 main(int argc, char **argv)
 {
-    // Dram behaves strangely until all cores have started
+    /* Dram behaves strangely until all cores have started */
     grab_barrier();
 
     erts_init_slave_io();
@@ -87,10 +88,13 @@ main(int argc, char **argv)
     e_irq_attach(E_DMA1_INT, handl);
     e_irq_attach(E_USER_INT, handl);
 
-    // We start completely masked from interrupts, it seems
+    /* Cleanup any old interrupts before unmasking them */
+    if (e_reg_read(E_REG_ILAT))
+	erts_printf("Ignoring ILAT=%x\n", e_reg_read(E_REG_ILAT));
+    e_reg_write(E_REG_ILAT, 0);
     e_reg_write(E_REG_IMASK, 0);
 
-    // Bits 2 and 3 protects the lower and upper half of data_bank1 from writing
+    /* Bits 2 and 3 protects the lower and upper half of data_bank1 from writing */
     e_reg_write(E_REG_MEMPROTECT,
 		e_reg_read(E_REG_MEMPROTECT)
 		| (1 << 2)
@@ -112,7 +116,7 @@ main(int argc, char **argv)
 
 #ifdef ERTS_SMP
 void erts_sys_main_thread() {
-    // We want to run BEAM on the main thread
+    /* We want to run BEAM on the main thread */
     enter_scheduler(0);
 }
 
