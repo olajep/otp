@@ -51,6 +51,7 @@ static const char dashes[PTR_SIZE+3] = {
 #endif
 
 #if defined(DEBUG) && defined(__GNUC__)
+#include "epiphany.h"
 
 /*
  * This file defines functions for use within a debugger like gdb
@@ -324,7 +325,8 @@ static void check_memory(Eterm *start, Eterm *end)
             erts_fprintf(stderr,"%s, line %d: ERTS_HOLE_MARKER found at 0x%0*lx\n",
                          __FILE__, __LINE__,PTR_SIZE,(unsigned long)(pos-1));
             print_untagged_memory(start,end); /* DEBUGSTUFF */
-	    abort();
+            epiphany_backtrace();
+            returning_abort();
 	} else if (is_thing(hval)) {
 	    pos += (thing_arityval(hval));
 	}
