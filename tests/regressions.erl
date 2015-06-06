@@ -1,16 +1,16 @@
 -module(regressions).
 
 -export([working/0, broken/0, run/1]).
--export([message/0, message_gc/0, fun_gc/0, mbuf_gc/0, map_hole/0]).
+-export([message/0, message_gc/0, fun_gc/0, mbuf_gc/0, map_align/0]).
 
 -export([display_server/0]).
 
 working() ->
-    Tests = [message, message_gc, fun_gc, mbuf_gc],
+    Tests = [message, message_gc, fun_gc, mbuf_gc, map_align],
     lists:foreach(fun(T)-> io:fwrite("~p~n", [T]) end, Tests).
 
 broken() ->
-    Tests = [map_hole],
+    Tests = [],
     lists:foreach(fun(T)-> io:fwrite("~p~n", [T]) end, Tests).
 
 %% Return code indicates test result
@@ -71,8 +71,8 @@ mbuf_gc() ->
     end,
     ok.
 
-%% Known to be broken
-map_hole() ->
+%% Tests that the map_t structure isn't padded, causing holes in the heap.
+map_align() ->
     P = epiphany:spawn(eval("fun()->#{}end.")),
     Ref = monitor(process, P),
     receive {'DOWN', Ref, process, P, normal} -> ok end.

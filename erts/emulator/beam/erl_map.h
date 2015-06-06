@@ -28,7 +28,17 @@ typedef struct map_s {
     Eterm thing_word;
     Uint  size;
     Eterm keys;      /* tuple */
-} map_t;
+}
+#ifdef __GNUC__
+/*
+ * We need the packed attribute to avoid holes in the heaps.
+ *
+ * In particular, the Epiphany architecture would otherwise align this structure
+ * to 8 bytes, leaving a single word hole on the heap.
+ */
+    __attribute__((packed))
+#endif
+    map_t;
 /* map node
  *
  * -----------
