@@ -57,6 +57,10 @@
 #include <valgrind/memcheck.h>
 #endif
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_io.h"
+#endif
+
 static Export* alloc_info_trap = NULL;
 static Export* alloc_sizes_trap = NULL;
 
@@ -95,6 +99,9 @@ static char erts_system_version[] = ("Erlang/OTP " ERLANG_OTP_RELEASE
 				     " [ds:%beu:%beu:%beu]"
 #endif
 				     " [async-threads:%d]"
+#endif
+#ifdef ERTS_SLAVE_EMU_ENABLED
+				     " [slave:%d]"
 #endif
 #ifdef HIPE
 				     " [hipe]"
@@ -346,6 +353,9 @@ erts_print_system_version(int to, void *arg, Process *c_p)
 #endif
 #ifdef USE_THREADS
 		      , erts_async_max_threads
+#endif
+#ifdef ERTS_SLAVE_EMU_ENABLED
+		      , erts_slave_online ? slave_workgroup.num_cores : 0
 #endif
 #ifdef ERTS_ENABLE_KERNEL_POLL
 		      , erts_use_kernel_poll ? "true" : "false"
