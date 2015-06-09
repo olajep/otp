@@ -610,6 +610,7 @@ bif erlang:fun_info_mfa/1
 #
 bif epiphany:internal_spawn/3
 bif epiphany:boot/0
+bif epiphany:count/0
 bif epiphany:prepare_loading/2
 bif epiphany:module_loaded/1
 bif epiphany:host/0

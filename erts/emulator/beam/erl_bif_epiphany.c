@@ -40,6 +40,10 @@
 #  include "slave_io.h" /* For erts_slave_online */
 #endif
 
+#ifdef ERTS_SLAVE
+#  include "epiphany.h" /* For epiphany_workgroup_size() */
+#endif
+
 #ifndef ERTS_SLAVE
 BIF_RETTYPE epiphany_internal_spawn_3(BIF_ALIST_3)
 {
@@ -83,6 +87,18 @@ BIF_RETTYPE epiphany_boot_0(BIF_ALIST_0)
 #else
     Eterm *hp = HAlloc(BIF_P, 3);
     return TUPLE2(hp, am_error, am_disabled);
+#endif
+}
+
+BIF_RETTYPE epiphany_count_0(BIF_ALIST_0)
+{
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (erts_slave_online) return make_small(slave_workgroup.num_cores);
+    else return make_small(0);
+#elif defined(ERTS_SLAVE)
+    return make_small(epiphany_workgroup_size());
+#else
+    return make_small(0);
 #endif
 }
 
