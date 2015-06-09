@@ -363,6 +363,8 @@ void sys_epiphany_bt_stub(const char* name);
 #define EPIPHANY_STUB_FUN() sys_epiphany_stub(__FILE__, __LINE__, __FUNCTION__)
 #define EPIPHANY_STUB_BT() sys_epiphany_bt_stub(__FUNCTION__)
 
+int sys_in_slave_heap(void*);
+
 #endif /* #ifndef _ERL_EPIPHANY_SYS_H */
 
 /* Local Variables: */  

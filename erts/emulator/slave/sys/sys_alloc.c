@@ -52,6 +52,7 @@ internal_malloc(size_t size)
     lock();
     result = malloc(size);
     unlock();
+    ASSERT(!result || (epiphany_in_dram(result) && sys_in_slave_heap(result)));
     return result;
 }
 
@@ -69,6 +70,7 @@ internal_calloc(size_t nmemb, size_t size)
     lock();
     result = calloc(nmemb, size);
     unlock();
+    ASSERT(!result || (epiphany_in_dram(result) && sys_in_slave_heap(result)));
     return result;
 }
 
@@ -80,5 +82,13 @@ internal_realloc(void *ptr, size_t size)
     lock();
     result = realloc(ptr, size);
     unlock();
+    ASSERT(!result || (epiphany_in_dram(result) && sys_in_slave_heap(result)));
     return result;
+}
+
+int
+sys_in_slave_heap(void *ptr)
+{
+    extern char __heap_start, __heap_end;
+    return (void*)&__heap_start <= ptr && ptr <= (void*)&__heap_end;
 }

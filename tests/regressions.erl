@@ -1,12 +1,13 @@
 -module(regressions).
 
 -export([working/0, broken/0, run/1]).
--export([message/0, message_gc/0, fun_gc/0, mbuf_gc/0, map_align/0]).
+-export([message/0, message_gc/0, fun_gc/0, mbuf_gc/0, map_align/0,
+	 mbuf_free/0]).
 
 -export([display_server/0]).
 
 working() ->
-    Tests = [message, message_gc, fun_gc, mbuf_gc, map_align],
+    Tests = [message, message_gc, fun_gc, mbuf_gc, map_align, mbuf_free],
     lists:foreach(fun(T)-> io:fwrite("~p~n", [T]) end, Tests).
 
 broken() ->
@@ -76,6 +77,16 @@ map_align() ->
     P = epiphany:spawn(eval("fun()->#{}end.")),
     Ref = monitor(process, P),
     receive {'DOWN', Ref, process, P, normal} -> ok end.
+
+%% Tests that mbufs that are allocated on the master are cleaned up properly
+%% when slave processes quit.
+mbuf_free() ->
+    {P1, Ref1} = spawn_monitor(fun()->matmul:test(epiphany:count()+1)end),
+    receive {'DOWN', Ref1, process, P1, Reason1} ->
+	    {system_limit, _} = Reason1
+    end,
+    true = is_integer(matmul:test(epiphany:count())),
+    ok.
 
 display_server() ->
     receive stop -> ok;

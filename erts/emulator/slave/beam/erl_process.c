@@ -918,10 +918,13 @@ init_scheduler_data(ErtsSchedulerData* esdp, int num,
     esdp->match_pseudo_process = NULL;
     esdp->free_process = NULL;
 #endif
-    esdp->x_reg_array = calloc(ERTS_X_REGS_ALLOCATED, sizeof(Eterm));
-    ASSERT(epiphany_in_dram(esdp->x_reg_array));
-    esdp->f_reg_array = calloc(MAX_REG, sizeof(FloatDef));
-    ASSERT(epiphany_in_dram(esdp->f_reg_array));
+    esdp->x_reg_array =
+	erts_alloc_permanent_cache_aligned(ERTS_ALC_T_BEAM_REGISTER,
+					   ERTS_X_REGS_ALLOCATED *
+					   sizeof(Eterm));
+    esdp->f_reg_array =
+	erts_alloc_permanent_cache_aligned(ERTS_ALC_T_BEAM_REGISTER,
+					   MAX_REG * sizeof(FloatDef));
 #if !HEAP_ON_C_STACK
     esdp->num_tmp_heap_used = 0;
 #endif
