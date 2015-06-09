@@ -242,21 +242,29 @@ void returning_abort(void)
     abort();
 }
 
+#define BT_MAX_FRAMES 32
 void
 epiphany_backtrace(void)
 {
     void **frame, **link;
+#if !HARDDEBUG
+    char links[9 * BT_MAX_FRAMES + 1];
+    int links_pos = 0;
+#endif
     int count = 0;
     asm("mov %0,fp" : "=r"(frame) : : );
     asm("movfs %0,pc" : "=r"(link) : : );
-    erts_printf("Backtrace:");
-    while (16*1024 <= (unsigned)frame && (unsigned)frame < 32*1024
-	   && count++ < 100) {
-	int frame_off, link_off;
 #if HARDDEBUG
-	erts_printf("[0x%x] frame=0x%x\n", (unsigned)link - 4, (unsigned)frame);
+    erts_printf("Backtrace:");
+#endif
+    while (16*1024 <= (unsigned)frame && (unsigned)frame < 32*1024
+	   && count++ < BT_MAX_FRAMES) {
+	int frame_off = 0, link_off = 0;
+#if HARDDEBUG
+	erts_printf("[%#x] frame=%#x\n", (unsigned)link - 4, (unsigned)frame);
 #else
-	erts_printf(" 0x%x", (unsigned)link - 4);
+	links_pos += snprintf(links + links_pos, sizeof(links) - links_pos,
+			      " %#x", (unsigned)link - 4);
 #endif
 	if (scan_epilogue((unsigned*)link, &frame_off, &link_off)) {
 	    break;
@@ -265,8 +273,8 @@ epiphany_backtrace(void)
 	frame = frame[frame_off >> 2];
     }
 #if HARDDEBUG
-	erts_printf("[0x%x] frame=0x%x\n", (unsigned)link - 4, (unsigned)frame);
+    erts_printf("[%#x] frame=%#x\n", (unsigned)link - 4, (unsigned)frame);
 #else
-	erts_printf(" 0x%x\n", (unsigned)link - 4);
+    erts_printf("Backtrace:%s %#x\n", links, (unsigned)link - 4);
 #endif
 }
