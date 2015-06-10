@@ -44,8 +44,6 @@
 static Export* await_proc_exit_trap = NULL;
 Export* erts_format_cpu_topology_trap = NULL;
 
-#define DECL_AM(S) Eterm AM_ ## S = am_atom_put(#S, sizeof(#S) - 1)
-
 /*
  * The BIF's now follow, see the Erlang Manual for a description of what
  * each individual BIF does.
@@ -786,6 +784,41 @@ BIF_RETTYPE delete_element_2(BIF_ALIST_3)
     ++ptr;
     while (c2--) { *++hp = *++ptr; }
 
+    BIF_RET(res);
+}
+
+/**********************************************************************/
+
+/* convert an atom to a list of ascii integer */
+
+BIF_RETTYPE atom_to_list_1(BIF_ALIST_1)
+{
+    Atom* ap;
+    Uint num_chars, num_built, num_eaten;
+    byte* err_pos;
+    Eterm res;
+#ifdef DEBUG
+    int ares;
+#endif
+
+    if (is_not_atom(BIF_ARG_1))
+	BIF_ERROR(BIF_P, BADARG);
+     
+    /* read data from atom table */
+    ap = atom_tab(atom_val(BIF_ARG_1));
+    if (ap->len == 0)
+	BIF_RET(NIL);	/* the empty atom */
+
+#ifdef DEBUG
+    ares =
+#endif
+	erts_analyze_utf8(ap->name, ap->len, &err_pos, &num_chars, NULL);
+    ASSERT(ares == ERTS_UTF8_OK);
+    
+    res = erts_utf8_to_list(BIF_P, num_chars, ap->name, ap->len, ap->len,
+			    &num_built, &num_eaten, NIL);
+    ASSERT(num_built == num_chars);
+    ASSERT(num_eaten == ap->len);
     BIF_RET(res);
 }
 

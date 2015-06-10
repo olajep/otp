@@ -2,6 +2,7 @@
 
 -compile([export_all]).
 -include_lib("eunit/include/eunit.hrl").
+-import(regressions, [eval/1]).
 
 %% Test that simple computations work
 fib_test() ->
@@ -31,3 +32,10 @@ fannkuch_test_() ->
 mandelbrot_test_() ->
     {timeout, 30.0,
      ?_assertMatch(108976420, erlang:phash2(mandelbrot:main(["20"])))}.
+
+fac_test() ->
+    Fac = eval("fun Fac(0)->1; Fac(N) -> N * Fac(N-1) end."),
+    Self = self(),
+    {P, Ref} = epiphany:spawn_monitor(fun()-> Self ! Fac(20) end),
+    receive N -> 2432902008176640000 = N end,
+    receive {'DOWN', Ref, process, P, normal} -> ok end.

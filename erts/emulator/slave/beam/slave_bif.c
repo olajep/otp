@@ -83,6 +83,7 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     X(demonitor_2, 2)				\
     X(epiphany_internal_spawn_3, 3)		\
     X(exit_2, 2)				\
+    X(fun_info_2, 2)				\
     X(link_1, 1)				\
     X(monitor_2, 2)				\
     X(net_kernel_dflag_unicode_io_1, 1)		\

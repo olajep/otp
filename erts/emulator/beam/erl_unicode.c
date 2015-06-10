@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2008-2013. All Rights Reserved.
+ * Copyright Ericsson AB 2008-2015. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -29,6 +29,7 @@
 #include "erl_binary.h"
 #include "big.h"
 
+#ifndef ERTS_SLAVE
 #include "erl_unicode.h"
 #include "erl_unicode_normalize.h"
 
@@ -1148,7 +1149,7 @@ BIF_RETTYPE unicode_characters_to_list_2(BIF_ALIST_2)
     return build_list_return(BIF_P,bytes,pos,characters,rest_term,err,
 			     leftover,num_leftovers,BIF_ARG_2,left);
 }
-
+#endif /* !ERTS_SLAVE */
 
 /*
  * When input to characters_to_list is a plain binary and the format is 'unicode', we do
@@ -1316,6 +1317,7 @@ Eterm erts_utf8_to_list(Process *p, Uint num, byte *bytes, Uint sz, Uint left,
     return do_utf8_to_list(p, num, bytes, sz, left, num_built, num_eaten, tail);
 }
 
+#ifndef ERTS_SLAVE
 static int is_candidate(Uint cp)
 {
     int index,pos;
@@ -2817,3 +2819,5 @@ BIF_RETTYPE io_printable_range_0(BIF_ALIST_0)
 	BIF_RET(am_latin1);
     }
 }
+
+#endif  /* !ERTS_SLAVE */

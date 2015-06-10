@@ -1,6 +1,7 @@
 -module(regressions).
 
 -export([working/0, broken/0, run/1]).
+-export([eval/1]).
 -export([message/0, message_gc/0, fun_gc/0, mbuf_gc/0, map_align/0,
 	 mbuf_free/0]).
 
