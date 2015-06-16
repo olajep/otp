@@ -29,7 +29,8 @@
 
 #define HARDDEBUG 0
 
-static const erts_aint32_t ignored_psflgs = ERTS_PSFLG_PENDING_EXIT;
+static const erts_aint32_t ignored_psflgs = ERTS_PSFLG_PENDING_EXIT
+    | SLAVE_STATE_PSFLGS;
 
 #define INFINITE_REDS ((1 << 27) - 1)
 

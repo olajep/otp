@@ -89,13 +89,16 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     X(net_kernel_dflag_unicode_io_1, 1)		\
     X(node_0, 0)				\
     X(node_1, 1)				\
+    X(now_0, 0)					\
     X(process_flag_2, 2)			\
     X(process_flag_3, 3)			\
+    X(process_info_2, 2)			\
     X(send_2, 2)				\
     X(send_3, 3)				\
     X(spawn_3, 3)				\
     X(spawn_link_3, 3)				\
     X(spawn_opt_1, 1)				\
+    X(system_info_1, 1)				\
     X(unicode_characters_to_binary_2, 2)	\
     X(unicode_characters_to_list_2, 2)		\
     X(unicode_bin_is_7bit_1, 1)			\

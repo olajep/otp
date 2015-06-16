@@ -41,6 +41,8 @@
     X(Eterm, ftrace);					 \
     X(Sint, fcalls)
 
+#define SLAVE_STATE_PSFLGS ERTS_PSFLG_TRAP_EXIT
+
 struct slave_state {
 #define X(T, N) T N
     SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
@@ -48,6 +50,7 @@ struct slave_state {
     /* These are boolean flags. To not screw up alignment, we use int for
      * them. */
     int msg_last_is_first, msg_save_is_first;
+    erts_aint32_t state;
 } SLAVE_SHARED_DATA;
 
 void slave_state_swapin(Process *p, const struct slave_state *state);

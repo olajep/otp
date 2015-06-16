@@ -16,10 +16,21 @@ $TEST_ERL -eval 'case unit:test() of error -> halt(1); _ -> init:stop() end' || 
 
 TESTS=`$ERL -s regressions working -s erlang halt`
 
+TS_MODS="$@"
+
 for t in $TESTS; do
     sleep 1 # We do what we can to prevent bus lockups, even voodoo like this
     echo " --> Running regressions:$t()"
     $TEST_ERL -s regressions run $t || {
+        echo "FAILURE"
+        exit 1
+    }
+done
+
+for m in $TS_MODS; do
+    sleep 1 # We do what we can to prevent bus lockups, even voodoo like this
+    echo " ==> Running ts_epi:run([$m])"
+    $TEST_ERL -s ts_epi run $m || {
         echo "FAILURE"
         exit 1
     }

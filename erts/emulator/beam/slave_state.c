@@ -58,6 +58,8 @@ slave_state_swapin(Process *p, const struct slave_state *state)
     ASSERT(!state->dictionary || epiphany_in_dram(state->dictionary));
 #endif
 
+    erts_atomic32_read_bset_nob(&p->state, SLAVE_STATE_PSFLGS, state->state);
+
 #define X(T, F) p->F = state->F
     SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
 #undef X
@@ -72,6 +74,8 @@ slave_state_swapout(Process *p, struct slave_state *state)
 #define X(T, F) state->F = p->F
     SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
 #undef X
+
+    state->state = erts_atomic32_read_nob(&p->state) & SLAVE_STATE_PSFLGS;
 
     state->msg_last_is_first = p->msg.last == &p->msg.first;
     state->msg_save_is_first = p->msg.save == &p->msg.first;
