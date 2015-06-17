@@ -3782,7 +3782,7 @@ get_map_elements_fail:
 	  * Allocate the binary struct itself.
 	  */
 	 bptr = erts_bin_nrml_alloc(num_bytes);
-	 bptr->flags = 0;
+	 bptr->flags = BIN_FLAGS_DEFAULT;
 	 bptr->orig_size = num_bytes;
 	 erts_refc_init(&bptr->refc, 1);
 	 erts_current_bin = (byte *) bptr->orig_bytes;
@@ -3883,7 +3883,7 @@ get_map_elements_fail:
 	  * Allocate the binary struct itself.
 	  */
 	 bptr = erts_bin_nrml_alloc(tmp_arg1);
-	 bptr->flags = 0;
+	 bptr->flags = BIN_FLAGS_DEFAULT;
 	 bptr->orig_size = tmp_arg1;
 	 erts_refc_init(&bptr->refc, 1);
 	 erts_current_bin = (byte *) bptr->orig_bytes;
@@ -5797,7 +5797,7 @@ build_stacktrace(Process* c_p, Eterm exc) {
     FunctionInfo* stkp;
     Eterm res = NIL;
     Uint heap_size;
-    Eterm* hp;
+    Eterm *hp, *hp_init;
     Eterm mfa;
     int i;
 
@@ -5856,7 +5856,7 @@ build_stacktrace(Process* c_p, Eterm exc) {
     /*
      * Allocate heap space and build the stacktrace.
      */
-    hp = HAlloc(c_p, heap_size);
+    hp_init = hp = HAlloc(c_p, heap_size);
     while (stkp > stk) {
 	stkp--;
 	hp = erts_build_mfa_item(stkp, hp, am_true, &mfa);
@@ -5865,6 +5865,7 @@ build_stacktrace(Process* c_p, Eterm exc) {
     }
     hp = erts_build_mfa_item(&fi, hp, args, &mfa);
     res = CONS(hp, mfa, res);
+    ASSERT(hp+2 <= hp_init + heap_size);
 
     erts_free(ERTS_ALC_T_TMP, (void *) stk);
     return res;

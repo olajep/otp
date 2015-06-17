@@ -129,6 +129,20 @@ command_thread_loop(void __attribute__((unused)) *arg)
     ErtsThrPrgrCallbacks callbacks;
     const off_t buffers_addr = SLAVE_SYM_slave_command_buffers;
     unsigned x, y;
+    int sleep_schecule_point = 0;
+    int sleep_schedule[] = {
+	0,
+	1,
+	2,
+	5,
+	10,
+	20,
+	50,
+	100,
+	200,
+	500,
+	1000,
+    };
 
     /* We *need* to register as a managed thread immediately, as we are blocking
      * startup of the emulator */
@@ -215,12 +229,21 @@ command_thread_loop(void __attribute__((unused)) *arg)
 
     while(erts_slave_online) {
 	if (erts_dispatch_slave_commands() == 0) {
+	    struct timespec rqtp;
 	    /* ETODO: We might need to limit the number of operations to
 	     * ensure a good rate of thread progress reports. */
 	    if (erts_thr_progress_update(NULL)) {
 		erts_thr_progress_leader_update(NULL);
 	    }
-	    erts_milli_sleep(1);
+
+	    rqtp.tv_sec = 0;
+	    rqtp.tv_nsec = sleep_schedule[sleep_schecule_point] * 1000;
+	    nanosleep(&rqtp, NULL);
+	    sleep_schecule_point
+		= MIN(sleep_schecule_point + 1,
+		      sizeof(sleep_schedule) / sizeof(*sleep_schedule) - 1);
+	} else {
+	    sleep_schecule_point = 0;
 	}
     }
     return NULL;
@@ -347,11 +370,14 @@ serve_syscalls(int i)
     switch (buffers->syscall) {
     case SLAVE_SYSCALL_READY: served = serve_ready(i, arg); break;
     case SLAVE_SYSCALL_BIF:
-	erts_slave_serve_bif(slaves + i, arg);
-	served = 1;
+	served = erts_slave_serve_bif(slaves + i, arg);
 	break;
     case SLAVE_SYSCALL_GC:
 	erts_slave_serve_gc(slaves + i, arg);
+	served = 1;
+	break;
+    case SLAVE_SYSCALL_BIN:
+	erts_slave_serve_bin(slaves + i, arg);
 	served = 1;
 	break;
     default:
@@ -387,6 +413,11 @@ dispatch_commands(int slave)
     case MASTER_COMMAND_SETUP: {
 	MESSAGE(struct master_command_setup, msg);
 	erts_slave_init_load(&msg);
+	return 1;
+    }
+    case MASTER_COMMAND_SETUP_CORE: {
+	MESSAGE(struct master_command_setup_core, msg);
+	slaves[slave].dummy_esdp->x_reg_array = msg.x_reg_array;
 	return 1;
     }
     case MASTER_COMMAND_FREE_MESSAGE: {

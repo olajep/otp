@@ -1899,7 +1899,7 @@ static Eterm erts_term_to_binary_int(Process* p, Eterm Term, int level, Uint fla
 		}
 
 		result_bin = erts_bin_nrml_alloc(size);
-		result_bin->flags = 0;
+		result_bin->flags = BIN_FLAGS_DEFAULT;
 		result_bin->orig_size = size;
 		erts_refc_init(&result_bin->refc, 0);
 		result_bin->orig_bytes[0] = VERSION_MAGIC;
@@ -1962,7 +1962,7 @@ static Eterm erts_term_to_binary_int(Process* p, Eterm Term, int level, Uint fla
 		context->s.cc.result_bin = result_bin;
 
 		result_bin = erts_bin_nrml_alloc(real_size);
-		result_bin->flags = 0;
+		result_bin->flags = BIN_FLAGS_DEFAULT;
 		result_bin->orig_size = real_size;
 		erts_refc_init(&result_bin->refc, 0);
 		result_bin->orig_bytes[0] = VERSION_MAGIC;
@@ -3387,7 +3387,7 @@ dec_term_atom_common:
 		} else {
 		    Binary* dbin = erts_bin_nrml_alloc(n);
 		    ProcBin* pb;
-		    dbin->flags = 0;
+		    dbin->flags = BIN_FLAGS_DEFAULT;
 		    dbin->orig_size = n;
 		    erts_refc_init(&dbin->refc, 1);
 		    pb = (ProcBin *) hp;
@@ -3441,7 +3441,7 @@ dec_term_atom_common:
 		    Binary* dbin = erts_bin_nrml_alloc(n);
 		    ProcBin* pb;
 
-		    dbin->flags = 0;
+		    dbin->flags = BIN_FLAGS_DEFAULT;
 		    dbin->orig_size = n;
 		    erts_refc_init(&dbin->refc, 1);
 		    pb = (ProcBin *) hp;

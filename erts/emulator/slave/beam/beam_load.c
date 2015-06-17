@@ -23,6 +23,30 @@
 
 #include "sys.h"
 #include "global.h"
+#include "slave_command.h"
+
+LoaderTarget loader_target_self;
+
+void init_load(void)
+{
+    /* FloatDef f; */
+
+    /* erts_total_code_size = 0; */
+
+    /* beam_catches_init(); */
+
+    /* f.fd = 1.0; */
+    /* must_swap_floats = (f.fw[0] == 0); */
+
+    erts_init_ranges();
+
+#ifndef NO_JUMP_TABLE
+    ASSERT(beam_ops);
+    loader_target_self.beam_ops = beam_ops;
+#endif
+
+    erts_master_setup();
+}
 
 /*
  * Build a single {M,F,A,Loction} item to be part of

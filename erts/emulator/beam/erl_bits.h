@@ -24,12 +24,15 @@
  * This structure represents a binary to be matched.
  */
 
+/* ETODO: Does this struct misalign when using HALFWORD_EMU? Can base and offset
+ * be swapped?
+*/
 typedef struct erl_bin_match_buffer {
     Eterm orig;			/* Original binary term. */
     byte* base;			/* Current position in binary. */
     Uint offset;		/* Offset in bits. */
     size_t size;		/* Size of binary in bits. */
-} ErlBinMatchBuffer;
+} SLAVE_SHARED_DATA ErlBinMatchBuffer;
 
 struct erl_bits_state {
     /*
@@ -56,7 +59,7 @@ typedef struct erl_bin_match_struct{
   Eterm thing_word;
   ErlBinMatchBuffer mb;		/* Present match buffer */
   Eterm save_offset[1];		/* Saved offsets */
-} ErlBinMatchState;
+} SLAVE_SHARED_DATA ErlBinMatchState;
 
 #define ERL_BIN_MATCHSTATE_SIZE(_Max) ((sizeof(ErlBinMatchState) + (_Max)*sizeof(Eterm))/sizeof(Eterm)) 
 #define HEADER_BIN_MATCHSTATE(_Max) _make_header(ERL_BIN_MATCHSTATE_SIZE((_Max))-1, _TAG_HEADER_BIN_MATCHSTATE)

@@ -39,6 +39,10 @@
 #include "erl_bif_timer.h"
 #include "erl_thr_progress.h"
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_command.h" /* for struct slave */
+#endif
+
 /* Forward declarations -- should really appear somewhere else */
 static void process_killer(void);
 void do_break(void);
@@ -256,6 +260,11 @@ print_process_info(int to, void *to_arg, Process *p)
 		   p->current[1],
 		   p->current[2]);
     }
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (IS_SLAVE_PROCESS(p))
+	erts_print(to, to_arg, "Slave: %d\n", p->slave_host->no);
+    else
+#endif
     erts_print(to, to_arg, "Run queue: %d\n", erts_get_runq_proc(p)->ix);
 
     erts_print(to, to_arg, "Spawned by: %T\n", p->parent);

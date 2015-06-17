@@ -21,6 +21,7 @@
 #ifndef ERL_SLAVE_COMMAND_H__
 #define ERL_SLAVE_COMMAND_H__
 
+#include "global.h"
 #include "erl_term.h"
 #include "erl_process.h"
 #include "erl_bif_table.h"
@@ -34,6 +35,7 @@ enum slave_syscall {
     SLAVE_SYSCALL_READY,
     SLAVE_SYSCALL_BIF,
     SLAVE_SYSCALL_GC,
+    SLAVE_SYSCALL_BIN,
 };
 
 struct slave_syscall_ready {
@@ -58,6 +60,17 @@ struct slave_syscall_gc {
     struct slave_state state;
     /* To slave */
     int ret;
+} SLAVE_SHARED_DATA;
+
+struct slave_syscall_bin {
+    /* To master */
+    Uint size;
+    /* Bidirectional */
+    union {
+	Binary *bp;
+	ProcBin *pbp;
+    };
+    /* To slave */
 } SLAVE_SHARED_DATA;
 
 /*
@@ -94,6 +107,7 @@ struct slave {
 
 enum master_command {
     MASTER_COMMAND_SETUP,
+    MASTER_COMMAND_SETUP_CORE,
     MASTER_COMMAND_FREE_MESSAGE,
     MASTER_COMMAND_FREE_HFRAG,
     MASTER_COMMAND_REFC,
@@ -105,6 +119,10 @@ struct master_command_setup {
     int num_instructions;
     BifEntry *bif_table;
     int bif_size;
+} SLAVE_SHARED_DATA;
+
+struct master_command_setup_core {
+    Eterm *x_reg_array;
 } SLAVE_SHARED_DATA;
 
 struct master_command_free_message {
@@ -180,6 +198,9 @@ void erts_slave_finish_syscall(struct slave *slave, enum slave_syscall no);
 /* slave_bif.c */
 void erts_slave_serve_gc(struct slave *slave, struct slave_syscall_gc *arg);
 
+/* slave_binary.c */
+void erts_slave_serve_bin(struct slave *slave, struct slave_syscall_bin *arg);
+
 /* slave_refc.c */
 void erts_slave_serve_refc(struct master_command_refc *cmd);
 
@@ -195,6 +216,7 @@ void erts_master_send_command(enum master_command code, const void *data,
 void erts_master_syscall(enum slave_syscall no, void *arg);
 
 void erts_master_setup(void);
+void erts_master_setup_core(ErtsSchedulerData *);
 void free_master_message_buffer(ErlHeapFragment *bp);
 
 void slave_serve_message(Process *c_p, struct slave_command_message *cmd);

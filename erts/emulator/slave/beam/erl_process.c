@@ -450,8 +450,7 @@ sched_thread_func(void *vesdp)
     /* ERTS_VERIFY_UNUSED_TEMP_ALLOC(NULL); */
 #endif
 
-    /* ETODO: Should be called during init instead. */
-    erts_master_setup();
+    erts_master_setup_core(vesdp);
 
     process_main();
     /* No schedulers should *ever* terminate */

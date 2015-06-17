@@ -38,8 +38,6 @@ await_command_buffers(void)
     while (slave_command_buffers == NULL);
 }
 
-LoaderTarget loader_target_self;
-
 void
 erts_master_setup(void)
 {
@@ -50,11 +48,17 @@ erts_master_setup(void)
 	.bif_size = BIF_SIZE,
     };
 
-#ifndef NO_JUMP_TABLE
-    loader_target_self.beam_ops = beam_ops;
-#endif
-
     erts_master_send_command(MASTER_COMMAND_SETUP, &cmd, sizeof(cmd));
+}
+
+void
+erts_master_setup_core(ErtsSchedulerData *esdp)
+{
+    struct master_command_setup_core cmd = {
+	.x_reg_array = esdp->x_reg_array,
+    };
+
+    erts_master_send_command(MASTER_COMMAND_SETUP_CORE, &cmd, sizeof(cmd));
 }
 
 void

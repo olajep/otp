@@ -1,21 +1,25 @@
-TS_MODS=pdict_SUITE maps_SUITE
+TS_MODS=pdict_SUITE maps_SUITE map_SUITE bs_SUITE
+TS_MODS+=bs_match_bin_SUITE bs_match_int_SUITE bs_match_misc_SUITE bs_match_tail_SUITE
+TS_MODS+=bs_bincomp_SUITE bs_construct_SUITE bs_utf_SUITE
+TS_MODS+=binary_SUITE
 TS_OBJS=$(addsuffix .beam,$(TS_MODS))
 OBJS=regressions.beam unit.beam matmul.beam fannkuchredux.beam mandelbrot.beam \
+	matchstate_align.beam \
 	ts_epi.beam $(TS_OBJS)
 
 ERL=../bin/erl
 ERLC=../bin/erlc
 SLAVE=../bin/epiphany-unknown-elf/slave.smp.srec
 
-.PHONY: fast test clean
+.PHONY: fast test beam clean
 
 test: $(OBJS)
-	./run $(TS_MODS)
+	./run $(FLAGS) $(TS_MODS)
 
 fast: $(OBJS)
-	sudo -E LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) SLAVE_BINARY=$(SLAVE) \
-	$(ERL) -noshell -eval \
-	'case unit:test() of error -> halt(1); _ -> init:stop() end'
+	./run --fast $(FLAGS) $(TS_MODS)
+
+beam: $(OBJS)
 
 clean:
 	rm -f $(OBJS)

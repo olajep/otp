@@ -47,9 +47,9 @@
 #ifdef DEBUG
 // For sanity-checking pointers
 #include "epiphany.h"
-#endif
 
 /* #define HARDDEBUG 1 */
+#endif
 
 #if defined(NO_JUMP_TABLE)
 #  define OpCase(OpCode)    case op_##OpCode
@@ -68,12 +68,15 @@
 /* Instruction-by-instruction tracing */
 #define HARDTRACE 0
 #if HARDTRACE
-#  undef OpCase
-#  define OpCase(OpCode) {			\
-    lb_##OpCode:				\
-	erts_printf(" Trace @ " #OpCode "\n");	\
-	goto __lb_##OpCode##_no_print_;		\
+#  define OpCaseNoTrace(OpCode) lb_##OpCode
+#  define OpCaseTrace(OpCode) \
+    if(*I == (Eterm)(&&lb_##OpCode)) {	       \
+    lb_##OpCode:			       \
+	erts_printf(" Trace @ " #OpCode "\n"); \
+	goto __lb_##OpCode##_no_print_;	       \
     } __lb_##OpCode##_no_print_
+#  undef  OpCase
+#  define OpCase OpCaseTrace
 #endif
 
 #ifdef ERTS_ENABLE_LOCK_CHECK
@@ -475,10 +478,17 @@ extern int count_instructions;
  * the I register.  If we are out of reductions, do a context switch.
  */
 
+#if HARDTRACE
+void dbg_where(BeamInstr* addr, Eterm x0, Eterm* reg);
+#else
+#  define dbg_where(addr, x0, reg) ((void)0)
+#endif
+
 #define DispatchMacro()				\
   do {						\
      BeamInstr* dis_next;				\
      dis_next = (BeamInstr *) *I;			\
+     dbg_where(I, x0, reg);				\
      CHECK_ARGS(I);				\
      if (FCALLS > 0 || FCALLS > neg_o_reds) {	\
         FCALLS--;				\
@@ -492,6 +502,7 @@ extern int count_instructions;
   do {						\
      BeamInstr* dis_next;				\
      dis_next = (BeamInstr *) *I;			\
+     dbg_where(I, x0, reg);				\
      CHECK_ARGS(I);				\
      if (FCALLS > 0 || FCALLS > neg_o_reds) {	\
         FCALLS--;				\
@@ -508,12 +519,14 @@ extern int count_instructions;
         SET_I(((Export *) Arg(0))->addressv[erts_active_code_ix()]); \
         dis_next = (Eterm *) *I;				\
         FCALLS--;						\
+        dbg_where(I, x0, reg);					\
         CHECK_ARGS(I);						\
         Goto(dis_next);						\
      /* ESTUB: no tracing */					\
      } else {							\
         SET_I(((Export *) Arg(0))->addressv[erts_active_code_ix()]); \
         CHECK_ARGS(I);						\
+        dbg_where(I, x0, reg);					     \
 	goto context_switch;					\
      }								\
  } while (0)
@@ -3726,7 +3739,7 @@ get_map_elements_fail:
 	  * Allocate the binary struct itself.
 	  */
 	 bptr = erts_bin_nrml_alloc(num_bytes);
-	 bptr->flags = 0;
+	 bptr->flags = BIN_FLAGS_DEFAULT;
 	 bptr->orig_size = num_bytes;
 	 erts_refc_init(&bptr->refc, 1);
 	 erts_current_bin = (byte *) bptr->orig_bytes;
@@ -3827,7 +3840,7 @@ get_map_elements_fail:
 	  * Allocate the binary struct itself.
 	  */
 	 bptr = erts_bin_nrml_alloc(tmp_arg1);
-	 bptr->flags = 0;
+	 bptr->flags = BIN_FLAGS_DEFAULT;
 	 bptr->orig_size = tmp_arg1;
 	 erts_refc_init(&bptr->refc, 1);
 	 erts_current_bin = (byte *) bptr->orig_bytes;
@@ -5168,7 +5181,6 @@ handle_error(Process* c_p, BeamInstr* pc, Eterm* reg, BifFunction bf)
     Eterm Value = c_p->fvalue;
     Eterm Args = am_true;
     c_p->i = pc;    /* In case we call erl_exit(). */
-    erts_printf("in handle_error\n");
 
     ASSERT(c_p->freason != TRAP); /* Should have been handled earlier. */
 
@@ -5597,7 +5609,7 @@ build_stacktrace(Process* c_p, Eterm exc) {
     FunctionInfo* stkp;
     Eterm res = NIL;
     Uint heap_size;
-    Eterm* hp;
+    Eterm *hp, *hp_init;
     Eterm mfa;
     int i;
 
@@ -5656,7 +5668,7 @@ build_stacktrace(Process* c_p, Eterm exc) {
     /*
      * Allocate heap space and build the stacktrace.
      */
-    hp = HAlloc(c_p, heap_size);
+    hp_init = hp = HAlloc(c_p, heap_size);
     while (stkp > stk) {
 	stkp--;
 	hp = erts_build_mfa_item(stkp, hp, am_true, &mfa);
@@ -5665,6 +5677,7 @@ build_stacktrace(Process* c_p, Eterm exc) {
     }
     hp = erts_build_mfa_item(&fi, hp, args, &mfa);
     res = CONS(hp, mfa, res);
+    ASSERT(hp+2 <= hp_init + heap_size);
 
     erts_free(ERTS_ALC_T_TMP, (void *) stk);
     return res;

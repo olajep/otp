@@ -1,35 +1,63 @@
 #! /bin/sh
 ROOT=`readlink -f ..`
-ERL="$ROOT/bin/erl -noshell"
-SLAVE_BIN="$ROOT/bin/epiphany-unknown-elf/slave.debug.smp.srec"
 BINDIR="$ROOT/bin/armv7l-unknown-linux-gnueabihf/"
+SLAVE_BINDIR="$ROOT/bin/epiphany-unknown-elf/"
+
+SLAVE_BIN="$SLAVE_BINDIR/slave.debug.smp.srec"
+FAST_SLAVE_BIN="$SLAVE_BINDIR/slave.smp.srec"
 
 TEST_ERL="sudo -E LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 TEST_ERL="$TEST_ERL SLAVE_BINARY=$SLAVE_BIN BINDIR=$BINDIR"
 TEST_ERL="$TEST_ERL $BINDIR/beam.debug.smp -- -root $ROOT -- -noshell"
 
-echo " ==> Running unit:test()"
-$TEST_ERL -eval 'case unit:test() of error -> halt(1); _ -> init:stop() end' || {
-    echo "FAILURE"
-    exit 1
-}
+FAST_ERL="sudo -E LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+FAST_ERL="$FAST_ERL SLAVE_BINARY=$FAST_SLAVE_BIN BINDIR=$BINDIR"
+FAST_ERL="$FAST_ERL $BINDIR/beam.smp -- -root $ROOT -- -noshell"
 
-TESTS=`$ERL -s regressions working -s erlang halt`
+ERL="env BINDIR=$BINDIR $BINDIR/beam.smp -- -root $ROOT -- -noshell"
 
+NOREGS=0
+NOUNIT=0
+while echo $1 | grep -E '^-' >/dev/null; do
+    if [ $1 == --fast ]; then
+        NOREGS=1
+        TEST_ERL=$FAST_ERL
+    elif [ $1 == --nounit ]; then
+        NOUNIT=1
+    elif [ $1 == --noregs ]; then
+        NOREGS=1
+    else
+        echo "Unrecognized flag $1"
+        exit 1
+    fi
+    shift
+done
 TS_MODS="$@"
 
-for t in $TESTS; do
-    sleep 1 # We do what we can to prevent bus lockups, even voodoo like this
-    echo " --> Running regressions:$t()"
-    $TEST_ERL -s regressions run $t || {
+if [ x$NOUNIT = x0 ]; then
+    echo -e "     \e[1m==>\e[0m Running unit:test()"
+    $TEST_ERL -eval 'case unit:test() of error -> halt(1); _ -> init:stop() end' || {
         echo "FAILURE"
         exit 1
     }
-done
+fi
+
+if [ x$NOREGS = x0 ]; then
+    TESTS=`$ERL -s regressions working -s erlang halt`
+    for t in $TESTS; do
+        sleep 1 # We do what we can to prevent bus lockups, even voodoo like
+                # this
+        echo -e "     \e[1m-->\e[0m Running regressions:$t()"
+        $TEST_ERL -s regressions run $t || {
+            echo "FAILURE"
+            exit 1
+        }
+    done
+fi
 
 for m in $TS_MODS; do
     sleep 1 # We do what we can to prevent bus lockups, even voodoo like this
-    echo " ==> Running ts_epi:run([$m])"
+    echo -e "     \e[1m==>\e[0m Running ts_epi:run([$m])"
     $TEST_ERL -s ts_epi run $m || {
         echo "FAILURE"
         exit 1

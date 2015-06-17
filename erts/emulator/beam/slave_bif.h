@@ -38,7 +38,7 @@ struct slave_syscall_bif {
 } SLAVE_SHARED_DATA;
 
 #ifndef ERTS_SLAVE
-void erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg);
+int erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg);
 #endif
 
 #endif /* SLAVE_BIF_H__ */

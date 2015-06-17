@@ -31,11 +31,13 @@
 #include "erl_binary.h"
 #include "erl_bits.h"
 
+#ifndef ERTS_SLAVE
 static Export binary_to_list_continue_export;
 static Export list_to_binary_continue_export;
 
 static BIF_RETTYPE binary_to_list_continue(BIF_ALIST_1);
 static BIF_RETTYPE list_to_binary_continue(BIF_ALIST_1);
+#endif
 
 void
 erts_init_binary(void)
@@ -49,6 +51,7 @@ erts_init_binary(void)
 		 " is *not* 8-byte aligned\n");
     }
 
+#ifndef ERTS_SLAVE
     erts_init_trap_export(&binary_to_list_continue_export,
 			  am_erts_internal, am_binary_to_list_continue, 1,
 			  &binary_to_list_continue);
@@ -56,7 +59,7 @@ erts_init_binary(void)
     erts_init_trap_export(&list_to_binary_continue_export,
 			  am_erts_internal, am_list_to_binary_continue, 1,
 			  &list_to_binary_continue);
-
+#endif
 }
 
 /*
@@ -83,7 +86,7 @@ new_binary(Process *p, byte *buf, Uint len)
      * Allocate the binary struct itself.
      */
     bptr = erts_bin_nrml_alloc(len);
-    bptr->flags = 0;
+    bptr->flags = BIN_FLAGS_DEFAULT;
     bptr->orig_size = len;
     erts_refc_init(&bptr->refc, 1);
     if (buf != NULL) {
@@ -109,7 +112,8 @@ new_binary(Process *p, byte *buf, Uint len)
     return make_binary(pb);
 }
 
-/* 
+#ifndef ERTS_SLAVE
+/*
  * When heap binary is not desired...
  */
 
@@ -122,7 +126,7 @@ Eterm erts_new_mso_binary(Process *p, byte *buf, int len)
      * Allocate the binary struct itself.
      */
     bptr = erts_bin_nrml_alloc(len);
-    bptr->flags = 0;
+    bptr->flags = BIN_FLAGS_DEFAULT;
     bptr->orig_size = len;
     erts_refc_init(&bptr->refc, 1);
     if (buf != NULL) {
@@ -157,6 +161,8 @@ erts_new_heap_binary(Process *p, byte *buf, int len, byte** datap)
 {
     ErlHeapBin* hb = (ErlHeapBin *) HAlloc(p, heap_bin_size(len));
 
+    ASSERT(sizeof(ErlHeapBin)/sizeof(Eterm) == 3);
+
     hb->thing_word = header_heap_bin(len);
     hb->size = len;
     if (buf != NULL) {
@@ -186,6 +192,7 @@ erts_realloc_binary(Eterm bin, size_t size)
     }
     return bin;
 }
+#endif
 
 byte*
 erts_get_aligned_binary_bytes_extra(Eterm bin, byte** base_ptr, ErtsAlcType_t allocator, unsigned extra)
@@ -225,6 +232,7 @@ erts_get_aligned_binary_bytes_extra(Eterm bin, byte** base_ptr, ErtsAlcType_t al
     return bytes;
 }
 
+#ifndef ERTS_SLAVE
 Eterm
 erts_bin_bytes_to_list(Eterm previous, Eterm* hp, byte* bytes, Uint size, Uint bitoffs)
 {
@@ -247,6 +255,7 @@ erts_bin_bytes_to_list(Eterm previous, Eterm* hp, byte* bytes, Uint size, Uint b
     }
     return previous;
 }
+#endif
 
 BIF_RETTYPE binary_to_integer_1(BIF_ALIST_1)
 {
@@ -341,6 +350,7 @@ BIF_RETTYPE integer_to_binary_1(BIF_ALIST_1)
     BIF_RET(res);
 }
 
+#ifndef ERTS_SLAVE
 #define ERTS_B2L_BYTES_PER_REDUCTION 256
 
 typedef struct {
@@ -1003,6 +1013,7 @@ BIF_RETTYPE list_to_bitstring_1(BIF_ALIST_1)
 
     return ret;
 }
+#endif
 
 BIF_RETTYPE split_binary_2(BIF_ALIST_2)
 {
@@ -1054,6 +1065,7 @@ BIF_RETTYPE split_binary_2(BIF_ALIST_2)
 }
 
 
+#ifndef ERTS_SLAVE
 /*
  * Local functions.
  */
@@ -1530,4 +1542,4 @@ bitstr_list_len(ErtsIOListState *state)
     ESTACK_SAVE(s, &state->estack);
     return ERTS_IOLIST_YIELD;
 }
-
+#endif

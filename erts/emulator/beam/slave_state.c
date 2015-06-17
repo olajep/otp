@@ -24,6 +24,7 @@
 
 #include "sys.h"
 #include "slave_state.h"
+#include "slave_command.h" /* for struct slave */
 
 #if defined(ERTS_SLAVE) && defined(DEBUG)
 #  include "epiphany.h"
@@ -38,6 +39,8 @@ slave_state_swapin(Process *p, const struct slave_state *state)
     ASSERT(ERTS_SCHEDULER_IS_SLAVE_CMDER(erts_get_scheduler_data()));
     ASSERT(erts_get_scheduler_data()->current_process == NULL);
     erts_get_scheduler_data()->current_process = p;
+    erts_get_scheduler_data()->x_reg_array
+	= p->slave_host->dummy_esdp->x_reg_array;
 #endif
 
     /* Validate that we can reach everything */
@@ -60,8 +63,8 @@ slave_state_swapin(Process *p, const struct slave_state *state)
 
     erts_atomic32_read_bset_nob(&p->state, SLAVE_STATE_PSFLGS, state->state);
 
-#define X(T, F) p->F = state->F
-    SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#define X(T, F) p->F = state->F;
+    SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER
 #undef X
 
     if (state->msg_last_is_first) p->msg.last = &p->msg.first;
@@ -71,8 +74,8 @@ slave_state_swapin(Process *p, const struct slave_state *state)
 void
 slave_state_swapout(Process *p, struct slave_state *state)
 {
-#define X(T, F) state->F = p->F
-    SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#define X(T, F) state->F = p->F;
+    SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER
 #undef X
 
     state->state = erts_atomic32_read_nob(&p->state) & SLAVE_STATE_PSFLGS;

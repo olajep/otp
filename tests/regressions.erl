@@ -3,12 +3,13 @@
 -export([working/0, broken/0, run/1]).
 -export([eval/1]).
 -export([message/0, message_gc/0, fun_gc/0, mbuf_gc/0, map_align/0,
-	 mbuf_free/0]).
+	 mbuf_free/0, matchstate_align/0]).
 
 -export([display_server/0]).
 
 working() ->
-    Tests = [message, message_gc, fun_gc, mbuf_gc, map_align, mbuf_free],
+    Tests = [message, message_gc, fun_gc, mbuf_gc, map_align, mbuf_free,
+	     matchstate_align],
     lists:foreach(fun(T)-> io:fwrite("~p~n", [T]) end, Tests).
 
 broken() ->
@@ -88,6 +89,10 @@ mbuf_free() ->
     end,
     true = is_integer(matmul:test(epiphany:count())),
     ok.
+
+%% Tests that a GC during binary matching works
+matchstate_align() ->
+    ts_epi:run([matchstate_align]).
 
 display_server() ->
     receive stop -> ok;

@@ -26,26 +26,27 @@
 
 /* This is the "X macro" pattern */
 #define SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER \
-    X(ErlMessageQueue, msg);				 \
-    X(ErlOffHeap, off_heap);				 \
-    X(ErlHeapFragment*, mbuf);				 \
-    X(Uint, mbuf_sz);					 \
-    X(Eterm*, heap);					 \
-    X(Eterm*, htop);					 \
-    X(Eterm*, hend);					 \
-    X(Eterm*, stop);					 \
-    X(Uint, heap_sz);					 \
-    X(ProcDict*, dictionary);				 \
-    X(Uint, freason);					 \
-    X(Eterm, fvalue);					 \
-    X(Eterm, ftrace);					 \
+    X(ErlMessageQueue, msg)				 \
+    X(ErlOffHeap, off_heap)				 \
+    X(ErlHeapFragment*, mbuf)				 \
+    X(Uint, mbuf_sz)					 \
+    X(Eterm*, heap)					 \
+    X(Eterm*, htop)					 \
+    X(Eterm*, hend)					 \
+    X(Eterm*, stop)					 \
+    X(Uint, heap_sz)					 \
+    X(BeamInstr*, i)					 \
+    X(ProcDict*, dictionary)				 \
+    X(Uint, freason)					 \
+    X(Eterm, fvalue)					 \
+    X(Eterm, ftrace)					 \
     X(Sint, fcalls)
 
 #define SLAVE_STATE_PSFLGS ERTS_PSFLG_TRAP_EXIT
 
 struct slave_state {
-#define X(T, N) T N
-    SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER;
+#define X(T, N) T N;
+    SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER
 #undef X
     /* These are boolean flags. To not screw up alignment, we use int for
      * them. */

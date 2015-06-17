@@ -206,7 +206,6 @@ RM	= @RM@
 OBJCOPY = @OBJCOPY@
 SED     = @SED@
 EGREP   = @EGREP@
-CP      = cp
 
 # ----------------------------------------------------
 #	Output
@@ -216,10 +215,6 @@ include $(ERL_TOP)/make/output.mk
 objcopy_verbose_0 = @echo " OBJCOPY"$@;
 objcopy_verbose = $(objcopy_verbose_$(V))
 V_OBJCOPY = $(objcopy_verbose)$(OBJCOPY)
-
-cp_verbose_0 = @echo " CP	"$@;
-cp_verbose = $(cp_verbose_$(V))
-V_CP = $(cp_verbose)$(CP)
 
 LIB_PREFIX=lib
 LIB_SUFFIX=.a
@@ -245,6 +240,23 @@ endif
 endif
 UNROLL_FLG = -funroll-loops
 endif
+
+ifeq ($(GCC),yes)
+# Since things misbehave if the shared memory section is larger than 1MiB, we
+# apply some gentle optimisations even during debug builds
+DEBUG_CFLAGS+= -Og -fno-omit-frame-pointer -fno-web
+
+# -fgcse-las can sometimes save us from the fact that the 2015.01 FPGA binary is
+# buggy and does not actually provide guarantee 2 from "4.2 Memory Order Model"
+# ("Load operations using data previously written use the updated values.") when
+# a load immediately follows a store. -fgcse-las allows the compiler to reuse
+# the written value instead of reading it again (assuming it can prove the
+# addresses are the same), thus avoiding this problem. A more robust workaround
+# could be to run a pass that inserts a "nop" between loads and stores that
+# can't be proven not to alias.
+CFLAGS+= -fgcse -fgcse-las
+endif
+
 
 DEPLIBS =
 
@@ -307,6 +319,7 @@ endif
 .PHONY: clean
 clean:
 	$(RM) -f $(GENERATE)
+	$(RM) -f src_copied/*.c
 	$(RM) -rf $(TARGET)/*.c $(TARGET)/*.h $(TARGET)/*-GENERATED
 	$(RM) -rf $(TARGET)/*/*
 	$(RM) -rf obj/$(TARGET)
@@ -482,14 +495,16 @@ $(OBJDIR)/%.o: $(ERL_TOP)/erts/lib_src/common/%.c
 # being included, since the compiler always searches the source file directory
 # first.
 
-$(OBJDIR)/%.o: src_copied/%.c
-	$(V_CC) $(subst -O2, $(GEN_OPT_FLGS), $(CFLAGS)) $(INCLUDES) -c $< -o $@
+override copy=$(patsubst ../beam/%.c,src_copied/%.c,$<)
+$(OBJDIR)/%.o: ../beam/%.c
+	$(V_at)cp $< $(copy)
+	$(V_CC) $(subst -O2, $(GEN_OPT_FLGS), $(CFLAGS)) $(INCLUDES) -c $(copy) -o $@
 
-
+# A phony rule to make sure deletion of copied source files does not abort a
+# build. This rule does not serve any other purpose than to make make happy. The
+# file it creates is immediately overwritten by the rule above.
 src_copied/%.c: ../beam/%.c
-	$(V_CP) $< $@
-
-
+	$(V_at)cp $< $@
 
 # ----------------------------------------------------------------------
 # Object files
@@ -499,7 +514,7 @@ INIT_OBJS = $(OBJDIR)/erl_main.o	$(PRELOAD_OBJ)
 
 EMU_OBJS = \
 	$(OBJDIR)/beam_emu.o		$(OBJDIR)/beam_opcodes.o \
-	$(OBJDIR)/beam_catches.o \
+	$(OBJDIR)/beam_catches.o	$(OBJDIR)/beam_debug.o \
 	$(OBJDIR)/beam_ranges.o
 
 #	$(OBJDIR)/beam_debug.o		$(OBJDIR)/beam_bp.o \
@@ -526,7 +541,8 @@ RUN_OBJS = \
 	$(OBJDIR)/index.o		$(OBJDIR)/module.o \
 	$(OBJDIR)/atom.o		$(OBJDIR)/erl_map.o \
 	$(OBJDIR)/erl_node_tables.o	$(OBJDIR)/erl_process_dict.o \
-	$(OBJDIR)/erl_unicode.o
+	$(OBJDIR)/erl_unicode.o		$(OBJDIR)/binary.o \
+	$(OBJDIR)/erl_math.o
 
 OS_OBJS = \
 	$(OBJDIR)/elib_memmove.o	$(OBJDIR)/sys.o \
@@ -535,12 +551,13 @@ OS_OBJS = \
 #	$(OBJDIR)/driver_tab.o \
 
 SLAVE_OBJS = \
+	$(OBJDIR)/slave_bif.o \
+	$(OBJDIR)/slave_binary.o \
+	$(OBJDIR)/slave_command.o \
 	$(OBJDIR)/slave_fifo.o \
 	$(OBJDIR)/slave_io.o \
-	$(OBJDIR)/slave_command.o \
-	$(OBJDIR)/slave_state.o \
 	$(OBJDIR)/slave_refc.o \
-	$(OBJDIR)/slave_bif.o
+	$(OBJDIR)/slave_state.o
 
 
 OS_OBJS += $(OBJDIR)/sys_float.o

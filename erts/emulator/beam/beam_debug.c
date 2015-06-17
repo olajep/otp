@@ -73,6 +73,7 @@ erts_debug_flat_size_1(BIF_ALIST_1)
 }
 
 
+#ifndef ERTS_SLAVE
 BIF_RETTYPE
 erts_debug_breakpoint_2(BIF_ALIST_2)
 {
@@ -144,6 +145,7 @@ erts_debug_breakpoint_2(BIF_ALIST_2)
  error:
     BIF_ERROR(p, BADARG);
 }
+#endif
 
 #if 0 /* Kept for conveninence when hard debugging. */
 void debug_dump_code(BeamInstr *I, int num)
@@ -304,19 +306,38 @@ erts_debug_disassemble_1(BIF_ALIST_1)
     return TUPLE3(hp, addr, bin, mfa);
 }
 
+static void
+dbg_bt_pc(BeamInstr *pc)
+{
+    BeamInstr* addr = find_function_from_pc(pc);
+    FunctionInfo info;
+    int line = 0;
+    Eterm file = NIL;
+    erts_lookup_function_info(&info, pc, 1);
+    if (info.current) {
+	line = LOC_LINE(info.loc);
+	if (LOC_FILE(info.loc))
+	    file = info.fname_ptr[LOC_FILE(info.loc)-1];
+    }
+    if (addr) {
+	erts_fprintf(stderr,
+		     HEXF ": %T:%T/%bpu line %d",
+		     addr, (Eterm) addr[0], (Eterm) addr[1], addr[2], line);
+	if (file != NIL) erts_fprintf(stderr, " file %T\n", file);
+	else erts_fprintf(stderr, "\n");
+    }
+}
+
 void
 dbg_bt(Process* p, Eterm* sp)
 {
     Eterm* stack = STACK_START(p);
+    dbg_bt_pc(p->i);
+    if (p->cp != p->i) dbg_bt_pc(p->cp);
 
     while (sp < stack) {
-	if (is_CP(*sp)) {
-	    BeamInstr* addr = find_function_from_pc(cp_val(*sp));
-	    if (addr)
-		erts_fprintf(stderr,
-			     HEXF ": %T:%T/%bpu\n",
-			     addr, (Eterm) addr[0], (Eterm) addr[1], addr[2]);
-	}
+	if (is_CP(*sp))
+	    dbg_bt_pc(cp_val(*sp));
 	sp++;
     }
 }

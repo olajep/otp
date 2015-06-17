@@ -353,7 +353,6 @@ type	CODE		LONG_LIVED_LOW	CODE		code
 type	DB_HEIR_DATA	STANDARD_LOW	ETS		db_heir_data
 type	DB_MS_PSDO_PROC	LONG_LIVED_LOW	ETS		db_match_pseudo_proc
 type	SCHDLR_DATA	LONG_LIVED_LOW	SYSTEM		scheduler_data
-type  	LL_TEMP_TERM 	LONG_LIVED_LOW	SYSTEM		ll_temp_term
 
 type	NIF_TRAP_EXPORT	STANDARD_LOW	CODE		nif_trap_export_entry
 type	EXPORT		LONG_LIVED_LOW	CODE		export_entry
@@ -373,7 +372,6 @@ type	CODE		LONG_LIVED	CODE		code
 type	DB_HEIR_DATA	STANDARD	ETS		db_heir_data
 type	DB_MS_PSDO_PROC	LONG_LIVED	ETS		db_match_pseudo_proc
 type	SCHDLR_DATA	LONG_LIVED	SYSTEM		scheduler_data
-type  	LL_TEMP_TERM 	LONG_LIVED	SYSTEM		ll_temp_term
 
 type	NIF_TRAP_EXPORT	STANDARD	CODE		nif_trap_export_entry
 type	EXPORT		LONG_LIVED	CODE		export_entry
@@ -387,17 +385,18 @@ type	PORT_DATA_HEAP	STANDARD	SYSTEM		port_data_heap
 +endif
 
 +if slave
-type	SLAVE_COMMAND	SLAVE		SYSTEM		slave_command
-type	SLAVE_HEAP	SLAVE		PROCESSES	slave_heap
-type	SLAVE_HEAP_FRAG	SLAVE		PROCESSES	slave_heap_frag
-type	SLAVE_EXPORT	SLAVE		CODE		slave_export_entry
-type	SLAVE_CODE	SLAVE		CODE		slave_code_data
+type	SLAVE_COMMAND		SLAVE	SYSTEM		slave_command
+type	SLAVE_HEAP		SLAVE	PROCESSES	slave_heap
+type	SLAVE_HEAP_FRAG		SLAVE	PROCESSES	slave_heap_frag
+type	SLAVE_EXPORT		SLAVE	CODE		slave_export_entry
+type	SLAVE_CODE		SLAVE	CODE		slave_code_data
 type	SLAVE_PREPARED_CODE	SLAVE	CODE		slave_prepared_code
 type	SLAVE_EXPORT_TABLE	SLAVE	CODE		slave_export_tab
-type	SLAVE_MSG_REF	SLAVE		PROCESSES	slave_msg_ref
-type	SLAVE_MODULE	SLAVE		CODE		slave_module_entry
+type	SLAVE_MSG_REF	        SLAVE	PROCESSES	slave_msg_ref
+type	SLAVE_MODULE	        SLAVE	CODE		slave_module_entry
 type	SLAVE_MODULE_TABLE	SLAVE	CODE		slave_module_tab
 type	SLAVE_MODULE_REFS	SLAVE	CODE		slave_module_refs
+type	SLAVE_BINARY	        SLAVE	BINARIES	slave_binary
 
 # Fun entries are read by both emulators, so they need to be allocated with the
 # SLAVE allocator.
@@ -418,11 +417,26 @@ type	ATOM_TXT_FALLBACK	LONG_LIVED	ATOM	atom_text_fallback
 type	ATOM_TABLE_FALLBACK	LONG_LIVED	ATOM	atom_tab_fallback
 type	SLAVE_MISC		SLAVE		SYSTEM	slave_misc
 type	SLAVE_MISC_FALLBACK	STANDARD	SYSTEM	slave_misc_fallback
+
+type  	LL_TEMP_TERM            SLAVE           SYSTEM	ll_temp_term
++if halfword
+type  	LL_TEMP_TERM_FALLBACK 	LONG_LIVED_LOW	SYSTEM	ll_temp_term_fallback
++else # "fullword"
+type  	LL_TEMP_TERM_FALLBACK 	LONG_LIVED	SYSTEM	ll_temp_term_fallback
++endif
+
 +else
 type	FUN_ENTRY		LONG_LIVED	CODE	fun_entry
 type	ATOM			LONG_LIVED	ATOM	atom_entry
 type	ATOM_TXT		LONG_LIVED	ATOM	atom_text
 type	ATOM_TABLE		LONG_LIVED	ATOM	atom_tab
+
++if halfword
+type  	LL_TEMP_TERM            LONG_LIVED_LOW	SYSTEM	ll_temp_term
++else # "fullword"
+type  	LL_TEMP_TERM            LONG_LIVED	SYSTEM	ll_temp_term
++endif
+
 +endif
 
 #

@@ -26,28 +26,27 @@
 #include "global.h"
 #include "erl_thr_progress.h"
 #include "slave_bif.h"
+#include "slave_export.h"
 
 #define HARDDEBUG 0
 
 static const erts_aint32_t ignored_psflgs = ERTS_PSFLG_PENDING_EXIT
     | SLAVE_STATE_PSFLGS;
 
-#define INFINITE_REDS ((1 << 27) - 1)
-
-void
+int
 erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 {
     Process *p = slave->c_p;
     erts_aint32_t old_state, new_state;
     BeamInstr *old_i;
-    Sint old_fcalls;
     BifEntry *bif = bif_table + arg->bif_no;
     Eterm (*f)(Process*, Eterm*);
+    Eterm *args;
     ErtsThrPrgrDelayHandle delay;
+    int trapping, trapping_to_beam;
     ASSERT(p);
     ASSERT(arg->bif_no < BIF_SIZE);
     old_state = erts_smp_atomic32_read_acqb(&p->state) & ~ignored_psflgs;
-    old_i = p->i;
 
 #if HARDDEBUG
     switch (bif->arity) {
@@ -59,15 +58,44 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 #endif
 
     slave_state_swapin(p, &arg->state);
+    old_i = p->i;
 
-    old_fcalls = p->fcalls;
-    p->fcalls = INFINITE_REDS;
     delay = erts_thr_progress_unmanaged_delay();
 
-    f = bif->f;
-    arg->result = f(p, arg->args);
+    if (arg->result == THE_NON_VALUE && p->freason == TRAP) {
+#if HARDDEBUG
+	erts_printf("Resuming trapped execution (i=%#x, f=%#x) at ",
+		    p->i[0], p->i[1]);
+	erts_printf("%T:%T/%d\n", p->i[-3], p->i[-2], p->i[-1]);
+#endif
+	ASSERT(p->i[0] == (BeamInstr)em_apply_bif);
+	f = (Eterm (*)(Process*, Eterm*))p->i[1];
+	args = ERTS_PROC_GET_SCHDATA(p)->x_reg_array;
+    } else {
+	f = bif->f;
+	args = arg->args;
+    }
+    arg->result = f(p, args);
+    trapping = arg->result == THE_NON_VALUE && p->freason == TRAP;
+    trapping_to_beam = trapping && *p->i != (BeamInstr)em_apply_bif;
 
-    p->fcalls = MAX(1, old_fcalls - (INFINITE_REDS - p->fcalls));
+    if (trapping_to_beam) {
+	Eterm m = (Eterm)p->i[-3], f = (Eterm)p->i[-2];
+	UWord a = (UWord)p->i[-1];
+	Export *e;
+	ASSERT(is_atom(m) && is_atom(f) && a <= MAX_ARG);
+	e = slave_export_get_or_make_stub(m,f,a);
+	p->i = e->addressv[erts_active_code_ix()];//ETODO: VERIFY
+    } else if (trapping) {
+	/*
+	 * Since we never do a roundtrip into the emulator (not only for
+	 * efficency, but also because the IP would not be understood by the
+	 * slave), we have to manage reduction bookkeeping here
+	 */
+	p->reds += CONTEXT_REDS - p->fcalls;
+	p->fcalls = CONTEXT_REDS;
+    }
+
     erts_thr_progress_unmanaged_continue(delay);
 
     arg->state_flags = 0;
@@ -75,19 +103,26 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     if (new_state == (old_state | ERTS_PSFLG_EXITING)) {
 	arg->state_flags |= ERTS_PSFLG_EXITING;
     } else if (new_state != old_state) {
-	erl_exit(1, "Process state changed by bif %T:%T/%d!\nWas: %#x, Now: %#x",
+	erl_exit(1, "Process state changed by bif %T:%T/%d!\nWas: %#x, Now: %#x\n",
 		 bif->module, bif->name, bif->arity, old_state, new_state);
     }
-    if (p->i != old_i) {
-	erl_exit(1, "IP changed by bif %T:%T/%d!\nWas: %#x, Now: %#x",
+    if (!trapping && p->i != old_i) {
+	erl_exit(1, "IP changed by bif %T:%T/%d!\nWas: %#x, Now: %#x\n",
 		 bif->module, bif->name, bif->arity, old_i, p->i);
     }
 
     slave_state_swapout(p, &arg->state);
 
 #if HARDDEBUG
-    erts_printf("Replying with result %T\n", arg->result);
+    if (!trapping) {
+	if (arg->result != THE_NON_VALUE)
+	    erts_printf("Replying with result %T\n", arg->result);
+	else erts_printf("Replying with error %d\n", p->freason);
+    } else erts_printf("Trapping %s %T:%T/%d\n",
+		       trapping_to_beam ? "to beam" : "into",
+		       p->i[-3], p->i[-2], p->i[-1]);
 #endif
+    return !trapping || trapping_to_beam;
 }
 
 void

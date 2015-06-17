@@ -123,10 +123,12 @@ epiphany_sane_address(void *addrp)
 #endif
 
 // Word or Doubleword
-#define LDR_ANY_MASK  0b00011110000000000001110001011111
-#define LDR_LR_MASK   0b11111110000000001111110001011111
-#define LDR_ANY_MATCH 0b00000100000000000001010001001100
-#define LDR_LR_MATCH  0b00100100000000001101010001001100
+#define LDR_ANY_MASK   0b00011110000000000001110001011111
+#define LDR_LR_MASK    0b11111110000000001111110001011111
+#define LDRD_R10_MASK  0b11111110000000001111110001111111
+#define LDR_ANY_MATCH  0b00000100000000000001010001001100
+#define LDR_LR_MATCH   0b00100100000000001101010001001100
+#define LDRD_R10_MATCH 0b00100100000000000101010001101100
 
 #define ADD_SP_MASK  0b11111100000000001111110001111111
 #define ADD_SP_MATCH 0b00100100000000001011010000011011
@@ -143,16 +145,31 @@ epiphany_sane_address(void *addrp)
 // Sign-extend IMM11
 #define SIMM11(INSTR) ((((signed)IMM11(INSTR)) << (32-11)) >> (32-11))
 
+#define LDREG(INSTR) (((INSTR >> 13) & 0b111) | ((INSTR >> 26) & 0b111000))
+
 #define HARDDEBUG 0
 
 #if HARDDEBUG
 #  define HDEBUG_PRINTF(X ...) erts_printf(X)
+#  define IFMT(I,A) ("%#08x: %08x    " I " " A "\n")
+#  define IFMTARGS  (unsigned)ptr, instr
+static const char * const load_instrs[] = { "ldrb", "ldrh", "ldr", "ldrd" };
+#  define HDEBUG_PRINT_GEN_LOAD					\
+    HDEBUG_PRINTF(IFMT("%s", "r%d,[sp,%d]"),			\
+		  IFMTARGS, load_instrs[MEM_SHIFT(instr)],	\
+		  LDREG(instr),					\
+		  IMM11_SIGN(instr)					\
+		  ? -(IMM11(instr) << MEM_SHIFT(instr))			\
+		  : IMM11(instr) << MEM_SHIFT(instr))
 #else
 #  define HDEBUG_PRINTF(X ...)
+#  define HDEBUG_PRINT_GEN_LOAD
 #endif
 
 /*
  * Scans for the instruction sequence
+ *  ldrd r10,[sp, ?] (optionally)
+ *   Any number of ldr ?, [sp, ?]
  *  ldr lr,[sp,(*lr_offset)>>2]
  *   Any number of ldr ?, [sp, ?]
  *  add sp,sp,*framesize
@@ -160,11 +177,12 @@ epiphany_sane_address(void *addrp)
  *  rts
  * starting at address ptr. Returns zero if found and nonzero if not.
  */
-static inline int
+static int
 scan_epilogue(unsigned *__attribute__((packed)) ptr, int *framesize, int *lr_offset)
 {
     extern char end;
     unsigned state = 0;
+    unsigned frame_off = 0;
 
     while (1) {
 	unsigned instr;
@@ -181,53 +199,52 @@ scan_epilogue(unsigned *__attribute__((packed)) ptr, int *framesize, int *lr_off
 	}
 	switch (state) {
 	case 0:
+	case 1:
 	    if ((instr & LDR_LR_MASK) == LDR_LR_MATCH) {
 		ASSERT((instr & LDR_ANY_MASK) == LDR_ANY_MATCH);
 		*lr_offset = IMM11(instr) << MEM_SHIFT(instr);
 		if (IMM11_SIGN(instr)) *lr_offset = -*lr_offset;
-		HDEBUG_PRINTF("%x:\t%x\tldr lr,[sp,%d]\n",
-			      (unsigned)ptr, instr, *lr_offset);
+		HDEBUG_PRINTF(IFMT("%s", "lr,[sp,%d]"), IFMTARGS,
+			      load_instrs[MEM_SHIFT(instr)], *lr_offset);
+		state = 2;
+	    } else if ((instr & LDRD_R10_MASK) == LDRD_R10_MATCH) {
+		HDEBUG_PRINT_GEN_LOAD;
+		frame_off = 4;
 		state = 1;
 	    }
 	    break;
-	case 1:
+	case 2:
 	    if ((instr & ADD_SP_MASK) == ADD_SP_MATCH) {
-		*framesize = SIMM11(instr);
-		HDEBUG_PRINTF("%x:\t%x\tldr add sp,sp,%d\n",
-			      (unsigned)ptr, instr, *framesize);
-		state = 2;
+		*framesize = SIMM11(instr) + frame_off;
+		HDEBUG_PRINTF(IFMT("add", "sp,sp,%d"), IFMTARGS, SIMM11(instr));
+		state = 3;
 	    } else if ((instr & LDR_ANY_MASK) != LDR_ANY_MATCH) {
 		state = 0;
-		HDEBUG_PRINTF("Partial match: only link load (ptr=0x%x, instr=0x%x)\n",
-			      (unsigned)ptr, instr);
+		HDEBUG_PRINTF("Partial match: only link load "
+			      "(ptr=0x%x, instr=0x%x)\n", (unsigned)ptr, instr);
 	    } else {
-		HDEBUG_PRINTF("%x:\t%x\tldr ??,[sp,%d]\n",
-			      (unsigned)ptr, instr,
-			      IMM11_SIGN(instr)
-			      ? -(IMM11(instr) << MEM_SHIFT(instr))
-			      : IMM11(instr) << MEM_SHIFT(instr));
+		HDEBUG_PRINT_GEN_LOAD;
 	    }
 	    break;
-	case 2:
+	case 3:
 	    if ((instr & RTS_MASK) == RTS_MATCH) {
-		HDEBUG_PRINTF("%x:\t%x\trts\n", (unsigned)ptr, instr);
+		HDEBUG_PRINTF(IFMT("rts", ""), IFMTARGS);
 		return 0;
 	    } else if ((instr & LDR_ANY_MASK) != LDR_ANY_MATCH) {
 		state = 0;
-		HDEBUG_PRINTF("Partial match: no rts after sp add (ptr=0x%x, instr=0x%x)\n",
-			      (unsigned)ptr, instr);
+		HDEBUG_PRINTF("Partial match: no rts after sp add "
+			      "(ptr=0x%x, instr=0x%x)\n", (unsigned)ptr, instr);
 	    } else {
-		HDEBUG_PRINTF("%x:\t%x\tldr ??,[sp,%d]\n",
-			      (unsigned)ptr, instr,
-			      IMM11_SIGN(instr)
-			      ? -(IMM11(instr) << MEM_SHIFT(instr))
-			      : IMM11(instr) << MEM_SHIFT(instr));
+		HDEBUG_PRINT_GEN_LOAD;
 	    }
 	    break;
 	}
-	if (state == 0)
+	if (state == 0) {
+	    /* Reset state that relies on a default value */
+	    frame_off = 0;
+
 	    ptr = (unsigned*)((unsigned)ptr + 2);
-	else
+	} else
 	    ptr++;
     }
 }

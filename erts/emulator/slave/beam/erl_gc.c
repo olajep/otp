@@ -52,6 +52,13 @@ erts_garbage_collect(Process* p, int need, Eterm* objv, int nobj)
 	dram_objv = objv;
     }
 
+#ifdef DEBUG
+    {
+	int i;
+	for (i = 0; i < nobj; i++)
+	    ASSERT(is_immed(objv[i]) || epiphany_in_dram(ptr_val(objv[i])));
+    }
+#endif
     cmd->need = need;
     cmd->objv = dram_objv;
     cmd->nobj = nobj;

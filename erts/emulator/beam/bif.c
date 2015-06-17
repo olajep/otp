@@ -541,7 +541,13 @@ BIF_RETTYPE demonitor_2(BIF_ALIST_2)
 	if (flush)
 	    BIF_TRAP2(flush_monitor_message_trap, BIF_P, BIF_ARG_1, res);
     case ERTS_DEMONITOR_TRUE:
-	BIF_RET(res);
+	/*
+	 * We guard against in-flight messages by always flushing slave
+	 * processes
+	 */
+	if (IS_SLAVE_PROCESS(BIF_P) && flush)
+	    BIF_TRAP2(flush_monitor_message_trap, BIF_P, BIF_ARG_1, res);
+	else BIF_RET(res);
     case ERTS_DEMONITOR_YIELD_TRUE:
 	ERTS_BIF_YIELD_RETURN(BIF_P, am_true);
     case ERTS_DEMONITOR_BADARG:

@@ -144,6 +144,10 @@ erts_bs_start_match_2(Process *p, Eterm Binary, Uint Max)
     Uint total_bin_size;
     ProcBin* pb;
 
+#if defined(ERTS_SLAVE) && 0
+    erts_printf("Starting match on binary at ");
+#endif
+
     ASSERT(is_binary(Binary));
     total_bin_size = binary_size(Binary);
     if ((total_bin_size >> (8*sizeof(Uint)-3)) != 0) {
@@ -160,6 +164,10 @@ erts_bs_start_match_2(Process *p, Eterm Binary, Uint Max)
     ms->thing_word = HEADER_BIN_MATCHSTATE(Max);
     (ms->mb).orig = Orig;
     (ms->mb).base = binary_bytes(Orig);
+#if defined(ERTS_SLAVE) && 0
+    erts_printf("%#x\n", ms->mb.base);
+#endif
+
     (ms->mb).offset = ms->save_offset[0] = 8 * offs + bitoffs;
     (ms->mb).size = total_bin_size * 8 + (ms->mb).offset + bitsize;
     return make_matchstate(ms);
@@ -1371,7 +1379,7 @@ erts_bs_append(Process* c_p, Eterm* reg, Uint live, Eterm build_size_term,
 	 * Allocate the binary data struct itself.
 	 */
 	bptr = erts_bin_nrml_alloc(bin_size);
-	bptr->flags = 0;
+	bptr->flags = BIN_FLAGS_DEFAULT;
 	bptr->orig_size = bin_size;
 	erts_refc_init(&bptr->refc, 1);
 	erts_current_bin = (byte *) bptr->orig_bytes;
@@ -1488,7 +1496,7 @@ erts_bs_private_append(Process* p, Eterm bin, Eterm build_size_term, Uint unit)
 	     * binary and copy the contents of the old binary into it.
 	     */
 	    Binary* bptr = erts_bin_nrml_alloc(new_size);
-	    bptr->flags = 0;
+	    bptr->flags = BIN_FLAGS_DEFAULT;
 	    bptr->orig_size = new_size;
 	    erts_refc_init(&bptr->refc, 1);
 	    sys_memcpy(bptr->orig_bytes, binp->orig_bytes, binp->orig_size);
@@ -1535,7 +1543,7 @@ erts_bs_init_writable(Process* p, Eterm sz)
      * Allocate the binary data struct itself.
      */
     bptr = erts_bin_nrml_alloc(bin_size);
-    bptr->flags = 0;
+    bptr->flags = BIN_FLAGS_DEFAULT;
     bptr->orig_size = bin_size;
     erts_refc_init(&bptr->refc, 1);
     

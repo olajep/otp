@@ -55,6 +55,12 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     cmd->bif_no = bif_no;
     for (i = 0; i < arity; i++) cmd->args[i] = args[i];
 
+    /*
+     * freason is used to detect trap resumption, we clear it here so there will
+     * be no mistakes in erts_slave_serve_bif
+     */
+    p->freason = EXC_NULL;
+
     slave_state_swapout(p, &cmd->state);
 
     erts_master_syscall(SLAVE_SYSCALL_BIF, cmd);
@@ -70,8 +76,15 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     }
 
     result = cmd->result;
+    ASSERT(result == THE_NON_VALUE || is_immed(result)
+	   || epiphany_in_dram(ptr_val(result)));
 #if HARDDEBUG
-    erts_printf("Got result %T\n", result);
+    if (result == THE_NON_VALUE) {
+	erts_printf("Got error %d\n ", p->freason);
+    } else {
+	erts_printf("Got result (%#x) ", result);
+	erts_printf("%T\n", result);
+    }
 #endif
     erts_free(ERTS_ALC_T_TMP, cmd);
     return result;
@@ -79,37 +92,66 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 
 /* This is the "X macro" pattern */
 #define SLAVE_PROXIED_BIFS_DEFINER		\
-    X(demonitor_1, 1)				\
-    X(demonitor_2, 2)				\
-    X(epiphany_internal_spawn_3, 3)		\
-    X(exit_2, 2)				\
-    X(fun_info_2, 2)				\
-    X(link_1, 1)				\
-    X(monitor_2, 2)				\
-    X(net_kernel_dflag_unicode_io_1, 1)		\
-    X(node_0, 0)				\
-    X(node_1, 1)				\
-    X(now_0, 0)					\
-    X(process_flag_2, 2)			\
-    X(process_flag_3, 3)			\
-    X(process_info_2, 2)			\
-    X(send_2, 2)				\
-    X(send_3, 3)				\
-    X(spawn_3, 3)				\
-    X(spawn_link_3, 3)				\
-    X(spawn_opt_1, 1)				\
-    X(system_info_1, 1)				\
-    X(unicode_characters_to_binary_2, 2)	\
-    X(unicode_characters_to_list_2, 2)		\
-    X(unicode_bin_is_7bit_1, 1)			\
-    X(unlink_1, 1)				\
-    X(whereis_1, 1)
+    X(binary_list_to_bin, 1)			\
+    X(binary_to_list, 1)			\
+    X(binary_to_list, 3)			\
+    X(binary_to_term, 1)			\
+    X(binary_to_term, 2)			\
+    X(bitstring_to_list, 1)			\
+    X(demonitor, 1)				\
+    X(demonitor, 2)				\
+    X(epiphany_internal_spawn, 3)		\
+    X(erts_debug_get_internal_state, 1)		\
+    X(erts_debug_set_internal_state, 2)		\
+    X(ets_insert, 2)				\
+    X(ets_lookup, 2)				\
+    X(ets_new, 2)				\
+    X(ets_select, 2)				\
+    X(exit, 2)					\
+    X(external_size, 1)				\
+    X(external_size, 2)				\
+    X(file_native_name_encoding, 0)		\
+    X(fun_info, 2)				\
+    X(iolist_to_binary, 1)			\
+    X(link, 1)					\
+    X(list_to_atom, 1)				\
+    X(list_to_binary, 1)			\
+    X(list_to_bitstring, 1)			\
+    X(make_ref, 0)				\
+    X(md5, 1)					\
+    X(md5_final, 1)				\
+    X(md5_init, 0)				\
+    X(md5_update, 2)				\
+    X(monitor, 2)				\
+    X(net_kernel_dflag_unicode_io, 1)		\
+    X(node, 0)					\
+    X(node, 1)					\
+    X(nodes, 1)					\
+    X(now, 0)					\
+    X(open_port, 2)				\
+    X(os_getenv, 1)				\
+    X(process_flag, 2)				\
+    X(process_flag, 3)				\
+    X(process_info, 2)				\
+    X(send, 2)					\
+    X(send, 3)					\
+    X(spawn, 3)					\
+    X(spawn_link, 3)				\
+    X(spawn_opt, 1)				\
+    X(system_info, 1)				\
+    X(term_to_binary, 1)			\
+    X(term_to_binary, 2)			\
+    X(unicode_bin_is_7bit, 1)			\
+    X(unicode_characters_to_binary, 2)		\
+    X(unicode_characters_to_list, 2)		\
+    X(unlink, 1)				\
+    X(whereis, 1)
 
-#define X(NAME, ARITY)					\
-    Eterm						\
-    NAME(Process *p, Eterm *args)			\
-    {							\
-	return syscall_bif(BIF_##NAME, p, args, ARITY);	\
+#define X(NAME, ARITY)							\
+    Eterm								\
+    NAME##_##ARITY(Process *p, Eterm *args)				\
+    {									\
+	return syscall_bif(BIF_##NAME##_##ARITY, p, args, ARITY);	\
     }
 SLAVE_PROXIED_BIFS_DEFINER
 #undef X

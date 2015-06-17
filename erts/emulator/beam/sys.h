@@ -181,8 +181,13 @@ typedef ERTS_SYS_FD_TYPE ErtsSysFdType;
 #define ERTS_ASSERT(e) \
     ((void) ((e) ? 1 : (erl_assert_error(#e, __func__, __FILE__, __LINE__), 0)))
 
-__decl_noreturn void __noreturn erl_assert_error(const char* expr, const char *func,
-						 const char* file, int line);
+#ifdef ERTS_SLAVE
+void
+#else
+__decl_noreturn void __noreturn
+#endif
+erl_assert_error(const char* expr, const char *func,
+		 const char* file, int line);
 
 #ifdef DEBUG
 #  define ASSERT(e) ERTS_ASSERT(e)

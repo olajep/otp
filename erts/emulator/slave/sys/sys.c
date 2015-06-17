@@ -888,6 +888,12 @@ erl_assert_error(const char* expr, const char* func, const char* file, int line)
     fprintf(stderr, "%s:%d:%s() Assertion failed: %s\n",
             file, line, func, expr);
     fflush(stderr);
+    epiphany_backtrace();
+    {
+	Process *p = erts_get_current_process();
+	void dbg_bt(Process* p, Eterm* sp);
+	if (p) dbg_bt(p, STACK_TOP(p));
+    }
 #if !defined(ERTS_SMP) && 0
     /* Writing a crashdump from a failed assertion when smp support
      * is enabled almost a guaranteed deadlocking, don't even bother.
@@ -898,7 +904,7 @@ erl_assert_error(const char* expr, const char* func, const char* file, int line)
     if (erts_initialized)
 	erl_crash_dump(file, line, "Assertion failed: %s\n", expr);
 #endif
-    abort();
+    returning_abort();
 }
 
 #ifdef DEBUG
@@ -1081,12 +1087,22 @@ long __attribute__((weak)) sysconf(int __attribute__((unused)) name)
 void sys_epiphany_stub(const char* file, int line, const char* fun)
 {
     erts_fprintf(stderr, "%s:%d:%s is a stub!\n", file, line, fun);
-    while(1) asm("idle");
+    {
+	Process *p = erts_get_current_process();
+	void dbg_bt(Process* p, Eterm* sp);
+	if (p) dbg_bt(p, STACK_TOP(p));
+    }
+    abort();
 }
 
 void sys_epiphany_bt_stub(const char* fun)
 {
     erts_fprintf(stderr, "%s is a stub!\n", fun);
     epiphany_backtrace();
+    {
+	Process *p = erts_get_current_process();
+	void dbg_bt(Process* p, Eterm* sp);
+	if (p) dbg_bt(p, STACK_TOP(p));
+    }
     returning_abort();
 }

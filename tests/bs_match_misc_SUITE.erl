@@ -1,0 +1,1 @@
+../erts/emulator/test/bs_match_misc_SUITE.erl

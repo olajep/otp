@@ -43,7 +43,15 @@ typedef UWord Wterm;  /* Full word terms */
 #    define EXPAND_POINTER(APointer) (APointer)
 #  endif
 #else
-#  define HEAP_ON_C_STACK 1
+#  ifdef ERTS_SLAVE
+/*
+ * The stack addresses are not mapped into host memory space. The host could
+ * segfault if given terms using stack-heap.
+ */
+#    define HEAP_ON_C_STACK 0
+#  else
+#    define HEAP_ON_C_STACK 1
+#  endif
 #  define CHECK_POINTER_MASK 0x0UL
 #  define COMPRESS_POINTER(AnUint) (AnUint)
 #  define EXPAND_POINTER(APointer) (APointer)

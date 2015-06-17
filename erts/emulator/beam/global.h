@@ -202,17 +202,29 @@ extern Eterm erts_ddll_monitor_driver(Process *p,
 ** in reality are equal.
 */
 
-#ifdef ARCH_32
+#if defined(ARCH_32) \
+    && !(defined(ERTS_SLAVE) || defined(ERTS_SLAVE_EMU_ENABLED))
  /* *DO NOT USE* only for alignment. */
 #define ERTS_BINARY_STRUCT_ALIGNMENT Uint32 align__;
 #else
 #define ERTS_BINARY_STRUCT_ALIGNMENT
 #endif
 
+#ifdef ERTS_SLAVE
+#define ERTS_BINARY_SLAVE_FIELDS \
+    UWord otherp;
+#elif defined(ERTS_SLAVE_EMU_ENABLED)
+#define ERTS_BINARY_SLAVE_FIELDS \
+    erts_atomic_t otherp;
+#else
+#define ERTS_BINARY_SLAVE_FIELDS
+#endif
+
 /* Add fields in ERTS_INTERNAL_BINARY_FIELDS, otherwise the drivers crash */
 #define ERTS_INTERNAL_BINARY_FIELDS				\
     UWord flags;							\
     erts_refc_t refc;						\
+    ERTS_BINARY_SLAVE_FIELDS					\
     ERTS_BINARY_STRUCT_ALIGNMENT
 
 typedef struct binary {
@@ -270,6 +282,13 @@ typedef union {
 #define BIN_FLAG_USR1       2 /* Reserved for use by different modules too mark */
 #define BIN_FLAG_USR2       4 /*  certain binaries as special (used by ets) */
 #define BIN_FLAG_DRV        8
+#define BIN_FLAG_SLAVE      16
+
+#ifndef ERTS_SLAVE
+#  define BIN_FLAGS_DEFAULT 0
+#else
+#  define BIN_FLAGS_DEFAULT BIN_FLAG_SLAVE
+#endif
 
 /*
  * This structure represents one type of a binary in a process.
@@ -1162,6 +1181,7 @@ erts_alloc_message_heap_state(Uint size,
 			      ErtsProcLocks *receiver_locks,
 			      erts_aint32_t *statep)
 {
+#ifndef ERTS_SLAVE
     Eterm *hp;
     erts_aint32_t state;
 #ifdef ERTS_SMP
@@ -1237,6 +1257,10 @@ erts_alloc_message_heap_state(Uint size,
     }
 
     return hp;
+#else
+    EPIPHANY_STUB_BT();
+    return NULL;
+#endif /* !ERTS_SLAVE */
 }
 
 ERTS_GLB_INLINE Eterm *
@@ -1330,10 +1354,14 @@ ERTS_GLB_INLINE void dtrace_fun_decode(Process *process,
 ERTS_GLB_INLINE void
 dtrace_pid_str(Eterm pid, char *process_buf)
 {
+#ifndef ERTS_SLAVE
     erts_snprintf(process_buf, DTRACE_TERM_BUF_SIZE, "<%lu.%lu.%lu>",
                   pid_channel_no(pid),
                   pid_number(pid),
                   pid_serial(pid));
+#else
+    EPIPHANY_STUB_BT();
+#endif
 }
 
 ERTS_GLB_INLINE void
@@ -1345,9 +1373,13 @@ dtrace_proc_str(Process *process, char *process_buf)
 ERTS_GLB_INLINE void
 dtrace_port_str(Port *port, char *port_buf)
 {
+#ifndef ERTS_SLAVE
     erts_snprintf(port_buf, DTRACE_TERM_BUF_SIZE, "#Port<%lu.%lu>",
                   port_channel_no(port->common.id),
                   port_number(port->common.id));
+#else
+    EPIPHANY_STUB_BT();
+#endif
 }
 
 ERTS_GLB_INLINE void

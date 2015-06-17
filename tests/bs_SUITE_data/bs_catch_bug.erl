@@ -1,0 +1,1 @@
+../../lib/hipe/test/bs_SUITE_data/bs_catch_bug.erl

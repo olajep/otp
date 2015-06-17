@@ -62,13 +62,18 @@ static int pump_output(void) {
     char buffer[to_pump];
     ssize_t written;
 
-    erts_fifo_read_blocking(slave_io_fifo, buffer, to_pump);
-    written = write(STDOUT_FILENO, buffer, to_pump);
+    erts_fifo_peek(slave_io_fifo, buffer, to_pump);
+    written = write(STDERR_FILENO, buffer, to_pump);
     if (written == -1) {
-	perror("write");
-	return -1;
+	if (errno == EAGAIN) {
+	    written = 0;
+	} else {
+	    perror("pump_output(), write()");
+	    return -1;
+	}
     }
-    ASSERT((ssize_t)to_pump == written);
+    ASSERT(written >= 0 && written <= (ssize_t)to_pump);
+    erts_fifo_skip(slave_io_fifo, written);
     return written;
 }
 

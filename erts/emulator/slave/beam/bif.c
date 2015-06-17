@@ -1102,22 +1102,26 @@ BIF_RETTYPE list_to_integer_2(BIF_ALIST_2)
 
 BIF_RETTYPE float_to_list_1(BIF_ALIST_1)
 {
-  EPIPHANY_STUB_FUN();
+  EPIPHANY_STUB_BT();
+  return NIL;
 }
 
 BIF_RETTYPE float_to_list_2(BIF_ALIST_2)
 {
-  EPIPHANY_STUB_FUN();
+  EPIPHANY_STUB_BT();
+  return NIL;
 }
 
 BIF_RETTYPE float_to_binary_1(BIF_ALIST_1)
 {
-  EPIPHANY_STUB_FUN();
+  EPIPHANY_STUB_BT();
+  return NIL;
 }
 
 BIF_RETTYPE float_to_binary_2(BIF_ALIST_2)
 {
-  EPIPHANY_STUB_FUN();
+  EPIPHANY_STUB_BT();
+  return NIL;
 }
 
 /**********************************************************************/
@@ -1436,46 +1440,6 @@ BIF_RETTYPE self_0(BIF_ALIST_0)
    hash value.
 */
 
-static Uint32 reference0; /* Initialized in erts_init_bif */
-static Uint32 reference1;
-static Uint32 reference2;
-
-void
-erts_make_ref_in_array(Uint32 ref[ERTS_MAX_REF_NUMBERS])
-{
-    EPIPHANY_STUB_FUN();
-}
-
-Eterm erts_make_ref_in_buffer(Eterm buffer[REF_THING_SIZE])
-{
-    Eterm* hp = buffer;
-    Uint32 ref[ERTS_MAX_REF_NUMBERS];
-
-    erts_make_ref_in_array(ref);
-    write_ref_thing(hp, ref[0], ref[1], ref[2]);
-    return make_internal_ref(hp);
-}
-
-Eterm erts_make_ref(Process *p)
-{
-    Eterm* hp;
-    Uint32 ref[ERTS_MAX_REF_NUMBERS];
-
-    ERTS_SMP_LC_ASSERT(ERTS_PROC_LOCK_MAIN & erts_proc_lc_my_proc_locks(p));
-
-    hp = HAlloc(p, REF_THING_SIZE);
-
-    erts_make_ref_in_array(ref);
-    write_ref_thing(hp, ref[0], ref[1], ref[2]);
-
-    return make_internal_ref(hp);
-}
-
-BIF_RETTYPE make_ref_0(BIF_ALIST_0)
-{
-    return erts_make_ref(BIF_P);
-}
-
 /**********************************************************************/
 
 BIF_RETTYPE garbage_collect_0(BIF_ALIST_0)
@@ -1616,7 +1580,8 @@ BIF_RETTYPE make_fun_3(BIF_ALIST_3)
     export = erts_find_function(BIF_ARG_1, BIF_ARG_2, (Uint) arity,
 				erts_active_code_ix());
     if (export == NULL) {
-	EPIPHANY_STUB_FUN();
+	  EPIPHANY_STUB_BT();
+	  return NIL;
     }
 
     hp = HAlloc(BIF_P, 2);
@@ -1802,7 +1767,8 @@ BIF_RETTYPE erts_internal_cmp_term_2(BIF_ALIST_2) {
 static ERTS_INLINE int
 skip_current_msgq(Process *c_p)
 {
-    EPIPHANY_STUB_FUN();
+    EPIPHANY_STUB_BT();
+    return 0;
 }
 
 void
@@ -1866,11 +1832,6 @@ void erts_init_trap_export(Export* ep, Eterm m, Eterm f, Uint a,
 
 void erts_init_bif(void)
 {
-    reference0 = 0;
-    reference1 = 0;
-    reference2 = 0;
-
-
     // ETODO: Init export fields
 }
 

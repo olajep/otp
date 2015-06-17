@@ -968,18 +968,19 @@ endif
 
 ifeq ($(BUILD_SLAVE_EMU), yes)
 SLAVE_OBJS = \
-	$(OBJDIR)/slave_ix.o \
-	$(OBJDIR)/slave_module.o \
+	$(OBJDIR)/slave_alloc.o \
+	$(OBJDIR)/slave_bif.o \
+	$(OBJDIR)/slave_binary.o \
+	$(OBJDIR)/slave_command.o \
 	$(OBJDIR)/slave_export.o \
-	$(OBJDIR)/slave_load.o \
 	$(OBJDIR)/slave_fifo.o \
 	$(OBJDIR)/slave_io.o \
-	$(OBJDIR)/slave_command.o \
-	$(OBJDIR)/slave_state.o \
+	$(OBJDIR)/slave_ix.o \
+	$(OBJDIR)/slave_load.o \
+	$(OBJDIR)/slave_module.o \
+	$(OBJDIR)/slave_process.o \
 	$(OBJDIR)/slave_refc.o \
-	$(OBJDIR)/slave_bif.o \
-	$(OBJDIR)/slave_alloc.o \
-	$(OBJDIR)/slave_process.o
+	$(OBJDIR)/slave_state.o
 
 EXTRA_BASE_OBJS += $(SLAVE_OBJS)
 endif
