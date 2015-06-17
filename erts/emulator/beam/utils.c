@@ -4464,6 +4464,20 @@ erts_smp_ensure_later_interval_acqb(erts_interval_t *icp, Uint64 ic)
 #endif
 }
 
+/* Utility for erts_refc_decfree */
+void
+erts_free_decfree_obj(enum erts_decfree_kind kind, void *objp)
+{
+    switch(kind) {
+    case ERTS_DECFREE_BIN:
+	erts_bin_free(objp);
+	return;
+    default:
+	erl_exit(ERTS_ABORT_EXIT,
+		 "erts_free_decfree_obj(): Bad kind %d!\n", kind);
+    }
+}
+
 /*
  * A millisecond timestamp without time correction where there's no hrtime
  * - for tracing on "long" things...

@@ -72,6 +72,21 @@ erts_refc_add(erts_refc_t *refcp, erts_aint_t diff, erts_aint_t min_val) {
     };
     erts_master_send_command(MASTER_COMMAND_REFC, &cmd, sizeof(cmd));
 }
+
+void
+erts_refc_decfree(erts_refc_t *refcp, erts_aint_t min_val,
+		  enum erts_decfree_kind kind, void *objp)
+{
+    struct master_command_refc cmd = {
+	.op = MASTER_REFC_OP_DECFREE,
+	.refcp = refcp,
+	.min_val = min_val,
+	.kind = kind,
+	.objp = objp,
+    };
+    erts_master_send_command(MASTER_COMMAND_REFC, &cmd, sizeof(cmd));
+}
+
 #else
 void
 erts_slave_serve_refc(struct master_command_refc *cmd) {
@@ -87,6 +102,9 @@ erts_slave_serve_refc(struct master_command_refc *cmd) {
 	break;
     case MASTER_REFC_OP_ADD:
 	erts_refc_add(cmd->refcp, cmd->arg, cmd->min_val);
+	break;
+    case MASTER_REFC_OP_DECFREE:
+	erts_refc_decfree(cmd->refcp, cmd->min_val, cmd->kind, cmd->objp);
 	break;
     default:
 	erl_exit(1, "Unexpected op %d in erts_slave_serve_refc", cmd->op);

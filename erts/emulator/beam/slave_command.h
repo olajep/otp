@@ -120,10 +120,16 @@ enum master_refc_op {
     MASTER_REFC_OP_INC,
     MASTER_REFC_OP_DEC,
     MASTER_REFC_OP_ADD,
+    MASTER_REFC_OP_DECFREE,
 };
 struct master_command_refc {
     erts_refc_t *refcp;
-    erts_aint_t arg, min_val;
+    union {
+	erts_aint_t arg;
+	void *objp;
+    };
+    erts_aint_t min_val;
+    enum erts_decfree_kind kind;
     enum master_refc_op op;
 } SLAVE_SHARED_DATA;
 

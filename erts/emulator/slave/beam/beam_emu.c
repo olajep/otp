@@ -763,39 +763,183 @@ extern int count_instructions;
 #define IsBitstring(Src, Fail) \
   if (is_not_binary(Src)) { Fail; }
 
-#define BsSafeMul(A, B, Fail, Target) EPIPHANY_STUB(BsSafeMul)
+#if defined(ARCH_64) && !HALFWORD_HEAP
+#define BsSafeMul(A, B, Fail, Target)		\
+   do { Uint64 _res = (A) * (B);		\
+      if (_res / B != A) { Fail; }		\
+      Target = _res;				\
+   } while (0)
+#else
+#define BsSafeMul(A, B, Fail, Target)			\
+   do { Uint64 _res = (Uint64)(A) * (Uint64)(B);	\
+      if ((_res >> (8*sizeof(Uint))) != 0) { Fail; }	\
+      Target = _res;					\
+   } while (0)
+#endif
 
-#define BsGetFieldSize(Bits, Unit, Fail, Target) EPIPHANY_STUB(BsGetFieldSize)
+#define BsGetFieldSize(Bits, Unit, Fail, Target)	\
+   do {							\
+      Sint _signed_size; Uint _uint_size;		\
+      if (is_small(Bits)) {				\
+        _signed_size = signed_val(Bits);		\
+         if (_signed_size < 0) { Fail; }		\
+         _uint_size = (Uint) _signed_size;		\
+      } else {						\
+         if (!term_to_Uint(Bits, &temp_bits)) { Fail; }	\
+         _uint_size = temp_bits;			\
+      }							\
+      BsSafeMul(_uint_size, Unit, Fail, Target);	\
+   } while (0)
 
-#define BsGetUncheckedFieldSize(Bits, Unit, Fail, Target) EPIPHANY_STUB(BsGetUncheckedFieldSize)
+#define BsGetUncheckedFieldSize(Bits, Unit, Fail, Target)	\
+   do {								\
+      Sint _signed_size; Uint _uint_size;			\
+      if (is_small(Bits)) {					\
+        _signed_size = signed_val(Bits);			\
+         if (_signed_size < 0) { Fail; }			\
+         _uint_size = (Uint) _signed_size;			\
+      } else {							\
+         if (!term_to_Uint(Bits, &temp_bits)) { Fail; }		\
+         _uint_size = (Uint) temp_bits;				\
+      }								\
+      Target = _uint_size * Unit;				\
+   } while (0)
 
-#define BsGetFloat2(Ms, Live, Sz, Flags, Dst, Store, Fail) EPIPHANY_STUB(BsGetFloat2)
+#define BsGetFloat2(Ms, Live, Sz, Flags, Dst, Store, Fail)		\
+ do {									\
+   ErlBinMatchBuffer *_mb;						\
+   Eterm _result; Sint _size;						\
+   if (!is_small(Sz) || (_size = unsigned_val(Sz)) > 64) { Fail; }	\
+   _size *= ((Flags) >> 3);						\
+   TestHeap(FLOAT_SIZE_OBJECT, Live);					\
+   _mb = ms_matchbuffer(Ms);						\
+   LIGHT_SWAPOUT;							\
+   _result = erts_bs_get_float_2(c_p, _size, (Flags), _mb);		\
+   LIGHT_SWAPIN;							\
+   HEAP_SPACE_VERIFIED(0);                                          \
+   if (is_non_value(_result)) { Fail; }					\
+   else { Store(_result, Dst); }					\
+ } while (0)
 
-#define BsGetBinaryImm_2(Ms, Live, Sz, Flags, Dst, Store, Fail) EPIPHANY_STUB(BsGetBinaryImm_2)
+#define BsGetBinaryImm_2(Ms, Live, Sz, Flags, Dst, Store, Fail)	\
+  do {								\
+    ErlBinMatchBuffer *_mb;					\
+    Eterm _result;						\
+    TestHeap(heap_bin_size(ERL_ONHEAP_BIN_LIMIT), Live);	\
+    _mb = ms_matchbuffer(Ms);					\
+    LIGHT_SWAPOUT;						\
+    _result = erts_bs_get_binary_2(c_p, (Sz), (Flags), _mb);	\
+    LIGHT_SWAPIN;						\
+    HEAP_SPACE_VERIFIED(0);                                 \
+    if (is_non_value(_result)) { Fail; }			\
+    else { Store(_result, Dst); }				\
+  } while (0)
 
-#define BsGetBinary_2(Ms, Live, Sz, Flags, Dst, Store, Fail) EPIPHANY_STUB(BsGetBinary_2)
+#define BsGetBinary_2(Ms, Live, Sz, Flags, Dst, Store, Fail)	\
+  do {								\
+    ErlBinMatchBuffer *_mb;					\
+    Eterm _result; Uint _size;					\
+    BsGetFieldSize(Sz, ((Flags) >> 3), Fail, _size);		\
+    TestHeap(ERL_SUB_BIN_SIZE, Live);				\
+    _mb = ms_matchbuffer(Ms);					\
+    LIGHT_SWAPOUT;						\
+    _result = erts_bs_get_binary_2(c_p, _size, (Flags), _mb);	\
+    LIGHT_SWAPIN;						\
+    HEAP_SPACE_VERIFIED(0);                                 \
+    if (is_non_value(_result)) { Fail; }			\
+    else { Store(_result, Dst); }				\
+  } while (0)
 
-#define BsGetBinaryAll_2(Ms, Live, Unit, Dst, Store, Fail) EPIPHANY_STUB(BsGetBinaryAll_2)
+#define BsGetBinaryAll_2(Ms, Live, Unit, Dst, Store, Fail)	\
+  do {								\
+    ErlBinMatchBuffer *_mb;					\
+    Eterm _result;						\
+    TestHeap(ERL_SUB_BIN_SIZE, Live);				\
+    _mb = ms_matchbuffer(Ms);					\
+    if (((_mb->size - _mb->offset) % Unit) == 0) {		\
+      LIGHT_SWAPOUT;						\
+      _result = erts_bs_get_binary_all_2(c_p, _mb);		\
+      LIGHT_SWAPIN;						\
+      HEAP_SPACE_VERIFIED(0);                               \
+      ASSERT(is_value(_result));				\
+      Store(_result, Dst);					\
+    } else {                                                    \
+	HEAP_SPACE_VERIFIED(0);                             \
+	Fail; }						        \
+ } while (0)
 
-#define BsSkipBits2(Ms, Bits, Unit, Fail) EPIPHANY_STUB(BsSkipBits2)
+#define BsSkipBits2(Ms, Bits, Unit, Fail)			\
+ do {								\
+   ErlBinMatchBuffer *_mb;					\
+   size_t new_offset;						\
+   Uint _size;							\
+    _mb = ms_matchbuffer(Ms);					\
+   BsGetFieldSize(Bits, Unit, Fail, _size);			\
+   new_offset = _mb->offset + _size;				\
+   if (new_offset <= _mb->size) { _mb->offset = new_offset; }	\
+   else { Fail; }						\
+ } while (0)
 
-#define BsSkipBitsAll2(Ms, Unit, Fail) EPIPHANY_STUB(BsSkipBitsAll2)
+#define BsSkipBitsAll2(Ms, Unit, Fail)		\
+ do {						\
+    ErlBinMatchBuffer *_mb;			\
+   _mb = ms_matchbuffer(Ms);			\
+   if (((_mb->size - _mb->offset) % Unit) == 0) {_mb->offset = _mb->size; } \
+   else { Fail; }					\
+ } while (0)
 
-#define BsSkipBitsImm2(Ms, Bits, Fail) EPIPHANY_STUB(BsSkipBitsImm2)
+#define BsSkipBitsImm2(Ms, Bits, Fail)				\
+ do {								\
+   ErlBinMatchBuffer *_mb;					\
+   size_t new_offset;						\
+   _mb = ms_matchbuffer(Ms);					\
+   new_offset = _mb->offset + (Bits);				\
+   if (new_offset <= _mb->size) { _mb->offset = new_offset; }	\
+   else { Fail; }						\
+ } while (0)
 
-#define NewBsPutIntegerImm(Sz, Flags, Src) EPIPHANY_STUB(NewBsPutIntegerImm)
+#define NewBsPutIntegerImm(Sz, Flags, Src)					\
+ do {									\
+    if (!erts_new_bs_put_integer(ERL_BITS_ARGS_3((Src), (Sz), (Flags)))) { goto badarg; }	\
+ } while (0)
 
-#define NewBsPutInteger(Sz, Flags, Src) EPIPHANY_STUB(NewBsPutInteger)
+#define NewBsPutInteger(Sz, Flags, Src)						\
+ do {										\
+    Sint _size;									\
+    BsGetUncheckedFieldSize(Sz, ((Flags) >> 3), goto badarg, _size);		\
+    if (!erts_new_bs_put_integer(ERL_BITS_ARGS_3((Src), _size, (Flags))))	\
+       { goto badarg; }								\
+ } while (0)
 
-#define NewBsPutFloatImm(Sz, Flags, Src) EPIPHANY_STUB(NewBsPutFloatImm)
+#define NewBsPutFloatImm(Sz, Flags, Src)					\
+ do {									\
+    if (!erts_new_bs_put_float(c_p, (Src), (Sz), (Flags))) { goto badarg; }	\
+ } while (0)
 
-#define NewBsPutFloat(Sz, Flags, Src) EPIPHANY_STUB(NewBsPutFloat)
+#define NewBsPutFloat(Sz, Flags, Src)						\
+ do {										\
+    Sint _size;									\
+    BsGetUncheckedFieldSize(Sz, ((Flags) >> 3), goto badarg, _size);		\
+    if (!erts_new_bs_put_float(c_p, (Src), _size, (Flags))) { goto badarg; }	\
+ } while (0)
 
-#define NewBsPutBinary(Sz, Flags, Src) EPIPHANY_STUB(NewBsPutBinary)
+#define NewBsPutBinary(Sz, Flags, Src)							\
+ do {											\
+    Sint _size;										\
+    BsGetUncheckedFieldSize(Sz, ((Flags) >> 3), goto badarg, _size);			\
+    if (!erts_new_bs_put_binary(ERL_BITS_ARGS_2((Src), _size))) { goto badarg; }	\
+ } while (0)
 
-#define NewBsPutBinaryImm(Sz, Src) EPIPHANY_STUB(NewBsPutBinaryImm)
+#define NewBsPutBinaryImm(Sz, Src)				        \
+ do {							        \
+    if (!erts_new_bs_put_binary(ERL_BITS_ARGS_2((Src), (Sz)))) { goto badarg; }	\
+ } while (0)
 
-#define NewBsPutBinaryAll(Src, Unit) EPIPHANY_STUB(NewBsPutBinaryAll);
+#define NewBsPutBinaryAll(Src, Unit)							\
+ do {											\
+    if (!erts_new_bs_put_binary_all(ERL_BITS_ARGS_2((Src), (Unit)))) { goto badarg; }	\
+ } while (0)
+
 
 #define IsPort(Src, Fail) if (is_not_port(Src)) { Fail; }
 #define IsPid(Src, Fail) if (is_not_pid(Src)) { Fail; }
@@ -1043,17 +1187,11 @@ void process_main(void)
     int Go;
 #endif
 
+    Uint temp_bits; /* Temporary used by BsSkipBits2 & BsGetInteger2 */
+
     Eterm pt_arity;		/* Used by do_put_tuple */
 
-#pragma GCC diagnostic push
-    /*
-     * Although all uses of the bits state have been stubbed out, we don't want
-     * to remove the places or opcodes that set it, in case we later reintroduce
-     * the bits opcodes.
-     */
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
     ERL_BITS_DECLARE_STATEP; /* Has to be last declaration */
-#pragma GCC diagnostic pop
 
 
     /*
@@ -1954,7 +2092,8 @@ void process_main(void)
      erts_smp_proc_lock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
  }
 
- OpCase(i_wait_timeout_locked_fI): {
+ OpCase(i_wait_timeout_locked_fI):
+ {
      /*
       * If we have already set the timer, we must NOT set it again.  Therefore,
       * we must test the F_INSLPQUEUE flag as well as the F_TIMO flag.
@@ -3454,110 +3593,1116 @@ get_map_elements_fail:
 	goto find_func_info;
     }
 
- OpCase(i_bs_init_bits_heap_IIId):
- OpCase(i_bs_init_bits_IId):
- OpCase(i_bs_init_bits_fail_heap_IjId):
- OpCase(i_bs_init_bits_fail_rjId):
- OpCase(i_bs_init_bits_fail_yjId):
- OpCase(i_bs_init_bits_fail_xjId):
-    EPIPHANY_STUB(i_bs_init_bits_);
+ /*
+  * Construction of binaries using new instructions.
+  */
+ {
+     Eterm new_binary;
+     Eterm num_bits_term;
+     Uint num_bits;
+     Uint alloc;
+     Uint num_bytes;
 
- OpCase(i_bs_init_fail_heap_IjId):
- OpCase(i_bs_init_fail_rjId):
- OpCase(i_bs_init_fail_yjId):
- OpCase(i_bs_init_fail_xjId):
- OpCase(i_bs_init_heap_IIId):
- OpCase(i_bs_init_IId):
- OpCase(i_bs_init_heap_bin_heap_IIId):
- OpCase(i_bs_init_heap_bin_IId):
-    EPIPHANY_STUB(OpCase(i_bs_init_));
+     OpCase(i_bs_init_bits_heap_IIId): {
+	 num_bits = Arg(0);
+	 alloc = Arg(1);
+	 I++;
+	 goto do_bs_init_bits_known;
+     }
+     
+     OpCase(i_bs_init_bits_IId): {
+	 num_bits = Arg(0);
+	 alloc = 0;
+	 goto do_bs_init_bits_known;
+     }
 
- OpCase(i_bs_add_jId):
-    EPIPHANY_STUB(OpCase(i_bs_add_jId));
+     OpCase(i_bs_init_bits_fail_heap_IjId): {
+	 /* tmp_arg1 was fetched by an i_fetch instruction */
+	 num_bits_term = tmp_arg1;
+	 alloc = Arg(0);
+	 I++;
+	 goto do_bs_init_bits;
+     }
+
+     OpCase(i_bs_init_bits_fail_rjId): {
+	 num_bits_term = r(0);
+	 alloc = 0;
+	 goto do_bs_init_bits;
+     }
+     OpCase(i_bs_init_bits_fail_yjId): {
+	 num_bits_term = yb(Arg(0));
+	 I++;
+	 alloc = 0;
+	 goto do_bs_init_bits;
+     }
+     OpCase(i_bs_init_bits_fail_xjId): {
+	 num_bits_term = xb(Arg(0));
+	 I++;
+	 alloc = 0;
+     /* FALL THROUGH */
+     }
+
+     /* num_bits_term = Term for number of bits to build (small/big)
+      * alloc = Number of words to allocate on heap
+      * Operands: Fail Live Dst
+      */
+
+ do_bs_init_bits:
+     if (is_small(num_bits_term)) {
+	 Sint size = signed_val(num_bits_term);
+	 if (size < 0) {
+	     goto badarg;
+	 }
+	 num_bits = (Uint) size;
+     } else {
+	 Uint bits;
+
+	 if (!term_to_Uint(num_bits_term, &bits)) {
+	     c_p->freason = bits;
+	     goto lb_Cl_error;
+
+	 }
+	 num_bits = (Eterm) bits;
+     }
+
+     /* num_bits = Number of bits to build
+      * alloc = Number of extra words to allocate on heap
+      * Operands: NotUsed Live Dst
+      */
+ do_bs_init_bits_known:
+     num_bytes = ((Uint64)num_bits+(Uint64)7) >> 3;
+     if (num_bits & 7) {
+	 alloc += ERL_SUB_BIN_SIZE;
+     }
+     if (num_bytes <= ERL_ONHEAP_BIN_LIMIT) {
+	 alloc += heap_bin_size(num_bytes);
+     } else {
+	 alloc += PROC_BIN_SIZE;
+     }
+     TestHeap(alloc, Arg(1));
+
+     /* num_bits = Number of bits to build
+      * num_bytes = Number of bytes to allocate in the binary
+      * alloc = Total number of words to allocate on heap
+      * Operands: NotUsed NotUsed Dst
+      */
+     if (num_bytes <= ERL_ONHEAP_BIN_LIMIT) {
+	 ErlHeapBin* hb;
+
+	 erts_bin_offset = 0;
+	 erts_writable_bin = 0;
+	 hb = (ErlHeapBin *) HTOP;
+	 HTOP += heap_bin_size(num_bytes);
+	 hb->thing_word = header_heap_bin(num_bytes);
+	 hb->size = num_bytes;
+	 erts_current_bin = (byte *) hb->data;
+	 new_binary = make_binary(hb);
+
+     do_bits_sub_bin:
+	 if (num_bits & 7) {
+	     ErlSubBin* sb;
+
+	     sb = (ErlSubBin *) HTOP;
+	     HTOP += ERL_SUB_BIN_SIZE;
+	     sb->thing_word = HEADER_SUB_BIN;
+	     sb->size = num_bytes - 1;
+	     sb->bitsize = num_bits & 7;
+	     sb->offs = 0;
+	     sb->bitoffs = 0;
+	     sb->is_writable = 0;
+	     sb->orig = new_binary;
+	     new_binary = make_binary(sb);
+	 }
+	 HEAP_SPACE_VERIFIED(0);
+	 StoreBifResult(2, new_binary);
+     } else {
+	 Binary* bptr;
+	 ProcBin* pb;
+
+	 erts_bin_offset = 0;
+	 erts_writable_bin = 0;
+
+	 /*
+	  * Allocate the binary struct itself.
+	  */
+	 bptr = erts_bin_nrml_alloc(num_bytes);
+	 bptr->flags = 0;
+	 bptr->orig_size = num_bytes;
+	 erts_refc_init(&bptr->refc, 1);
+	 erts_current_bin = (byte *) bptr->orig_bytes;
+
+	 /*
+	  * Now allocate the ProcBin on the heap.
+	  */
+	 pb = (ProcBin *) HTOP;
+	 HTOP += PROC_BIN_SIZE;
+	 pb->thing_word = HEADER_PROC_BIN;
+	 pb->size = num_bytes;
+	 pb->next = MSO(c_p).first;
+	 MSO(c_p).first = (struct erl_off_heap_header*) pb;
+	 pb->val = bptr;
+	 pb->bytes = (byte*) bptr->orig_bytes;
+	 pb->flags = 0;
+	 OH_OVERHEAD(&(MSO(c_p)), pb->size / sizeof(Eterm));
+	 new_binary = make_binary(pb);
+	 goto do_bits_sub_bin;
+     }
+ }
+
+ {
+     OpCase(i_bs_init_fail_heap_IjId): {
+	 /* tmp_arg1 was fetched by an i_fetch instruction */
+	 tmp_arg2 = Arg(0);
+	 I++;
+	 goto do_bs_init;
+     }
+
+     OpCase(i_bs_init_fail_rjId): {
+	 tmp_arg1 = r(0);
+	 tmp_arg2 = 0;
+	 goto do_bs_init;
+     }
+
+     OpCase(i_bs_init_fail_yjId): {
+	 tmp_arg1 = yb(Arg(0));
+	 tmp_arg2 = 0;
+	 I++;
+	 goto do_bs_init;
+     }
+
+     OpCase(i_bs_init_fail_xjId): {
+	 tmp_arg1 = xb(Arg(0));
+	 tmp_arg2 = 0;
+	 I++;
+     }
+	 /* FALL THROUGH */
+     do_bs_init:
+         if (is_small(tmp_arg1)) {
+	     Sint size = signed_val(tmp_arg1);
+	     if (size < 0) {
+		 goto badarg;
+	     }
+	     tmp_arg1 = (Eterm) size;
+	 } else {
+	     Uint bytes;
+
+	     if (!term_to_Uint(tmp_arg1, &bytes)) {
+		 c_p->freason = bytes;
+		 goto lb_Cl_error;
+	     }
+	     if ((bytes >> (8*sizeof(Uint)-3)) != 0) {
+		 goto system_limit;
+	     }
+	     tmp_arg1 = (Eterm) bytes;
+	 }
+	 if (tmp_arg1 <= ERL_ONHEAP_BIN_LIMIT) {
+	     goto do_heap_bin_alloc;
+	 } else {
+	     goto do_proc_bin_alloc;
+	 }
+
+
+     OpCase(i_bs_init_heap_IIId): {
+	 tmp_arg1 = Arg(0);
+	 tmp_arg2 = Arg(1);
+	 I++;
+	 goto do_proc_bin_alloc;
+     }
+
+     OpCase(i_bs_init_IId): {
+	 tmp_arg1 = Arg(0);
+	 tmp_arg2 = 0;
+     }
+     /* FALL THROUGH */
+     do_proc_bin_alloc: {
+	 Binary* bptr;
+	 ProcBin* pb;
+
+	 erts_bin_offset = 0;
+	 erts_writable_bin = 0;
+	 TestBinVHeap(tmp_arg1 / sizeof(Eterm), 
+	 	      tmp_arg2 + PROC_BIN_SIZE + ERL_SUB_BIN_SIZE, Arg(1));
+
+	 /*
+	  * Allocate the binary struct itself.
+	  */
+	 bptr = erts_bin_nrml_alloc(tmp_arg1);
+	 bptr->flags = 0;
+	 bptr->orig_size = tmp_arg1;
+	 erts_refc_init(&bptr->refc, 1);
+	 erts_current_bin = (byte *) bptr->orig_bytes;
+
+	 /*
+	  * Now allocate the ProcBin on the heap.
+	  */
+	 pb = (ProcBin *) HTOP;
+	 HTOP += PROC_BIN_SIZE;
+	 pb->thing_word = HEADER_PROC_BIN;
+	 pb->size = tmp_arg1;
+	 pb->next = MSO(c_p).first;
+	 MSO(c_p).first = (struct erl_off_heap_header*) pb;
+	 pb->val = bptr;
+	 pb->bytes = (byte*) bptr->orig_bytes;
+	 pb->flags = 0;
+	 
+	 OH_OVERHEAD(&(MSO(c_p)), tmp_arg1 / sizeof(Eterm));
+
+	 StoreBifResult(2, make_binary(pb));
+     }
+
+     OpCase(i_bs_init_heap_bin_heap_IIId): {
+	 tmp_arg1 = Arg(0);
+	 tmp_arg2 = Arg(1);
+	 I++;
+	 goto do_heap_bin_alloc;
+     }
+
+     OpCase(i_bs_init_heap_bin_IId): {
+	 tmp_arg1 = Arg(0);
+	 tmp_arg2 = 0;
+     }
+     /* Fall through */
+     do_heap_bin_alloc:
+	 {
+	     ErlHeapBin* hb;
+	     Uint bin_need;
+
+	     bin_need = heap_bin_size(tmp_arg1);
+	     erts_bin_offset = 0;
+	     erts_writable_bin = 0;
+	     TestHeap(bin_need+tmp_arg2+ERL_SUB_BIN_SIZE, Arg(1));
+	     hb = (ErlHeapBin *) HTOP;
+	     HTOP += bin_need;
+	     hb->thing_word = header_heap_bin(tmp_arg1);
+	     hb->size = tmp_arg1;
+	     erts_current_bin = (byte *) hb->data;
+	     tmp_arg1 = make_binary(hb);
+	     StoreBifResult(2, tmp_arg1);
+	 }
+ }
+
+ OpCase(i_bs_add_jId): {
+     Uint Unit = Arg(1);
+     if (is_both_small(tmp_arg1, tmp_arg2)) {
+	 Sint Arg1 = signed_val(tmp_arg1);
+	 Sint Arg2 = signed_val(tmp_arg2);
+
+	 if (Arg1 >= 0 && Arg2 >= 0) {
+	     BsSafeMul(Arg2, Unit, goto system_limit, tmp_arg1);
+	     tmp_arg1 += Arg1;
+
+	 store_bs_add_result:
+	     if (MY_IS_SSMALL((Sint) tmp_arg1)) {
+		 tmp_arg1 = make_small(tmp_arg1);
+	     } else {
+		 /*
+		  * May generate a heap fragment, but in this
+		  * particular case it is OK, since the value will be
+		  * stored into an x register (the GC will scan x
+		  * registers for references to heap fragments) and
+		  * there is no risk that value can be stored into a
+		  * location that is not scanned for heap-fragment
+		  * references (such as the heap).
+		  */
+		 SWAPOUT;
+		 tmp_arg1 = erts_make_integer(tmp_arg1, c_p);
+		 HTOP = HEAP_TOP(c_p);
+	     }
+	     StoreBifResult(2, tmp_arg1);
+	 }
+	 goto badarg;
+     } else {
+	 Uint a;
+	 Uint b;
+	 Uint c;
+
+	 /*
+	  * Now we know that one of the arguments is
+	  * not a small. We must convert both arguments
+	  * to Uints and check for errors at the same time.
+	  *
+	  * Error checking is tricky.
+	  *
+	  * If one of the arguments is not numeric or
+	  * not positive, the error reason is BADARG.
+	  *
+	  * Otherwise if both arguments are numeric,
+	  * but at least one argument does not fit in
+	  * an Uint, the reason is SYSTEM_LIMIT.
+	  */
+
+	 if (!term_to_Uint(tmp_arg1, &a)) {
+	     if (a == BADARG) {
+		 goto badarg;
+	     }
+	     if (!term_to_Uint(tmp_arg2, &b)) {
+		 c_p->freason = b;
+		 goto lb_Cl_error;
+	     }
+	     goto system_limit;
+	 } else if (!term_to_Uint(tmp_arg2, &b)) {
+	     c_p->freason = b;
+	     goto lb_Cl_error;
+	 }
+
+	 /*
+	  * The arguments are now correct and stored in a and b.
+	  */
+	 
+	 BsSafeMul(b, Unit, goto system_limit, c);
+	 tmp_arg1 = a + c;
+	 if (tmp_arg1 < a) {
+	     /*
+	      * If the result is less than one of the
+	      * arguments, there must have been an overflow.
+	      */
+	     goto system_limit;
+	 }
+	 goto store_bs_add_result;
+     }
+     /* No fallthrough */
+     ASSERT(0);
+ }
 
  OpCase(bs_put_string_II):
-    EPIPHANY_STUB(OpCase(bs_put_string_II));
+    {
+	BeamInstr *next;
+	PreFetch(2, next);
+	erts_new_bs_put_string(ERL_BITS_ARGS_2((byte *) Arg(1), Arg(0)));
+	NextPF(2, next);
+    }
 
- OpCase(i_bs_append_jIIId):
-    EPIPHANY_STUB(OpCase(i_bs_append_jIIId));
+ /*
+  * tmp_arg1 = Number of bytes to build
+  * tmp_arg2 = Source binary
+  * Operands: Fail ExtraHeap Live Unit Dst
+  */
 
- OpCase(i_bs_private_append_jId):
-    EPIPHANY_STUB(OpCase(i_bs_private_append_jId));
+ OpCase(i_bs_append_jIIId): {
+     Uint live = Arg(2);
+     Uint res;
 
- OpCase(bs_init_writable):
-    EPIPHANY_STUB(OpCase(bs_init_writable));
+     SWAPOUT;
+     reg[0] = r(0);
+     reg[live] = tmp_arg2;
+     res = erts_bs_append(c_p, reg, live, tmp_arg1, Arg(1), Arg(3));
+     r(0) = reg[0];
+     SWAPIN;
+     if (is_non_value(res)) {
+	 /* c_p->freason is already set (may be either BADARG or SYSTEM_LIMIT). */
+	 goto lb_Cl_error;
+     }
+     StoreBifResult(4, res);
+ }
 
- OpCase(i_bs_utf8_size_sd):
-    EPIPHANY_STUB(OpCase(i_bs_utf8_size_s));
+ /*
+  * tmp_arg1 = Number of bytes to build
+  * tmp_arg2 = Source binary
+  * Operands: Fail Unit Dst
+  */
+ OpCase(i_bs_private_append_jId): {
+     Eterm res;
 
- OpCase(i_bs_put_utf8_js):
-    EPIPHANY_STUB(OpCase(i_bs_put_utf8_js));
+     res = erts_bs_private_append(c_p, tmp_arg2, tmp_arg1, Arg(1));
+     if (is_non_value(res)) {
+	 /* c_p->freason is already set (may be either BADARG or SYSTEM_LIMIT). */
+	 goto lb_Cl_error;
+     }
+     StoreBifResult(2, res);
+ }
 
- OpCase(i_bs_utf16_size_sd):
-    EPIPHANY_STUB(OpCase(i_bs_utf16_size_sd));
+ /*
+  * tmp_arg1 = Initial size of writable binary
+  * Operands: Live Dst
+  */
+ OpCase(bs_init_writable): {
+     SWAPOUT;
+     r(0) = erts_bs_init_writable(c_p, r(0));
+     SWAPIN;
+     Next(0);
+ }
 
- OpCase(i_bs_put_utf16_jIs):
-    EPIPHANY_STUB(OpCase(i_bs_put_utf16_jIs));
+ /*
+  * Calculate the number of bytes needed to encode the source
+  * operarand to UTF-8. If the source operand is invalid (e.g. wrong
+  * type or range) we return a nonsense integer result (0 or 4). We
+  * can get away with that because we KNOW that bs_put_utf8 will do
+  * full error checking.
+  */
+ OpCase(i_bs_utf8_size_sd): {
+     Eterm arg;
+     Eterm result;
 
- OpCase(i_bs_validate_unicode_js):
- OpCase(i_bs_validate_unicode_retract_j):
-    EPIPHANY_STUB(OpCase(i_bs_validate_unicode_));
+     GetArg1(0, arg);
+     if (arg < make_small(0x80UL)) {
+	 result = make_small(1);
+     } else if (arg < make_small(0x800UL)) {
+	 result = make_small(2);
+     } else if (arg < make_small(0x10000UL)) {
+	 result = make_small(3);
+     } else {
+	 result = make_small(4);
+     }
+     StoreBifResult(1, result);
+ }
 
- OpCase(i_bs_start_match2_rfIId):
- OpCase(i_bs_start_match2_xfIId):
- OpCase(i_bs_start_match2_yfIId):
-    EPIPHANY_STUB(OpCase(i_bs_start_match2_));
+ OpCase(i_bs_put_utf8_js): {
+     Eterm arg;
 
- OpCase(bs_test_zero_tail2_fr):
- OpCase(bs_test_zero_tail2_fx):
- OpCase(bs_test_tail_imm2_frI):
- OpCase(bs_test_tail_imm2_fxI):
- OpCase(bs_test_unit_frI):
- OpCase(bs_test_unit_fxI):
- OpCase(bs_test_unit8_fr):
- OpCase(bs_test_unit8_fx):
-    EPIPHANY_STUB(OpCase(bs_test_));
+     GetArg1(1, arg);
+     if (!erts_bs_put_utf8(ERL_BITS_ARGS_1(arg))) {
+	 goto badarg;
+     }
+     Next(2);
+ }
 
- OpCase(i_bs_get_integer_8_rfd):
- OpCase(i_bs_get_integer_8_xfd):
+ /*
+  * Calculate the number of bytes needed to encode the source
+  * operarand to UTF-8. If the source operand is invalid (e.g. wrong
+  * type or range) we return a nonsense integer result (2 or 4). We
+  * can get away with that because we KNOW that bs_put_utf16 will do
+  * full error checking.
+  */
+
+ OpCase(i_bs_utf16_size_sd): {
+     Eterm arg;
+     Eterm result = make_small(2);
+
+     GetArg1(0, arg);
+     if (arg >= make_small(0x10000UL)) {
+	 result = make_small(4);
+     }
+     StoreBifResult(1, result);
+ }
+
+ OpCase(i_bs_put_utf16_jIs): {
+     Eterm arg;
+
+     GetArg1(2, arg);
+     if (!erts_bs_put_utf16(ERL_BITS_ARGS_2(arg, Arg(1)))) {
+	 goto badarg;
+     }
+     Next(3);
+ }
+
+ /*
+  * Only used for validating a value about to be stored in a binary.
+  */
+ OpCase(i_bs_validate_unicode_js): {
+     Eterm val;
+
+     GetArg1(1, val);
+
+     /*
+      * There is no need to untag the integer, but it IS necessary
+      * to make sure it is small (if the term is a bignum, it could
+      * slip through the test, and there is no further test that
+      * would catch it, since bit syntax construction silently masks
+      * too big numbers).
+      */
+     if (is_not_small(val) || val > make_small(0x10FFFFUL) ||
+	 (make_small(0xD800UL) <= val && val <= make_small(0xDFFFUL))) {
+	 goto badarg;
+     }
+     Next(2);
+ }
+
+ /*
+  * Only used for validating a value matched out. 
+  *
+  * tmp_arg1 = Integer to validate
+  * tmp_arg2 = Match context
+  */
+ OpCase(i_bs_validate_unicode_retract_j): {
+     /*
+      * There is no need to untag the integer, but it IS necessary
+      * to make sure it is small (a bignum pointer could fall in
+      * the valid range).
+      */
+     if (is_not_small(tmp_arg1) || tmp_arg1 > make_small(0x10FFFFUL) ||
+	 (make_small(0xD800UL) <= tmp_arg1 &&
+	  tmp_arg1 <= make_small(0xDFFFUL))) {
+	 ErlBinMatchBuffer *mb = ms_matchbuffer(tmp_arg2);
+
+	 mb->offset -= 32;
+	 goto badarg;
+     }
+     Next(1);
+ }
+
+ /*
+  * Matching of binaries.
+  */
+
+ {
+     Eterm header;
+     BeamInstr *next;
+     Uint slots;
+     Eterm context;
+
+     OpCase(i_bs_start_match2_rfIId): {
+	 context = r(0);
+
+     do_start_match:
+	 slots = Arg(2);
+	 if (!is_boxed(context)) {
+	     ClauseFail();
+	 }
+	 PreFetch(4, next);
+	 header = *boxed_val(context);
+	 if (header_is_bin_matchstate(header)) {
+	     ErlBinMatchState* ms = (ErlBinMatchState *) boxed_val(context);
+	     Uint actual_slots = HEADER_NUM_SLOTS(header);
+	     ms->save_offset[0] = ms->mb.offset;
+	     if (actual_slots < slots) {
+		 ErlBinMatchState* dst;
+		 Uint live = Arg(1);
+		 Uint wordsneeded = ERL_BIN_MATCHSTATE_SIZE(slots);
+
+		 TestHeapPreserve(wordsneeded, live, context);
+		 ms = (ErlBinMatchState *) boxed_val(context);
+		 dst = (ErlBinMatchState *) HTOP;
+		 *dst = *ms;
+		 *HTOP = HEADER_BIN_MATCHSTATE(slots);
+		 HTOP += wordsneeded;
+		 HEAP_SPACE_VERIFIED(0);
+		 StoreResult(make_matchstate(dst), Arg(3));
+	     }
+	 } else if (is_binary_header(header)) {
+	     Eterm result;
+	     Uint live = Arg(1);
+	     Uint wordsneeded = ERL_BIN_MATCHSTATE_SIZE(slots);
+	     TestHeapPreserve(wordsneeded, live, context);
+	     HEAP_TOP(c_p) = HTOP;
+#ifdef DEBUG
+	     c_p->stop = E;	/* Needed for checking in HeapOnlyAlloc(). */
+#endif
+	     result = erts_bs_start_match_2(c_p, context, slots);
+	     HTOP = HEAP_TOP(c_p);
+	     HEAP_SPACE_VERIFIED(0);
+	     if (is_non_value(result)) {
+		 ClauseFail();
+	     } else {
+		 StoreResult(result, Arg(3));
+	     }
+	 } else {
+	     ClauseFail();
+	 }
+	 NextPF(4, next);
+     }
+     OpCase(i_bs_start_match2_xfIId): {
+	 context = xb(Arg(0));
+	 I++;
+	 goto do_start_match;
+     }
+     OpCase(i_bs_start_match2_yfIId): {
+	 context = yb(Arg(0));
+	 I++;
+	 goto do_start_match;
+     }
+ }
+
+ OpCase(bs_test_zero_tail2_fr): {
+     BeamInstr *next;
+     ErlBinMatchBuffer *_mb;
+     
+     PreFetch(1, next);
+     _mb = (ErlBinMatchBuffer*) ms_matchbuffer(r(0));
+     if (_mb->size != _mb->offset) {
+	 ClauseFail();
+     }
+     NextPF(1, next);
+ }
+
+ OpCase(bs_test_zero_tail2_fx): {
+     BeamInstr *next;
+     ErlBinMatchBuffer *_mb;
+     
+     PreFetch(2, next);
+     _mb = (ErlBinMatchBuffer*) ms_matchbuffer(xb(Arg(1)));
+     if (_mb->size != _mb->offset) {
+	 ClauseFail();
+     }
+     NextPF(2, next);
+ }
+
+ OpCase(bs_test_tail_imm2_frI): {
+     BeamInstr *next;
+     ErlBinMatchBuffer *_mb;
+     PreFetch(2, next);
+     _mb = ms_matchbuffer(r(0));
+     if (_mb->size - _mb->offset != Arg(1)) {
+	 ClauseFail();
+     }
+     NextPF(2, next);
+ }
+ OpCase(bs_test_tail_imm2_fxI): {
+     BeamInstr *next;
+     ErlBinMatchBuffer *_mb;
+     PreFetch(3, next);
+     _mb = ms_matchbuffer(xb(Arg(1)));
+     if (_mb->size - _mb->offset != Arg(2)) {
+	 ClauseFail();
+     }
+     NextPF(3, next);
+ }
+
+ OpCase(bs_test_unit_frI): {
+     BeamInstr *next;
+     ErlBinMatchBuffer *_mb;
+     PreFetch(2, next);
+     _mb = ms_matchbuffer(r(0));
+     if ((_mb->size - _mb->offset) % Arg(1)) {
+	 ClauseFail();
+     }
+     NextPF(2, next);
+ }
+ OpCase(bs_test_unit_fxI): {
+     BeamInstr *next;
+     ErlBinMatchBuffer *_mb;
+     PreFetch(3, next);
+     _mb = ms_matchbuffer(xb(Arg(1)));
+     if ((_mb->size - _mb->offset) % Arg(2)) {
+	 ClauseFail();
+     }
+     NextPF(3, next);
+ }
+
+ OpCase(bs_test_unit8_fr): {
+     BeamInstr *next;
+     ErlBinMatchBuffer *_mb;
+     PreFetch(1, next);
+     _mb = ms_matchbuffer(r(0));
+     if ((_mb->size - _mb->offset) & 7) {
+	 ClauseFail();
+     }
+     NextPF(1, next);
+ }
+ OpCase(bs_test_unit8_fx): {
+     BeamInstr *next;
+     ErlBinMatchBuffer *_mb;
+     PreFetch(2, next);
+     _mb = ms_matchbuffer(xb(Arg(1)));
+     if ((_mb->size - _mb->offset) & 7) {
+	 ClauseFail();
+     }
+     NextPF(2, next);
+ }
+
+ {
+     Eterm bs_get_integer8_context;
+
+ OpCase(i_bs_get_integer_8_rfd): {
+	 bs_get_integer8_context = r(0);
+	 goto do_bs_get_integer_8;
+     }
+
+ OpCase(i_bs_get_integer_8_xfd): {
+	 bs_get_integer8_context = xb(Arg(0));
+	 I++;
+     }
+
+ do_bs_get_integer_8: {
+	 ErlBinMatchBuffer *_mb;
+	 Eterm _result;
+	 _mb = ms_matchbuffer(bs_get_integer8_context);
+	 if (_mb->size - _mb->offset < 8) {
+	     ClauseFail();
+	 }
+	 if (BIT_OFFSET(_mb->offset) != 0) {
+	     _result = erts_bs_get_integer_2(c_p, 8, 0, _mb);
+	 } else {
+	     _result = make_small(_mb->base[BYTE_OFFSET(_mb->offset)]);
+	     _mb->offset += 8;
+	 }
+	 StoreBifResult(1, _result);
+     }
+ }
+
+ {
+     Eterm bs_get_integer_16_context;
+
  OpCase(i_bs_get_integer_16_rfd):
+     bs_get_integer_16_context = r(0);
+     goto do_bs_get_integer_16;
+
  OpCase(i_bs_get_integer_16_xfd):
+     bs_get_integer_16_context = xb(Arg(0));
+     I++;
+
+ do_bs_get_integer_16:
+     {
+	 ErlBinMatchBuffer *_mb;
+	 Eterm _result;
+	 _mb = ms_matchbuffer(bs_get_integer_16_context);
+	 if (_mb->size - _mb->offset < 16) {
+	     ClauseFail(); 
+	 }
+	 if (BIT_OFFSET(_mb->offset) != 0) {
+	     _result = erts_bs_get_integer_2(c_p, 16, 0, _mb);
+	 } else {
+	     _result = make_small(get_int16(_mb->base+BYTE_OFFSET(_mb->offset)));
+	     _mb->offset += 16;
+	 }
+	 StoreBifResult(1, _result);
+     }
+ }
+
+ {
+     Eterm bs_get_integer_32_context;
+
  OpCase(i_bs_get_integer_32_rfId):
+     bs_get_integer_32_context = r(0);
+     goto do_bs_get_integer_32;
+
+     
  OpCase(i_bs_get_integer_32_xfId):
- OpCase(i_bs_get_integer_imm_rIIfId):
- OpCase(i_bs_get_integer_imm_xIIfId):
- OpCase(i_bs_get_integer_small_imm_rIfId):
- OpCase(i_bs_get_integer_small_imm_xIfId):
- OpCase(i_bs_get_integer_fIId):
-    EPIPHANY_STUB(OpCase(i_bs_get_integer_));
+     bs_get_integer_32_context = xb(Arg(0));
+     I++;
 
- OpCase(i_bs_get_utf8_rfd):
- OpCase(i_bs_get_utf8_xfd):
- OpCase(i_bs_get_utf16_rfId):
- OpCase(i_bs_get_utf16_xfId):
-    EPIPHANY_STUB(OpCase(i_bs_get_utf));
 
- OpCase(bs_context_to_binary_r):
- OpCase(bs_context_to_binary_y):
- OpCase(bs_context_to_binary_x):
-    EPIPHANY_STUB(OpCase(bs_context_to_binary_));
+ do_bs_get_integer_32:
+     {
+	 ErlBinMatchBuffer *_mb;
+	 Uint32 _integer;
+	 Eterm _result;
+	 _mb = ms_matchbuffer(bs_get_integer_32_context);
+	 if (_mb->size - _mb->offset < 32) { ClauseFail(); }
+	 if (BIT_OFFSET(_mb->offset) != 0) {
+	     _integer = erts_bs_get_unaligned_uint32(_mb);
+	 } else {
+	     _integer = get_int32(_mb->base + _mb->offset/8);
+	 }
+	 _mb->offset += 32;
+#if !defined(ARCH_64) || HALFWORD_HEAP
+	 if (IS_USMALL(0, _integer)) {
+#endif
+	     _result = make_small(_integer);
+#if !defined(ARCH_64) || HALFWORD_HEAP
+	 } else {
+	     TestHeap(BIG_UINT_HEAP_SIZE, Arg(1));
+	     _result = uint_to_big((Uint) _integer, HTOP);
+	     HTOP += BIG_UINT_HEAP_SIZE;
+	     HEAP_SPACE_VERIFIED(0);
+	 }
+#endif
+	 StoreBifResult(2, _result);
+     }
+ }
 
- OpCase(i_bs_get_binary_all_reuse_rfI):
- OpCase(i_bs_get_binary_all_reuse_xfI):
- OpCase(i_bs_match_string_rfII):
- OpCase(i_bs_match_string_xfII):
- OpCase(i_bs_save2_rI):
- OpCase(i_bs_save2_xI):
- OpCase(i_bs_restore2_rI):
- OpCase(i_bs_restore2_xI):
-    EPIPHANY_STUB(OpCase(i_bs_));
+ /* Operands: Size Live Fail Flags Dst */
+ OpCase(i_bs_get_integer_imm_rIIfId): {
+     tmp_arg1 = r(0);
+     /* Operands: Size Live Fail Flags Dst */
+     goto do_bs_get_integer_imm_test_heap;
+ }
 
-#pragma GCC diagnostic push
-    // beam_cold.h uses the macros we stubbed out above. Since the macros do not
-    // use their arguments, we'll get a lot of "set but not used warnings"
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+ /* Operands: x(Reg) Size Live Fail Flags Dst */
+ OpCase(i_bs_get_integer_imm_xIIfId): {
+     tmp_arg1 = xb(Arg(0));
+     I++;
+     /* Operands: Size Live Fail Flags Dst */
+     goto do_bs_get_integer_imm_test_heap;
+ }
+
+ /*
+  * tmp_arg1 = match context
+  * Operands: Size Live Fail Flags Dst
+  */
+ do_bs_get_integer_imm_test_heap: {
+     Uint wordsneeded;
+     tmp_arg2 = Arg(0);
+     wordsneeded = 1+WSIZE(NBYTES(tmp_arg2));
+     TestHeapPreserve(wordsneeded, Arg(1), tmp_arg1);
+     I += 2;
+     /* Operands: Fail Flags Dst */
+     goto do_bs_get_integer_imm;
+ }
+
+ /* Operands: Size Fail Flags Dst */
+ OpCase(i_bs_get_integer_small_imm_rIfId): {
+     tmp_arg1 = r(0);
+     tmp_arg2 = Arg(0);
+     I++;
+     /* Operands: Fail Flags Dst */
+     goto do_bs_get_integer_imm;
+ }
+
+ /* Operands: x(Reg) Size Fail Flags Dst */
+ OpCase(i_bs_get_integer_small_imm_xIfId): {
+     tmp_arg1 = xb(Arg(0));
+     tmp_arg2 = Arg(1);
+     I += 2;
+     /* Operands: Fail Flags Dst */
+     goto do_bs_get_integer_imm;
+ }
+ 
+ /*
+  * tmp_arg1 = match context
+  * tmp_arg2 = size of field
+  * Operands: Fail Flags Dst
+  */
+ do_bs_get_integer_imm: {
+     ErlBinMatchBuffer* mb;
+     Eterm result;
+
+     mb = ms_matchbuffer(tmp_arg1);
+     LIGHT_SWAPOUT;
+     result = erts_bs_get_integer_2(c_p, tmp_arg2, Arg(1), mb);
+     LIGHT_SWAPIN;
+     HEAP_SPACE_VERIFIED(0);
+     if (is_non_value(result)) {
+	 ClauseFail();
+     }
+     StoreBifResult(2, result);
+ }
+
+ /*
+  * tmp_arg1 = Match context
+  * tmp_arg2 = Size field
+  * Operands: Fail Live FlagsAndUnit Dst
+  */
+ OpCase(i_bs_get_integer_fIId): {
+     Uint flags;
+     Uint size;
+     ErlBinMatchBuffer* mb;
+     Eterm result;
+
+     flags = Arg(2);
+     BsGetFieldSize(tmp_arg2, (flags >> 3), ClauseFail(), size);
+     if (size >= SMALL_BITS) {
+	 Uint wordsneeded;
+	 /* check bits size before potential gc.
+	  * We do not want a gc and then realize we don't need
+	  * the allocated space (i.e. if the op fails)
+	  *
+	  * remember to reacquire the matchbuffer after gc.
+	  */
+
+	 mb = ms_matchbuffer(tmp_arg1);
+	 if (mb->size - mb->offset < size) {
+	     ClauseFail();
+	 }
+	 wordsneeded = 1+WSIZE(NBYTES((Uint) size));
+	 TestHeapPreserve(wordsneeded, Arg(1), tmp_arg1);
+     }
+     mb = ms_matchbuffer(tmp_arg1);
+     LIGHT_SWAPOUT;
+     result = erts_bs_get_integer_2(c_p, size, flags, mb);
+     LIGHT_SWAPIN;
+     HEAP_SPACE_VERIFIED(0);
+     if (is_non_value(result)) {
+	 ClauseFail();
+     }
+     StoreBifResult(3, result);
+ }
+
+ {
+     Eterm get_utf8_context;
+
+     /* Operands: MatchContext Fail Dst */
+ OpCase(i_bs_get_utf8_rfd): {
+	 get_utf8_context = r(0);
+	 goto do_bs_get_utf8;
+     }
+
+ OpCase(i_bs_get_utf8_xfd): {
+	 get_utf8_context = xb(Arg(0));
+	 I++;
+     }
+
+     /*
+      * get_utf8_context = match_context
+      * Operands: Fail Dst
+      */
+
+ do_bs_get_utf8: {
+	 Eterm result = erts_bs_get_utf8(ms_matchbuffer(get_utf8_context));
+	 if (is_non_value(result)) {
+	     ClauseFail();
+	 }
+	 StoreBifResult(1, result);
+     }
+ }
+
+ {
+     Eterm get_utf16_context;
+
+     /* Operands: MatchContext Fail Flags Dst */
+ OpCase(i_bs_get_utf16_rfId): {
+	 get_utf16_context = r(0);
+	 goto do_bs_get_utf16;
+     }
+
+ OpCase(i_bs_get_utf16_xfId): {
+	 get_utf16_context = xb(Arg(0));
+	 I++;
+     }
+
+     /*
+      * get_utf16_context = match_context
+      * Operands: Fail Flags Dst
+      */
+ do_bs_get_utf16: {
+	 Eterm result = erts_bs_get_utf16(ms_matchbuffer(get_utf16_context),
+					  Arg(1));
+	 if (is_non_value(result)) {
+	     ClauseFail();
+	 }
+	 StoreBifResult(2, result);
+     }
+ }
+
+ {
+     Eterm context_to_binary_context;
+     ErlBinMatchBuffer* mb;
+     ErlSubBin* sb;
+     Uint size;
+     Uint offs;
+     Uint orig;
+     Uint hole_size;
+
+     OpCase(bs_context_to_binary_r): {
+	 context_to_binary_context = x0;
+	 I -= 2;
+	 goto do_context_to_binary;
+     }
+
+     /* Unfortunately, inlining can generate this instruction. */
+     OpCase(bs_context_to_binary_y): {
+	 context_to_binary_context = yb(Arg(0));
+	 goto do_context_to_binary0;
+     }
+
+     OpCase(bs_context_to_binary_x): {
+	 context_to_binary_context = xb(Arg(0));
+     
+     do_context_to_binary0:
+	 I--;
+     }
+
+ do_context_to_binary:
+     if (is_boxed(context_to_binary_context) &&
+	 header_is_bin_matchstate(*boxed_val(context_to_binary_context))) {
+	 ErlBinMatchState* ms;
+	 ms = (ErlBinMatchState *) boxed_val(context_to_binary_context);
+	 mb = &ms->mb;
+	 offs = ms->save_offset[0];
+	 size = mb->size - offs;
+	 goto do_bs_get_binary_all_reuse_common;
+     }
+     Next(2);
+
+     OpCase(i_bs_get_binary_all_reuse_rfI): {
+	 context_to_binary_context = x0;
+	 goto do_bs_get_binary_all_reuse;
+     }
+
+     OpCase(i_bs_get_binary_all_reuse_xfI): {
+	 context_to_binary_context = xb(Arg(0));
+	 I++;
+     }
+
+ do_bs_get_binary_all_reuse:
+     mb = ms_matchbuffer(context_to_binary_context);
+     size = mb->size - mb->offset;
+     if (size % Arg(1) != 0) {
+	 ClauseFail();
+     }
+     offs = mb->offset;
+
+ do_bs_get_binary_all_reuse_common:
+     orig = mb->orig;
+     sb = (ErlSubBin *) boxed_val(context_to_binary_context);
+     hole_size = 1 + header_arity(sb->thing_word) - ERL_SUB_BIN_SIZE;
+     sb->thing_word = HEADER_SUB_BIN;
+     sb->size = BYTE_OFFSET(size);
+     sb->bitsize = BIT_OFFSET(size);
+     sb->offs = BYTE_OFFSET(offs);
+     sb->bitoffs = BIT_OFFSET(offs);
+     sb->is_writable = 0;
+     sb->orig = orig;
+     if (hole_size) {
+	 sb[1].thing_word = make_pos_bignum_header(hole_size-1);
+     }
+     Next(2);
+ }
+
+ {
+     Eterm match_string_context;
+
+     OpCase(i_bs_match_string_rfII): {
+	 match_string_context = r(0);
+	 goto do_bs_match_string;
+     }
+     OpCase(i_bs_match_string_xfII): {
+	 match_string_context = xb(Arg(0));
+	 I++;
+     }
+
+ do_bs_match_string:
+     {
+	 BeamInstr *next;
+	 byte* bytes;
+	 Uint bits;
+	 ErlBinMatchBuffer* mb;
+	 Uint offs;
+
+	 PreFetch(3, next);
+	 bits = Arg(1);
+	 bytes = (byte *) Arg(2);
+	 mb = ms_matchbuffer(match_string_context);
+	 if (mb->size - mb->offset < bits) {
+	     ClauseFail();
+	 }
+	 offs = mb->offset & 7;
+	 if (offs == 0 && (bits & 7) == 0) {
+	     if (sys_memcmp(bytes, mb->base+(mb->offset>>3), bits>>3)) {
+		 ClauseFail();
+	     }
+	 } else if (erts_cmp_bits(bytes, 0, mb->base+(mb->offset>>3), mb->offset & 7, bits)) {
+	     ClauseFail();
+	 }
+	 mb->offset += bits;
+	 NextPF(3, next);
+     }
+ }
+
+ OpCase(i_bs_save2_rI): {
+     BeamInstr *next;
+     ErlBinMatchState *_ms;
+     PreFetch(1, next);
+     _ms = (ErlBinMatchState*) boxed_val((Eterm) r(0));
+     _ms->save_offset[Arg(0)] = _ms->mb.offset;
+     NextPF(1, next);
+ }
+ OpCase(i_bs_save2_xI): {
+     BeamInstr *next;
+     ErlBinMatchState *_ms;
+     PreFetch(2, next);
+     _ms = (ErlBinMatchState*) boxed_val((Eterm) xb(Arg(0)));
+     _ms->save_offset[Arg(1)] = _ms->mb.offset;
+     NextPF(2, next);
+ }
+
+ OpCase(i_bs_restore2_rI): {
+     BeamInstr *next;
+     ErlBinMatchState *_ms;
+     PreFetch(1, next);
+     _ms = (ErlBinMatchState*) boxed_val((Eterm) r(0));
+     _ms->mb.offset = _ms->save_offset[Arg(0)];
+     NextPF(1, next);
+ }
+ OpCase(i_bs_restore2_xI): {
+     BeamInstr *next;
+     ErlBinMatchState *_ms;
+     PreFetch(2, next);
+     _ms = (ErlBinMatchState*) boxed_val((Eterm) xb(Arg(0)));
+     _ms->mb.offset = _ms->save_offset[Arg(1)];
+     NextPF(2, next);
+ }
+
 #include "beam_cold.h"
-#pragma GCC diagnostic pop
 
 
  /*
@@ -3863,6 +5008,7 @@ get_map_elements_fail:
 
 
  OpCase(system_limit_j):
+ system_limit:
     c_p->freason = SYSTEM_LIMIT;
     goto lb_Cl_error;
 
@@ -3922,23 +5068,6 @@ get_map_elements_fail:
      beam_exception_trace[0]   = (BeamInstr) OpCode(return_trace); /* UGLY */
      beam_return_time_trace[0] = (BeamInstr) OpCode(i_return_time_trace);
 
-     // ESTUB: erl_bif_table, export
-     /* int i; */
-     /* Export* ep; */
-     /* /\* */
-     /*  * Enter all BIFs into the export table. */
-     /*  *\/ */
-     /* for (i = 0; i < BIF_SIZE; i++) { */
-     /*     ep = erts_export_put(bif_table[i].module, */
-     /*    		      bif_table[i].name, */
-     /*    		      bif_table[i].arity); */
-     /*     bif_export[i] = ep; */
-     /*     ep->code[3] = (BeamInstr) OpCode(apply_bif); */
-     /*     ep->code[4] = (BeamInstr) bif_table[i].f; */
-     /*     /\* XXX: set func info for bifs *\/ */
-     /*     ep->fake_op_func_info_for_hipe[0] = (BeamInstr) BeamOp(op_i_func_info_IaaI); */
-     /* } */
-
      return;
  }
 #ifdef NO_JUMP_TABLE
@@ -3961,7 +5090,7 @@ translate_gc_bif(void* gcf)
     } else if (gcf == erts_gc_byte_size_1) {
 	return byte_size_1;
     } else if (gcf == erts_gc_map_size_1) {
-        return map_size_1;
+	return map_size_1;
     } else if (gcf == erts_gc_abs_1) {
 	return abs_1;
     } else if (gcf == erts_gc_float_1) {
@@ -3971,9 +5100,9 @@ translate_gc_bif(void* gcf)
     } else if (gcf == erts_gc_trunc_1) {
 	return round_1;
     } else if (gcf == erts_gc_binary_part_2) {
-        return binary_part_2;
+	return binary_part_2;
     } else if (gcf == erts_gc_binary_part_3) {
-        return binary_part_3;
+       return binary_part_3;
     } else {
 	erl_exit(1, "bad gc bif");
     }

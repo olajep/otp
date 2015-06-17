@@ -816,7 +816,14 @@ void sys_alloc_stat(SysAllocStat *);
 #define ERTS_REFC_DEBUG
 #endif
 
+enum erts_decfree_kind {
+    ERTS_DECFREE_BIN, /* Object is a Binary*, freed with erts_bin_free */
+};
+
 #ifndef ERTS_SLAVE
+/* defined in utils.c */
+void erts_free_decfree_obj(enum erts_decfree_kind kind, void *objp);
+
 typedef erts_smp_atomic_t erts_refc_t;
 
 ERTS_GLB_INLINE void erts_refc_init(erts_refc_t *refcp, erts_aint_t val);
@@ -826,6 +833,10 @@ ERTS_GLB_INLINE erts_aint_t erts_refc_inctest(erts_refc_t *refcp,
 ERTS_GLB_INLINE void erts_refc_dec(erts_refc_t *refcp, erts_aint_t min_val);
 ERTS_GLB_INLINE erts_aint_t erts_refc_dectest(erts_refc_t *refcp,
 					      erts_aint_t min_val);
+ERTS_GLB_INLINE void erts_refc_decfree(erts_refc_t *refcp,
+				       erts_aint_t min_val,
+				       enum erts_decfree_kind kind,
+				       void *objp);
 ERTS_GLB_INLINE void erts_refc_add(erts_refc_t *refcp, erts_aint_t diff,
 				   erts_aint_t min_val);
 ERTS_GLB_INLINE erts_aint_t erts_refc_read(erts_refc_t *refcp,
@@ -894,6 +905,22 @@ erts_refc_dectest(erts_refc_t *refcp, erts_aint_t min_val)
 }
 
 ERTS_GLB_INLINE void
+erts_refc_decfree(erts_refc_t *refcp, erts_aint_t min_val,
+		  enum erts_decfree_kind kind, void *objp)
+{
+    erts_aint_t val = erts_smp_atomic_dec_read_nob((erts_smp_atomic_t *) refcp);
+#ifdef ERTS_REFC_DEBUG
+    if (val < min_val)
+	erl_exit(ERTS_ABORT_EXIT,
+		 "erts_refc_decfree(): Bad refc found (refc=%ld < %ld)!\n",
+		 val, min_val);
+#endif
+    if (val <= 0) {
+	erts_free_decfree_obj(kind, objp);
+    }
+}
+
+ERTS_GLB_INLINE void
 erts_refc_add(erts_refc_t *refcp, erts_aint_t diff, erts_aint_t min_val)
 {
 #ifdef ERTS_REFC_DEBUG
@@ -929,7 +956,10 @@ void erts_refc_init(erts_refc_t *refcp, erts_aint_t val);
 void erts_refc_inc(erts_refc_t *refcp, erts_aint_t min_val);
 void erts_refc_dec(erts_refc_t *refcp, erts_aint_t min_val);
 void erts_refc_add(erts_refc_t *refcp, erts_aint_t diff, erts_aint_t min_val);
-#endif /* !defined(ERTS_REFC_OVERRIDE) */
+void erts_refc_decfree(erts_refc_t *refcp, erts_aint_t min_val,
+		       enum erts_decfree_kind kind, void *objp);
+
+#endif /* !defined(ERTS_SLAVE) */
 
 #ifdef ERTS_ENABLE_KERNEL_POLL
 extern int erts_use_kernel_poll;
