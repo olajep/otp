@@ -555,14 +555,29 @@ LoaderTarget loader_target_self = {
 #ifndef NO_JUMP_TABLE
     NULL,
 #endif
-    erts_export_put,
-    erts_active_export_entry,
-    bif_export,
+    offsetof(Export, addressv),
+    offsetof(Export, code),
     erts_put_module,
     beam_catches_cons,
     beam_make_current_old,
     erts_update_ranges,
+    offsetof(ErlFunEntry, address),
 };
+
+#define ADDRESS(FunEntry) \
+    (*(BeamInstr**)(((void*)FunEntry)+stp->target->fun_address_off))
+
+#define ADDRESSV(Export) \
+    ((void**)(((void*)Export)+stp->target->export_addressv_off))
+
+/*
+ * We provide a 2-argument overload of CODE for use in transform_engine where
+ * the loader state is not called "stp".
+ */
+#define CODE(Export) CODE2(Export, stp->target)
+#define CODE2(Export, Target)							\
+    ((BeamInstr*)(((void*)Export)+(Target)->export_code_off))
+
 /**********************************************************************/
 
 void init_load(void)
@@ -1369,9 +1384,9 @@ load_import_table(LoaderState* stp)
 	 * If the export entry refers to a BIF, get the pointer to
 	 * the BIF function.
 	 */
-	if ((e = stp->target->active_entry(mod, func, arity)) != NULL) {
-	    if (e->code[3] == BeamOpCode(op_apply_bif)) {
-		stp->import[i].bf = (BifFunction) e->code[4];
+	if ((e = erts_active_export_entry(mod, func, arity)) != NULL) {
+	    if (CODE(e)[3] == BeamOpCode(op_apply_bif)) {
+		stp->import[i].bf = (BifFunction) CODE(e)[4];
 		if (func == am_load_nif && mod == am_erlang && arity == 2) {
 		    stp->may_load_nif = 1;
 		}
@@ -1460,11 +1475,11 @@ read_export_table(LoaderState* stp)
 static int
 is_bif(const LoaderState* stp, Eterm mod, Eterm func, unsigned arity)
 {
-    Export* e = stp->target->active_entry(mod, func, arity);
+    Export* e = erts_active_export_entry(mod, func, arity);
     if (e == NULL) {
 	return 0;
     }
-    if (e->code[3] != BeamOpCode(op_apply_bif)) {
+    if (CODE(e)[3] != BeamOpCode(op_apply_bif)) {
 	return 0;
     }
     if (mod == am_erlang && func == am_apply && arity == 3) {
@@ -4469,17 +4484,17 @@ final_touch(LoaderState* stp)
 	    /* Skip stub for a BIF */
 	    continue;
 	}
-	ep = stp->target->put_export(stp->module, stp->export[i].function,
-				  stp->export[i].arity);
+	ep = erts_export_put(stp->module, stp->export[i].function,
+			     stp->export[i].arity);
 	if (!on_load) {
-	    ep->addressv[erts_staging_code_ix()] = address;
+	    ADDRESSV(ep)[erts_staging_code_ix()] = address;
 	} else {
 	    /*
 	     * Don't make any of the exported functions
 	     * callable yet.
 	     */
-	    ep->addressv[erts_staging_code_ix()] = ep->code+3;
-	    ep->code[4] = (BeamInstr) address;
+	    ADDRESSV(ep)[erts_staging_code_ix()] = CODE(ep)+3;
+	    CODE(ep)[4] = (BeamInstr) address;
 	}
     }
 
@@ -4498,7 +4513,7 @@ final_touch(LoaderState* stp)
 	mod = stp->import[i].module;
 	func = stp->import[i].function;
 	arity = stp->import[i].arity;
-	import = (BeamInstr) stp->target->put_export(mod, func, arity);
+	import = (BeamInstr) erts_export_put(mod, func, arity);
 	current = stp->import[i].patches;
 	while (current != 0) {
 	    ASSERT(current < stp->ci);
@@ -4517,24 +4532,15 @@ final_touch(LoaderState* stp)
 	    ErlFunEntry* fe = stp->lambdas[i].fe;
 	    BeamInstr* code_ptr = (BeamInstr *) (stp->code + stp->labels[entry_label].value);
 
-	    if (stp->target == &loader_target_self) {
-		if (fe->address[0] != 0) {
-		    /*
-		     * We are hiding a pointer into older code.
-		     */
-		    erts_refc_dec(&fe->refc, 1);
-		}
-		fe->address = code_ptr;
+	    if (ADDRESS(fe)[0] != 0) {
+		/*
+		 * We are hiding a pointer into older code.
+		 */
+		erts_refc_dec(&fe->refc, 1);
+	    }
+	    ADDRESS(fe) = code_ptr;
 #ifdef HIPE
-		hipe_set_closure_stub(fe, stp->lambdas[i].num_free);
-#endif
-	    }
-#ifdef ERTS_SLAVE_EMU_ENABLED
-	    else {
-		if (fe->slave_address[0] != 0)
-		    erts_refc_dec(&fe->refc, 1);
-		fe->slave_address = code_ptr;
-	    }
+	    hipe_set_closure_stub(fe, stp->lambdas[i].num_free);
 #endif
 	}
     }
@@ -4670,7 +4676,8 @@ transform_engine(LoaderState* st)
 		if (i >= st->num_imports || st->import[i].bf == NULL)
 		    goto restart;
 		if (bif_number != -1 &&
-		    st->target->bif[bif_number]->code[4] != (BeamInstr) st->import[i].bf) {
+		    CODE2(bif_export[bif_number], st->target)[4] !=
+		    (BeamInstr) st->import[i].bf) {
 		    goto restart;
 		}
 	    }
@@ -5777,8 +5784,8 @@ stub_final_touch(LoaderState* stp, BeamInstr* fp)
 
     for (i = 0; i < n; i++) {
 	if (stp->export[i].function == function && stp->export[i].arity == arity) {
-	    Export* ep = stp->target->put_export(mod, function, arity);
-	    ep->addressv[erts_staging_code_ix()] = fp+5;
+	    Export* ep = erts_export_put(mod, function, arity);
+	    ADDRESSV(ep)[erts_staging_code_ix()] = fp+5;
 	    return;
 	}
     }
@@ -5794,7 +5801,7 @@ stub_final_touch(LoaderState* stp, BeamInstr* fp)
         ErlFunEntry* fe = stp->lambdas[i].fe;
 	if (lp->function == function && lp->arity == arity) {
 	    fp[5] = (Eterm) BeamOpCode(op_hipe_trap_call_closure);
-            fe->address = &(fp[5]);
+	    ADDRESS(fe) = &(fp[5]);
 	}
     }
 #endif

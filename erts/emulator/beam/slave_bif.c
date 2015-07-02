@@ -26,7 +26,6 @@
 #include "global.h"
 #include "erl_thr_progress.h"
 #include "slave_bif.h"
-#include "slave_export.h"
 
 #define HARDDEBUG 0
 
@@ -42,7 +41,6 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     BifEntry *bif = bif_table + arg->bif_no;
     Eterm (*f)(Process*, Eterm*);
     Eterm *args;
-    ErtsThrPrgrDelayHandle delay;
     int trapping, trapping_to_beam;
     ASSERT(p);
     ASSERT(arg->bif_no < BIF_SIZE);
@@ -59,8 +57,6 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 
     slave_state_swapin(p, &arg->state);
     old_i = p->i;
-
-    delay = erts_thr_progress_unmanaged_delay();
 
     if (arg->result == THE_NON_VALUE && p->freason == TRAP) {
 #if HARDDEBUG
@@ -82,10 +78,8 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     if (trapping_to_beam) {
 	Eterm m = (Eterm)p->i[-3], f = (Eterm)p->i[-2];
 	UWord a = (UWord)p->i[-1];
-	Export *e;
-	ASSERT(is_atom(m) && is_atom(f) && a <= MAX_ARG);
-	e = slave_export_get_or_make_stub(m,f,a);
-	p->i = e->addressv[erts_active_code_ix()];//ETODO: VERIFY
+	Export *e = erts_export_get_or_make_stub(m,f,a);
+	p->i = e->slave_addressv[erts_active_code_ix()];
     } else if (trapping) {
 	/*
 	 * Since we never do a roundtrip into the emulator (not only for
@@ -95,8 +89,6 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 	p->reds += CONTEXT_REDS - p->fcalls;
 	p->fcalls = CONTEXT_REDS;
     }
-
-    erts_thr_progress_unmanaged_continue(delay);
 
     arg->state_flags = 0;
     new_state = erts_smp_atomic32_read_nob(&p->state) & ~ignored_psflgs;

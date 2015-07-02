@@ -972,7 +972,6 @@ SLAVE_OBJS = \
 	$(OBJDIR)/slave_bif.o \
 	$(OBJDIR)/slave_binary.o \
 	$(OBJDIR)/slave_command.o \
-	$(OBJDIR)/slave_export.o \
 	$(OBJDIR)/slave_fifo.o \
 	$(OBJDIR)/slave_io.o \
 	$(OBJDIR)/slave_ix.o \

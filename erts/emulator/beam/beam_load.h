@@ -55,14 +55,14 @@ typedef struct {
 #ifndef NO_JUMP_TABLE
     void** beam_ops;
 #endif
-    Export* (*put_export)(Eterm mod, Eterm func, unsigned int arity);
-    Export* (*active_entry)(Eterm mod, Eterm func, unsigned int arity);
-    Export* SLAVE_SHARED_DATA* bif;
+    size_t export_addressv_off;
+    size_t export_code_off;
     Module* (*put_module)(Eterm mod);
     unsigned (*catches_cons)(BeamInstr* cp, unsigned cdr);
     Eterm (*make_current_old)(Process *c_p, ErtsProcLocks c_p_locks,
 			      Eterm module);
     void (*update_ranges)(BeamInstr* code, Uint size);
+    size_t fun_address_off;
 } LoaderTarget;
 
 extern LoaderTarget loader_target_self;

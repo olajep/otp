@@ -43,7 +43,6 @@
 
 #include "slave_process.h"
 #include "slave_load.h"
-#include "slave_export.h"
 #include "slave_io.h" /* for erts_slave_online */
 
 typedef struct {
@@ -447,6 +446,28 @@ slave_do_exit_process(Process* p, struct slave_syscall_ready *arg)
     if (is_exiting) {
 	erts_continue_exit_process(p);
     } else {
+	/* free all pending messages */
+	/* We do this here to use the right allocator. */
+	ErlMessage *mp = p->msg.first;
+	p->msg.first = NULL;
+	while(mp != NULL) {
+	    ErlMessage* next_mp = mp->next;
+	    if (mp->data.attached) {
+		if (is_value(mp->m[0]))
+		    free_message_buffer(mp->data.heap_frag);
+		else {
+		    if (is_not_nil(mp->m[1])) {
+			ErlHeapFragment *heap_frag;
+			heap_frag = (ErlHeapFragment *) mp->data.dist_ext->ext_endp;
+			erts_cleanup_offheap(&heap_frag->off_heap);
+		    }
+		    erts_free_dist_ext_copy(mp->data.dist_ext);
+		}
+	    }
+	    erts_free(ERTS_ALC_T_SLAVE_MSG_REF, mp);
+	    mp = next_mp;
+	}
+
 	erts_do_exit_process(p, arg->exit_reason);
     }
     erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);

@@ -28,7 +28,6 @@
 #ifdef ERTS_SLAVE_EMU_ENABLED
 #  include "slave_ix.h"
 #  include "slave_module.h"
-#  include "slave_export.h"
 #endif
 
 #if 0
@@ -75,8 +74,6 @@ void erts_start_staging_code_ix(void)
     module_start_staging();
     erts_start_staging_ranges();
 #ifdef ERTS_SLAVE_EMU_ENABLED
-    /* ETODO: catches/ranges? */
-    slave_export_start_staging();
     slave_module_start_staging();
 #endif
     CIX_TRACE("start");
@@ -90,7 +87,6 @@ void erts_end_staging_code_ix(void)
     module_end_staging(1);
     erts_end_staging_ranges(1);
 #ifdef ERTS_SLAVE_EMU_ENABLED
-    slave_export_end_staging(1);
     slave_module_end_staging(1);
 #endif
     CIX_TRACE("end");
@@ -119,7 +115,6 @@ void erts_abort_staging_code_ix(void)
     module_end_staging(0);
     erts_end_staging_ranges(0);
 #ifdef ERTS_SLAVE_EMU_ENABLED
-    slave_export_end_staging(0);
     slave_module_end_staging(0);
 #endif
     CIX_TRACE("abort");

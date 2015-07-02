@@ -33,8 +33,8 @@
 
 extern BeamInstr beam_exit[];
 
-static Eterm
-syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
+Eterm
+slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 {
     struct slave_syscall_bif *cmd
 	= erts_alloc(ERTS_ALC_T_TMP, sizeof(struct slave_syscall_bif));
@@ -151,7 +151,7 @@ syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     Eterm								\
     NAME##_##ARITY(Process *p, Eterm *args)				\
     {									\
-	return syscall_bif(BIF_##NAME##_##ARITY, p, args, ARITY);	\
+	return slave_syscall_bif(BIF_##NAME##_##ARITY, p, args, ARITY);	\
     }
 SLAVE_PROXIED_BIFS_DEFINER
 #undef X

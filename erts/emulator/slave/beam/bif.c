@@ -40,6 +40,7 @@
 #define ERTS_PTAB_WANT_BIF_IMPL__
 #include "erl_ptab.h"
 #include "erl_bits.h"
+#include "slave_bif.h"
 
 static Export* await_proc_exit_trap = NULL;
 Export* erts_format_cpu_topology_trap = NULL;
@@ -1559,10 +1560,6 @@ BIF_RETTYPE ref_to_list_1(BIF_ALIST_1)
     BIF_RET(term2list_dsprintf(BIF_P, BIF_ARG_1));
 }
 
-/*
- * ETODO: Syscall when export==NULL (or always) (requires fix to extern fun
- * format first)
- */
 BIF_RETTYPE make_fun_3(BIF_ALIST_3)
 {
     Eterm* hp;
@@ -1580,8 +1577,8 @@ BIF_RETTYPE make_fun_3(BIF_ALIST_3)
     export = erts_find_function(BIF_ARG_1, BIF_ARG_2, (Uint) arity,
 				erts_active_code_ix());
     if (export == NULL) {
-	  EPIPHANY_STUB_BT();
-	  return NIL;
+	/* Bail out and retry on the master */
+	return slave_syscall_bif(BIF_make_fun_3, BIF_P, BIF__ARGS, 3);
     }
 
     hp = HAlloc(BIF_P, 2);

@@ -6050,7 +6050,6 @@ call_fun(Process* p,		/* Current process. */
 	int actual_arity;
 	/* Export entries need to have their representations merged, just
 	 * like was done with fun entries, before this can work. */
-	ASSERT(!"export");
 
 	ep = *((Export **) (export_val(fun) + 1));
 	actual_arity = (int) ep->code[2];

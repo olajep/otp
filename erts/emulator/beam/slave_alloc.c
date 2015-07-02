@@ -320,6 +320,12 @@ fallback(ErtsAlcType_t n)
 	return ERTS_ALC_T_SLAVE_MISC_FALLBACK;
     case ERTS_ALC_T2N(ERTS_ALC_T_LL_TEMP_TERM):
 	return ERTS_ALC_T_LL_TEMP_TERM_FALLBACK;
+    case ERTS_ALC_T2N(ERTS_ALC_T_EXPORT_TABLE):
+	return ERTS_ALC_T_EXPORT_TABLE_FALLBACK;
+    case ERTS_ALC_T2N(ERTS_ALC_T_NIF_TRAP_EXPORT):
+	return ERTS_ALC_T_NIF_TRAP_EXPORT_FALLBACK;
+    case ERTS_ALC_T2N(ERTS_ALC_T_EXPORT):
+	return ERTS_ALC_T_EXPORT_FALLBACK;
     default:
 	erl_exit(1, "Bad allocator number %d in slave_alloc", n);
     }

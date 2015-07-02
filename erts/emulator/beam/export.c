@@ -38,8 +38,19 @@
 #  define IF_DEBUG(x)
 #endif
 
-static IndexTable export_tables[ERTS_NUM_CODE_IX];  /* Active not locked */
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_load.h" /* for SlaveOp */
+#  include "slave_syms.h"
+static IndexTable **slave_export_tables = (void*)SLAVE_SYM_export_tables;
+static int slave_initialised = 0;
+#endif
 
+#ifndef ERTS_SLAVE
+static
+#endif
+IndexTable *export_tables;  /* Active not locked */
+
+#ifndef ERTS_SLAVE
 static erts_smp_atomic_t total_entries_bytes;
 
 #include "erl_smp.h"
@@ -48,11 +59,12 @@ static erts_smp_atomic_t total_entries_bytes;
  * AND it protects the staging table from becoming active.
  */
 erts_smp_mtx_t export_staging_lock;
+#endif
 
 extern BeamInstr* em_call_error_handler;
 extern BeamInstr* em_call_traced_function;
 
-struct export_entry
+struct SLAVE_SHARED_DATA export_entry
 {
     IndexSlot slot; /* MUST BE LOCATED AT TOP OF STRUCT!!! */
     Export* ep;
@@ -60,7 +72,7 @@ struct export_entry
 
 /* Helper struct that brings things together in one allocation
 */
-struct export_blob
+struct SLAVE_SHARED_DATA export_blob
 {
     Export exp;
     struct export_entry entryv[ERTS_NUM_CODE_IX];
@@ -70,12 +82,13 @@ struct export_blob
 
 /* Helper struct only used as template
 */
-struct export_templ
+struct SLAVE_SHARED_DATA export_templ
 {
     struct export_entry entry;
     Export exp;
 };
 
+#ifndef ERTS_SLAVE
 static struct export_blob* entry_to_blob(struct export_entry* ee)
 {
     return (struct export_blob*)
@@ -97,7 +110,7 @@ export_info(int to, void *to_arg)
 	export_staging_unlock();
 #endif
 }
-
+#endif
 
 static HashValue
 export_hash(struct export_entry* ee)
@@ -120,6 +133,7 @@ export_cmp(struct export_entry* tmpl_e, struct export_entry* obj_e)
 static struct export_entry*
 export_alloc(struct export_entry* tmpl_e)
 {
+#ifndef ERTS_SLAVE
     struct export_blob* blob;
     unsigned ix;
 
@@ -138,8 +152,25 @@ export_alloc(struct export_entry* tmpl_e)
 	obj->code[3] = (BeamInstr) em_call_error_handler;
 	obj->code[4] = 0;
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	obj->slave_fake_op_func_info_for_hipe[0] = 0;
+	obj->slave_fake_op_func_info_for_hipe[1] = 0;
+	obj->slave_code[0] = tmpl->code[0];
+	obj->slave_code[1] = tmpl->code[1];
+	obj->slave_code[2] = tmpl->code[2];
+	/* If the slave is not online yet, we don't know its opcodes.
+	 * slave_code[3] will be touched on all export entries once it comes
+	 * online */
+	if (slave_initialised)
+	    obj->slave_code[3] = (BeamInstr) SlaveOp(op_call_error_handler);
+	obj->slave_code[4] = 0;
+#endif
+
 	for (ix=0; ix<ERTS_NUM_CODE_IX; ix++) {
 	    obj->addressv[ix] = obj->code+3;
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	    obj->slave_addressv[ix] = obj->slave_code+3;
+#endif
 
 	    blob->entryv[ix].slot.index = -1;
 	    blob->entryv[ix].ep = &blob->exp;
@@ -153,11 +184,15 @@ export_alloc(struct export_entry* tmpl_e)
 	}
     }
     return &blob->entryv[ix];
+#else
+    erl_exit(1, "Cannot alloc export entry from slave");
+#endif
 }
 
 static void
 export_free(struct export_entry* obj)
 {
+#ifndef ERTS_SLAVE
     struct export_blob* blob = entry_to_blob(obj);
     int i;
     obj->slot.index = -1;
@@ -168,27 +203,58 @@ export_free(struct export_entry* obj)
     }
     erts_free(ERTS_ALC_T_EXPORT, blob);
     erts_smp_atomic_add_nob(&total_entries_bytes, -sizeof(*blob));
+#else
+    erl_exit(1, "Cannot free export entry from slave");
+#endif
 }
 
+static HashFunctions fun = {
+    (H_FUN)      export_hash,
+    (HCMP_FUN)   export_cmp,
+    (HALLOC_FUN) export_alloc,
+    (HFREE_FUN)  export_free,
+};
+
+#ifndef ERTS_SLAVE
 void
 init_export_table(void)
 {
-    HashFunctions f;
     int i;
 
     erts_smp_mtx_init(&export_staging_lock, "export_tab");
     erts_smp_atomic_init_nob(&total_entries_bytes, 0);
 
-    f.hash = (H_FUN) export_hash;
-    f.cmp  = (HCMP_FUN) export_cmp;
-    f.alloc = (HALLOC_FUN) export_alloc;
-    f.free = (HFREE_FUN) export_free;
+    export_tables = erts_alloc(ERTS_ALC_T_EXPORT_TABLE,
+			       sizeof(IndexTable)*ERTS_NUM_CODE_IX);
 
     for (i=0; i<ERTS_NUM_CODE_IX; i++) {
 	erts_index_init(ERTS_ALC_T_EXPORT_TABLE, &export_tables[i], "export_list",
-			EXPORT_INITIAL_SIZE, EXPORT_LIMIT, f);
+			EXPORT_INITIAL_SIZE, EXPORT_LIMIT, fun);
     }
 }
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void
+slave_init_export_table(void)
+{
+    int code_ix;
+    *slave_export_tables = export_tables;
+
+    /* Patch up slave_code[3] on all existing entries now that the slave opcodes
+     * are known. */
+    export_staging_lock();
+    for (code_ix=0; code_ix<ERTS_NUM_CODE_IX; code_ix++) {
+	int i = export_list_size(code_ix) - 1;
+	for (; i >= 0; i--) {
+	    Export *obj = export_list(i, code_ix);
+	    obj->slave_code[3] = (BeamInstr) SlaveOp(op_call_error_handler);
+	}
+    }
+    slave_initialised = 1;
+    export_staging_unlock();
+}
+#endif
+#endif /* !ERTS_SLAVE */
 
 /*
  * Return a pointer to the export entry for the given function,
@@ -258,7 +324,8 @@ erts_find_function(Eterm m, Eterm f, unsigned int a, ErtsCodeIndex code_ix)
     struct export_templ templ;
     struct export_entry* ee;
 
-    ee = hash_get(&export_tables[code_ix].htable, init_template(&templ, m, f, a));
+    ee = hash_get_ext(&export_tables[code_ix].htable,
+		      init_template(&templ, m, f, a), &fun);
     if (ee == NULL ||
 	(ee->ep->addressv[code_ix] == ee->ep->code+3 &&
 	 ee->ep->code[3] != (BeamInstr) BeamOp(op_i_generic_breakpoint))) {
@@ -266,6 +333,8 @@ erts_find_function(Eterm m, Eterm f, unsigned int a, ErtsCodeIndex code_ix)
     }
     return ee->ep;
 }
+
+#ifndef ERTS_SLAVE
 
 /*
  * Returns a pointer to an existing export entry for a MFA,
@@ -398,6 +467,10 @@ void export_start_staging(void)
     for (i = 0; i < src->entries; i++) {
 	src_entry = (struct export_entry*) erts_index_lookup(src, i);
         src_entry->ep->addressv[dst_ix] = src_entry->ep->addressv[src_ix];
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	src_entry->ep->slave_addressv[dst_ix]
+	    = src_entry->ep->slave_addressv[src_ix];
+#endif
 #ifdef DEBUG
 	dst_entry = (struct export_entry*) 
 #endif
@@ -415,3 +488,4 @@ void export_end_staging(int commit)
     IF_DEBUG(debug_start_load_ix = -1);
 }
 
+#endif /* !ERTS_SLAVE */

@@ -6,7 +6,7 @@
 
 %% Test that simple computations work
 fib_test() ->
-    P = epiphany:spawn(?MODULE, fibonacci_server, []),
+    P = epiphany:spawn(fun ?MODULE:fibonacci_server/0),
     Ref = monitor(process, P),
     P ! {self(), 14},
     377 = receive M -> M end,

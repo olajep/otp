@@ -30,7 +30,6 @@
 
 extern LoaderTarget loader_target_slave;
 extern BifEntry slave_bif_table[];
-extern Export **const slave_bif_export;
 extern int erts_slave_booted;
 
 void erts_slave_init_load(struct master_command_setup*);

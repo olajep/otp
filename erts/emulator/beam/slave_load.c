@@ -27,7 +27,6 @@
 #include "erl_binary.h"
 #include "beam_load.h"
 #include "beam_catches.h"
-#include "slave_export.h"
 #include "slave_load.h"
 #include "slave_ix.h"
 #include "slave_module.h"
@@ -38,20 +37,16 @@ LoaderTarget loader_target_slave = {
 #ifndef NO_JUMP_TABLE
     NULL,
 #endif
-    slave_export_put,
-    slave_active_export_entry,
-    /*
-     * slave_bif_export does not count as a constant, so we inline its
-     * definition here
-     */
-    (Export *SLAVE_SHARED_DATA*)SLAVE_SYM_bif_export,
+    offsetof(Export, slave_addressv),
+    offsetof(Export, slave_code),
     slave_put_module,
     slave_catches_cons,
     slave_make_current_old,
     slave_update_ranges,
+    offsetof(ErlFunEntry, slave_address),
 };
 BifEntry slave_bif_table[BIF_SIZE];
-Export *SLAVE_SHARED_DATA* const slave_bif_export = (Export *SLAVE_SHARED_DATA*)SLAVE_SYM_bif_export;
+static Export *SLAVE_SHARED_DATA* const slave_bif_export = (Export *SLAVE_SHARED_DATA*)SLAVE_SYM_bif_export;
 
 int erts_slave_booted = 0;
 static int slave_load_initialised = 0;
@@ -64,9 +59,8 @@ enter_slave_bifs(struct master_command_setup *cmd)
     ASSERT(BIF_SIZE == cmd->bif_size);
     for (i = 0; i < BIF_SIZE; i++) {
 	BifEntry *bif = &cmd->bif_table[i];
-	Export *ep = slave_export_put(bif->module,
-				      bif->name,
-				      bif->arity);
+	Export *ep = bif_export[i];
+
 	/* The export entries need to be in shared DRAM or they won't be
 	 * accessible from the Epiphany */
 	ASSERT(0x8e000000 <= (unsigned)ep && (unsigned)ep < 0x90000000);
@@ -82,13 +76,13 @@ enter_slave_bifs(struct master_command_setup *cmd)
 	slave_bif_table[i].f      = bif->f;
 	slave_bif_table[i].traced = bif->traced;
 
-	slave_bif_export[i] = ep;
-	ep->code[3] = (BeamInstr) SlaveOp(op_apply_bif);
-	ep->code[4] = (BeamInstr) bif->f;
+	ep->slave_code[3] = (BeamInstr) SlaveOp(op_apply_bif);
+	ep->slave_code[4] = (BeamInstr) bif->f;
 	/* XXX: set func info for bifs */
-	ep->fake_op_func_info_for_hipe[0]
+	ep->slave_fake_op_func_info_for_hipe[0]
 	    = (BeamInstr) SlaveOp(op_i_func_info_IaaI);
     }
+    memcpy(slave_bif_export, bif_export, BIF_SIZE*sizeof(Export*));
 }
 
 static Eterm
@@ -185,6 +179,12 @@ void
 erts_slave_init_load(struct master_command_setup *cmd)
 {
     if (slave_load_initialised) return;
+
+#ifndef NO_JUMP_TABLE
+    /* Must come before slave_init_export_table() */
+    loader_target_slave.beam_ops = cmd->target->beam_ops;
+#endif
+
     slave_init_export_table();
     slave_init_module_table();
     slave_code_ix_init();
@@ -201,10 +201,6 @@ erts_slave_init_load(struct master_command_setup *cmd)
 	erl_exit(1, "Error: Got %d bifs from slave emulator, expected %d\n",
 		 cmd->bif_size, BIF_SIZE);
     }
-
-#ifndef NO_JUMP_TABLE
-    loader_target_slave.beam_ops = cmd->target->beam_ops;
-#endif
 
     setup_cmd = malloc(sizeof(struct master_command_setup));
     ASSERT(setup_cmd);

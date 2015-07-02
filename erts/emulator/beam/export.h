@@ -37,6 +37,18 @@
 
 typedef struct SLAVE_SHARED_DATA export
 {
+    /*
+     * Export entries are shared between master and slave; we thus need separate
+     * address fields for the two emulators. In order to simplify the code
+     * elsewhere, the field for the current architecture is always called
+     * "addressv".
+     */
+#ifdef ERTS_SLAVE
+    void* master_addressv[ERTS_NUM_CODE_IX];
+    BeamInstr master_fake_op_func_info_for_hipe[2];
+    BeamInstr master_code[5];
+#endif
+
     void* addressv[ERTS_NUM_CODE_IX];  /* Pointer to code for function. */
 
     BeamInstr fake_op_func_info_for_hipe[2]; /* MUST be just before code[] */
@@ -55,11 +67,22 @@ typedef struct SLAVE_SHARED_DATA export
      *		Otherwise: 0.
      */
     BeamInstr code[5];
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    void* slave_addressv[ERTS_NUM_CODE_IX];
+    BeamInstr slave_fake_op_func_info_for_hipe[2];
+    BeamInstr slave_code[5];
+#endif
+
 } Export;
 
 
 void init_export_table(void);
 void export_info(int, void *);
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void slave_init_export_table(void);
+#endif
 
 ERTS_GLB_INLINE Export* erts_active_export_entry(Eterm m, Eterm f, unsigned a);
 Export* erts_export_put(Eterm mod, Eterm func, unsigned int arity);

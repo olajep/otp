@@ -1030,8 +1030,7 @@ ordering(Config) when is_list(Config) ->
     ?line true = B1 > make_ref(),
     ?line true = B1 > xxx,
     ?line true = B1 > fun() -> 1 end,
-    %% ETODO: uncomment
-    %% ?line true = B1 > fun erlang:send/2,
+    ?line true = B1 > fun erlang:send/2,
 
     ?line Path = ?config(priv_dir, Config),
     ?line AFile = filename:join(Path, "vanilla_file"),
@@ -1049,8 +1048,7 @@ ordering(Config) when is_list(Config) ->
     ?line true = B1 >= make_ref(),
     ?line true = B1 >= xxx,
     ?line true = B1 >= fun() -> 1 end,
-    %% ETODO: uncomment
-    %% ?line true = B1 >= fun erlang:send/2,
+    ?line true = B1 >= fun erlang:send/2,
     %% ?line true = B1 >= Port,
 
     ok.
@@ -1182,9 +1180,8 @@ test_terms(Test_Func) ->
     ?ppline(Test_Func(F = fun(A) -> 42*A end)),
     ?ppline(Test_Func(lists:duplicate(32, F))),
 
-    %% ETODO: Does not work sometimes because of the format issue. Uncomment when
-    %% ?ppline(Test_Func(FF = fun binary_SUITE:all/0)),
-    %% ?ppline(Test_Func(lists:duplicate(32, FF))),
+    ?ppline(Test_Func(FF = fun binary_SUITE:all/0)),
+    ?ppline(Test_Func(lists:duplicate(32, FF))),
 
     ok.
 
@@ -1335,8 +1332,7 @@ obsolete_funs(Config) when is_list(Config) ->
     ?line obsolete_fun(fun() -> {X,Y} end),
     ?line obsolete_fun(fun() -> {X,Y,Z} end),
 
-    %% ETODO: Uncomment
-    %% ?line obsolete_fun(fun ?MODULE:all/1),
+    ?line obsolete_fun(fun ?MODULE:all/1),
 
     erts_debug:set_internal_state(available_internal_state, false),
     ok.

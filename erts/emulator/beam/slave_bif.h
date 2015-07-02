@@ -37,7 +37,9 @@ struct slave_syscall_bif {
     Eterm result;
 } SLAVE_SHARED_DATA;
 
-#ifndef ERTS_SLAVE
+#ifdef ERTS_SLAVE
+Eterm slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity);
+#else
 int erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg);
 #endif
 

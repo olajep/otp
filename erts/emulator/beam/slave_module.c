@@ -27,7 +27,6 @@
 #include "beam_catches.h"
 #include "slave_module.h"
 #include "slave_load.h"
-#include "slave_export.h"
 #include "slave_syms.h"
 
 #ifdef DEBUG
@@ -275,14 +274,14 @@ delete_code(Module* modp)
     Eterm module = make_atom(modp->module);
     int i;
 
-    for (i = 0; i < slave_export_list_size(code_ix); i++) {
-	Export *ep = slave_export_list(i, code_ix);
-        if (ep != NULL && (ep->code[0] == module)) {
-	    if (ep->addressv[code_ix] == ep->code+3) {
-		if (ep->code[3] == (BeamInstr) SlaveOp(op_apply_bif)) {
+    for (i = 0; i < export_list_size(code_ix); i++) {
+	Export *ep = export_list(i, code_ix);
+	if (ep != NULL && (ep->slave_code[0] == module)) {
+	    if (ep->slave_addressv[code_ix] == ep->slave_code+3) {
+		if (ep->slave_code[3] == (BeamInstr) SlaveOp(op_apply_bif)) {
 		    continue;
 		}
-		else if (ep->code[3] ==
+		else if (ep->slave_code[3] ==
 			 (BeamInstr) SlaveOp(op_i_generic_breakpoint)) {
 		    ERTS_SMP_LC_ASSERT(erts_smp_thr_progress_is_blocking());
 		    ASSERT(modp->curr.num_traced_exports > 0);
@@ -290,12 +289,12 @@ delete_code(Module* modp)
 		    ASSERT(!"breakpoints");
 		    /* erts_clear_export_break(modp, ep->code+3); */
 		}
-		else ASSERT(ep->code[3] ==
+		else ASSERT(ep->slave_code[3] ==
 			    (BeamInstr) SlaveOp(op_call_error_handler));
 	    }
-	    ep->addressv[code_ix] = ep->code+3;
-	    ep->code[3] = (BeamInstr) SlaveOp(op_call_error_handler);
-	    ep->code[4] = 0;
+	    ep->slave_addressv[code_ix] = ep->slave_code+3;
+	    ep->slave_code[3] = (BeamInstr) SlaveOp(op_call_error_handler);
+	    ep->slave_code[4] = 0;
 	}
     }
 

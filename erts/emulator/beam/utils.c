@@ -53,7 +53,6 @@
 /* For the inlines */
 #ifdef ERTS_SLAVE_EMU_ENABLED
 #  include "slave_ix.h"
-#  include "slave_export.h"
 #endif
 
 #undef M_TRIM_THRESHOLD
