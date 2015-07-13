@@ -39,6 +39,8 @@ void erts_init_slave_io(void);
 #ifndef ERTS_SLAVE
 void erts_stop_slave_io(void);
 void erts_restart_slave_io(void);
+void erts_finish_slave_io(void);
+int erts_slave_io_pump(void);
 extern e_epiphany_t slave_workgroup;
 extern int erts_slave_online;
 #endif

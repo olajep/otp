@@ -45,11 +45,16 @@
 #include "slave_command.h"
 #include "slave_alloc.h"
 
+#ifdef DEBUG
+#  define VERIFY(E) ERTS_ASSERT(E)
+#else
+#  define VERIFY(E) ((void)(E))
+#endif
+
 static int map_shm(void);
 static int spoof_mmap(void);
 static int start_pump_thread(void);
 static void *pump_thread_loop(void *);
-static int pump_output(void);
 
 static struct erl_fifo * const slave_io_fifo = (void*)SLAVE_SYM_slave_io_fifo;
 
@@ -57,7 +62,7 @@ static struct erl_fifo * const slave_io_fifo = (void*)SLAVE_SYM_slave_io_fifo;
  * Copies data from the log output ringbuffer to stdout.
  * Returns the number of bytes copied, or -1 if an error occurred.
  */
-static int pump_output(void) {
+int erts_slave_io_pump(void) {
     size_t to_pump = erts_fifo_available(slave_io_fifo);
     char buffer[to_pump];
     ssize_t written;
@@ -68,7 +73,7 @@ static int pump_output(void) {
 	if (errno == EAGAIN) {
 	    written = 0;
 	} else {
-	    perror("pump_output(), write()");
+	    perror("erts_slave_io_pump(), write()");
 	    return -1;
 	}
     }
@@ -147,6 +152,13 @@ static int spoof_mmap(void) {
 
 static erts_tid_t pump_thread_tid;
 
+/*
+ * The flag is set before the event. If the flag is 1, a reset is requested. If
+ * the flag is 0, startup was successfull, and the pump thread exits.
+ */
+static int restart_slave_io_flag = 0;
+static ethr_event pump_thread_event;
+
 static int start_pump_thread(void) {
     ethr_thr_opts opts = ETHR_THR_OPTS_DEFAULT_INITER;
     if (ethr_thr_create(&pump_thread_tid, pump_thread_loop, NULL, &opts)) {
@@ -158,7 +170,6 @@ static int start_pump_thread(void) {
 int erts_slave_online = 0;
 static int ehal_initialised = 0;
 e_epiphany_t slave_workgroup;
-volatile int restart_slave_io_flag = 0;
 
 #define ROWS 4
 #define COLS 4
@@ -168,6 +179,8 @@ pump_thread_loop(void __attribute__((unused)) *arg)
     int restart_tries = 0;
     char *binary;
     e_platform_t platform;
+
+    VERIFY(!ethr_event_init(&pump_thread_event));
 
     if (e_init(NULL) != E_OK) { return NULL; }
     ehal_initialised = 1;
@@ -212,14 +225,10 @@ pump_thread_loop(void __attribute__((unused)) *arg)
 	    for (x = 0; x < slave_workgroup.cols; x++) {
 		while(1) {
 		    int core_barrier;
-#ifdef DEBUG
-		    ssize_t ret =
-#endif
-			e_read(&slave_workgroup, y, x, barrier_addr,
-			       &core_barrier, sizeof(core_barrier));
-		    ASSERT(ret == 4);
+		    VERIFY(e_read(&slave_workgroup, y, x, barrier_addr,
+				  &core_barrier, sizeof(core_barrier)) == 4);
 		    if (core_barrier == 1) break;
-		    while (pump_output() != 0);
+		    while (erts_slave_io_pump() != 0);
 
 		    count++;
 		    if (count > 100) {
@@ -238,19 +247,15 @@ pump_thread_loop(void __attribute__((unused)) *arg)
 	}
     }
 
+    ethr_event_reset(&pump_thread_event);
     erts_signal_slave_command();
 
-    while(erts_slave_online) {
-	if (pump_output() == 0) {
-	    if (restart_slave_io_flag) {
-		restart_slave_io_flag = 0;
-		goto restart;
-	    }
-	    /* ETODO: Exponential sleep duration increase */
-	    erts_milli_sleep(10);
-	}
+    ethr_event_wait(&pump_thread_event);
+    if (!restart_slave_io_flag) {
+	return NULL;
     }
-    return NULL;
+    /* else fallthrough; */
+
  restart:
     if (e_close(&slave_workgroup) != E_OK) {
 	erts_stop_slave_io();
@@ -275,6 +280,12 @@ void erts_init_slave_io(void) {
 
 void erts_restart_slave_io(void) {
     restart_slave_io_flag = 1;
+    ethr_event_set(&pump_thread_event);
+}
+
+void erts_finish_slave_io(void) {
+    restart_slave_io_flag = 0;
+    ethr_event_set(&pump_thread_event);
 }
 
 void erts_stop_slave_io(void) {

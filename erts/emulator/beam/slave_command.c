@@ -142,6 +142,9 @@ command_thread_loop(void __attribute__((unused)) *arg)
 	200,
 	500,
 	1000,
+	2000,
+	5000,
+	10000,
     };
 
     /* We *need* to register as a managed thread immediately, as we are blocking
@@ -227,8 +230,14 @@ command_thread_loop(void __attribute__((unused)) *arg)
 	}
     }
 
+    /*
+     * Signal that startup was successful and that we no longer need the ability
+     * to restart.
+     */
+    erts_finish_slave_io();
+
     while(erts_slave_online) {
-	if (erts_dispatch_slave_commands() == 0) {
+	if (!!erts_slave_io_pump() + erts_dispatch_slave_commands() == 0) {
 	    struct timespec rqtp;
 	    /* ETODO: We might need to limit the number of operations to
 	     * ensure a good rate of thread progress reports. */
@@ -236,6 +245,8 @@ command_thread_loop(void __attribute__((unused)) *arg)
 		erts_thr_progress_leader_update(NULL);
 	    }
 
+	    /* It's ugly to use nanosleep directly, but we do need the ability
+	     * to sleep for an interval shorter than a millisecond. */
 	    rqtp.tv_sec = 0;
 	    rqtp.tv_nsec = sleep_schedule[sleep_schecule_point] * 1000;
 	    nanosleep(&rqtp, NULL);
