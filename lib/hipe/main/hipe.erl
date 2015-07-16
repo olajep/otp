@@ -907,6 +907,8 @@ assemble(CompiledCode, Closures, Exports, Options) ->
   case proplists:get_bool(to_llvm, Options) of
     false ->
       case get(hipe_target_arch) of
+	epiphany ->
+	  hipe_epiphany_assemble:assemble(CompiledCode, Closures, Exports, Options);
         ultrasparc ->
           hipe_sparc_assemble:assemble(CompiledCode, Closures, Exports, Options);
         powerpc ->
@@ -1369,6 +1371,8 @@ opt_keys() ->
 o1_opts() ->
   Common = [inline_fp, pmatch, peephole],
   case get(hipe_target_arch) of
+    epiphany ->
+      Common -- [inline_fp]; % Pointless optimising for absent hardware
     ultrasparc ->
       Common;
     powerpc ->
@@ -1392,6 +1396,8 @@ o2_opts() ->
 	    spillmin_color, use_indexing, remove_comments, 
 	    concurrent_comp, binary_opt | o1_opts()],
   case get(hipe_target_arch) of
+    epiphany ->
+      Common;
     ultrasparc ->
       Common;
     powerpc ->
@@ -1412,6 +1418,8 @@ o2_opts() ->
 o3_opts() ->
   Common = [icode_range, {regalloc,coalescing} | o2_opts()],
   case get(hipe_target_arch) of
+    epiphany ->
+      Common;
     ultrasparc ->
       Common;
     powerpc ->
@@ -1484,7 +1492,8 @@ opt_aliases() ->
    {pp_sparc, pp_native},
    {pp_x86, pp_native},
    {pp_amd64, pp_native},
-   {pp_ppc, pp_native}].
+   {pp_ppc, pp_native},
+   {pp_epiphany, pp_native}].
 
 opt_basic_expansions() ->
   [{pp_all, [pp_beam, pp_icode, pp_rtl, pp_native]}].

@@ -25,9 +25,9 @@
 %%%   etc.). Rather, they are distinguished by setting a couple of bits in a
 %%%   special register "CONFIG", called "ARITHMODE" or just mode. In C, these
 %%%   bits (yes, not the entire register) are callee-save. Since we expect
-%%%   integer multiplications to outnumber floating point operations, we tweak
-%%%   this convention by requiring that the mode is "integer" at both function
-%%%   entry and exit.
+%%%   integer multiplications to outnumber single-precision floating point
+%%%   operations, we tweak this convention by requiring that the mode is
+%%%   "integer" at both function entry and exit.
 %%%
 %%% Additionally, the architecture relies heavily on compiler smarts for optimal
 %%% performance. Some of the things a compiler should consider are:
@@ -92,12 +92,12 @@ conv_insn(I, Map, Data) ->
   case I of
     #alu{} -> conv_alu(I, Map, Data);
     %% #alub{} -> conv_alub(I, Map, Data);
-    %% #branch{} -> conv_branch(I, Map, Data);
+    #branch{} -> conv_branch(I, Map, Data);
     %% #call{} -> conv_call(I, Map, Data);
     %% #comment{} -> conv_comment(I, Map, Data);
     %% #enter{} -> conv_enter(I, Map, Data);
     %% #goto{} -> conv_goto(I, Map, Data);
-    %% #label{} -> conv_label(I, Map, Data);
+    #label{} -> conv_label(I, Map, Data);
     %% #load{} -> conv_load(I, Map, Data);
     %% #load_address{} -> conv_load_address(I, Map, Data);
     %% #load_atom{} -> conv_load_atom(I, Map, Data);
@@ -192,6 +192,86 @@ alu_allowed_imm(AluOp) ->
     'asr' => uimm5
    },
   maps:get(AluOp, Map, none).
+
+conv_branch(I, Map, Data) ->
+  %% <unused> = src1 - src2; if COND goto label
+  {Src1, Map0} = conv_src(hipe_rtl:branch_src1(I), Map),
+  {Src2, Map1} = conv_src(hipe_rtl:branch_src2(I), Map0),
+  Cond = conv_branch_cond(hipe_rtl:branch_cond(I)),
+  I2 = mk_branch(Src1, Cond, Src2,
+		 hipe_rtl:branch_true_label(I),
+		 hipe_rtl:branch_false_label(I),
+		 hipe_rtl:branch_pred(I)),
+  {I2, Map1, Data}.
+
+mk_branch(Src1, RtlCond, Src2, TrueLab, FalseLab, Pred) ->
+  Cond = conv_branch_cond(RtlCond),
+  case {hipe_epiphany:is_temp(Src1), hipe_epiphany:is_temp(Src2)} of
+    {false, true} -> %% Commute
+      mk_branch_2(Src2, commute_cond(Cond), Src1, TrueLab, FalseLab, Pred);
+    _ ->  %% Leave as-is
+      mk_branch_2(Src1, Cond,               Src2, TrueLab, FalseLab, Pred)
+  end.
+
+mk_branch_2(Src1, Cond, Src2, TrueLab, FalseLab, Pred) ->
+  %% As an addional optimisation, conditions where Src2 is an immediate 0 could
+  %% be implemented as "sub Src1,Src1,0", saving a scratch register. However, it
+  %% might be a pessimisation instead, since it might introduce additional
+  %% hazards and stalls.
+  Throwaway = new_untagged_temp(),
+  %% Since 'sub' isn't commutative, we don't have to worry about mk_alu
+  %% commuting.
+  mk_alu(Throwaway, Src1, 'sub', Src2)
+    ++ [hipe_epiphany:mk_pseudo_bcc(Cond, TrueLab, FalseLab, Pred)].
+
+conv_ialu_cond(Cond) ->	% only signed
+  %% There is an overflow flag from the IALU pipeline (required for [lg]te?),
+  %% but it is not available as a condition code. If required, we can mask it
+  %% out of the STATUS special register.
+
+  %% These condition codes have identical formulae to the x86 equivalents; thus
+  %% we can be relatively calm that they will behave as expected for IALU
+  %% operations.
+  case Cond of
+    eq	-> 'eq';
+    ne	-> 'ne';
+    gt	-> 'gt';
+    ge	-> 'gte';
+    lt	-> 'lt';
+    le	-> 'lte'
+  end.
+
+conv_branch_cond(Cond) -> % may be unsigned
+  %% The architecture reference mislabels the formulae for these condition
+  %% codes. Since GCC trusts them to do what they say in the name, we will too,
+  %% but only ever for 'sub'.
+  case Cond of
+    gtu -> 'gtu';
+    geu -> 'gteu';
+    ltu -> 'ltu';
+    leu -> 'lteu';
+    _   -> conv_ialu_cond(Cond)
+  end.
+
+%%% Commute an Epiphany condition code.
+
+commute_cond(Cond) ->	% (x Cond y) iff (y commute_cond(Cond) x)
+  case Cond of
+    'eq'   -> 'eq';	% ==, ==
+    'ne'   -> 'ne';	% !=, !=
+    'gt'   -> 'lt';	% >, <
+    'lt'   -> 'gt';	% <, >
+    'gte'  -> 'lte';	% >=, <=
+    'lte'  -> 'gte';	% <=, >=
+    'gtu'  -> 'ltu';	% >u, <u
+    'ltu'  -> 'gtu';	% <u, >u
+    'gteu' -> 'lteu';	% >=u, <=u
+    'lteu' -> 'gteu'	% <=u, >=u
+  end.
+
+conv_label(I, Map, Data) ->
+  I2 = [hipe_epiphany:mk_label(hipe_rtl:label_name(I))],
+  {I2, Map, Data}.
 
 conv_move(I, Map, Data) ->
   {Dst, Map0} = conv_dst(hipe_rtl:move_dst(I), Map),

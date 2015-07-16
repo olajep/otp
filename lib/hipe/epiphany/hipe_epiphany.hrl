@@ -61,17 +61,26 @@
 
 %%% Instructions:
 
--type 'cond'() :: 'always'.
--type aluop() :: none().
+-type 'cond'() :: 'always'
+		| 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'gtu' | 'ltu'
+		| 'gteu' | 'lteu'.
+-type aluop() :: 'add' | 'sub'
+	       | 'orr' | 'and' | 'eor' | 'lsl' | 'lsr' | 'asr'
+	       | 'imul'.
 
 -record(alu, {aluop :: aluop(), dst :: temp(), src1 :: temp(),
 	      src2 :: temp() | #epiphany_simm11{} | #epiphany_uimm5{}}).
 -record(label, {label :: non_neg_integer()}).
--record(movcc, {dst :: temp(), src :: temp(), 'cond' = 'always' :: 'cond'()}).
+%%-record(movcc, {'cond' = 'always' :: 'cond'(), dst :: temp(), src :: temp()}).
 -record(mov, {dst :: temp(), src :: #epiphany_uimm16{}}).
 -record(movt, {dst :: temp(), src :: #epiphany_uimm16{}}).
 %% At most one operand may be a pseudo
 -record(pseudo_move, {dst :: pseudo_temp(), src :: pseudo_temp()}).
+-record(pseudo_bcc, {'cond' = 'always' :: 'cond'(),
+		     true_label :: non_neg_integer(),
+		     false_label :: non_neg_integer(),
+		     pred :: number()}).
+
 
 %%% Function definitions.
 

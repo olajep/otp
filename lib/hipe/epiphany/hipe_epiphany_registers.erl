@@ -44,6 +44,14 @@
 
 -include("../rtl/hipe_literals.hrl").
 
+%% ETODO: delete me
+-ifndef(EPIPHANY_NR_ARG_REGS).
+-define(EPIPHANY_NR_ARG_REGS, 4).
+-endif.
+-ifndef(EPIPHANY_NR_RET_REGS).
+-define(EPIPHANY_NR_RET_REGS, ?EPIPHANY_NR_ARG_REGS).
+-endif.
+
 -type reg() :: non_neg_integer().
 -export_type([reg/0]).
 

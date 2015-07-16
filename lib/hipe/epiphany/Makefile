@@ -45,6 +45,7 @@ RELSYSDIR = $(RELEASE_PATH)/lib/hipe-$(VSN)
 # ----------------------------------------------------
 # Please keep this list sorted.
 MODULES=hipe_epiphany \
+	hipe_epiphany_main \
 	hipe_epiphany_registers \
 	hipe_rtl_to_epiphany
 

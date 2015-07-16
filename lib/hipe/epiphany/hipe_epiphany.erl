@@ -44,6 +44,8 @@
 
 	 mk_movi/3,
 
+	 mk_pseudo_bcc/4,
+
 	 mk_pseudo_move/2,
 	 is_pseudo_move/1,
 	 pseudo_move_dst/1,
@@ -117,6 +119,32 @@ mk_movi(Dst, Value, Tail) ->
       [mk_mov(Dst, Lo16),
        mk_movt(Dst, Hi16) |
        Tail]
+  end.
+
+mk_pseudo_bcc(Cond, TrueLab, FalseLab, Pred) ->
+  if Pred >= 0.5 ->
+      mk_pseudo_bcc_simple(negate_cond(Cond), FalseLab,
+			  TrueLab, 1.0-Pred);
+     true ->
+      mk_pseudo_bcc_simple(Cond, TrueLab, FalseLab, Pred)
+  end.
+
+mk_pseudo_bcc_simple(Cond, TrueLab, FalseLab, Pred) when Pred =< 0.5 ->
+  #pseudo_bcc{'cond'=Cond, true_label=TrueLab,
+	      false_label=FalseLab, pred=Pred}.
+
+negate_cond(Cond) ->
+  case Cond of
+    'eq'   -> 'ne';	% ==, !=
+    'ne'   -> 'eq';	% !=, ==
+    'lt'   -> 'gte';	% <, >=
+    'gte'  -> 'lt';	% >=, <
+    'gt'   -> 'lte';	% >, <=
+    'lte'  -> 'gt';	% <=, >
+    'ltu'  -> 'gteu';	% <u, >=u
+    'gteu' -> 'ltu';	% >=u, <u
+    'gtu'  -> 'lteu';	% >u, <=u
+    'lteu' -> 'gtu'	% <=u, >u
   end.
 
 mk_pseudo_move(Dst, Src) -> #pseudo_move{dst=Dst, src=Src}.

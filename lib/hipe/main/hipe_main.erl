@@ -540,6 +540,8 @@ rtl_to_native(MFA, LinearRTL, Options, DebugState) ->
   ?opt_start_timer("Native code"),
   LinearNativeCode =
     case get(hipe_target_arch) of
+      epiphany ->
+	hipe_epiphany_main:rtl_to_epiphany(MFA, LinearRTL, Options);
       ultrasparc ->
 	hipe_sparc_main:rtl_to_sparc(MFA, LinearRTL, Options);
       powerpc ->
