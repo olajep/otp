@@ -44,7 +44,8 @@
 %% Types of allowable entities to set global variables for
 %%-----------------------------------------------------------------------
 
--type gvarname() :: 'icode' | 'rtl' | 'arm' | 'ppc' | 'sparc' | 'x86' | 'llvm'.
+-type gvarname() :: 'icode' | 'rtl' | 'arm' | 'ppc' | 'sparc' | 'x86' | 'llvm'
+		  | 'epiphany'.
 
 %%-----------------------------------------------------------------------
 

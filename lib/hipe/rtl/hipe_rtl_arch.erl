@@ -83,6 +83,8 @@
 
 first_virtual_reg() ->
   case get(hipe_target_arch) of
+    epiphany ->
+      hipe_epiphany_registers:first_virtual();
     ultrasparc ->
       hipe_sparc_registers:first_virtual();
     powerpc ->
@@ -99,6 +101,8 @@ first_virtual_reg() ->
 
 heap_pointer() ->	% {GetHPInsn, HPReg, PutHPInsn}
   case get(hipe_target_arch) of
+    epiphany ->
+      heap_pointer_from_reg(hipe_epiphany_registers:heap_pointer());
     ultrasparc ->
       heap_pointer_from_reg(hipe_sparc_registers:heap_pointer());
     powerpc ->
@@ -168,6 +172,8 @@ heap_limit_from_pcb() ->
 
 fcalls() ->	% {GetFCallsInsn, FCallsReg, PutFCallsInsn}
   case get(hipe_target_arch) of
+    epiphany ->
+      fcalls_from_pcb();
     ultrasparc ->
       fcalls_from_pcb();
     powerpc ->
@@ -193,6 +199,8 @@ fcalls_from_pcb() ->
 
 reg_name(Reg) ->
   case get(hipe_target_arch) of
+    epiphany ->
+      hipe_epiphany_registers:reg_name(Reg);
     ultrasparc ->
       hipe_sparc_registers:reg_name_gpr(Reg);
     powerpc ->
@@ -222,6 +230,8 @@ is_precoloured(Arg) ->
 
 is_precolored_regnum(RegNum) ->
   case get(hipe_target_arch) of
+    epiphany ->
+      hipe_epiphany_registers:is_precoloured(RegNum);
     ultrasparc ->
       hipe_sparc_registers:is_precoloured_gpr(RegNum);
     powerpc ->
@@ -250,6 +260,9 @@ return_used() ->
 
 live_at_return() ->
   case get(hipe_target_arch) of
+    epiphany ->
+      ordsets:from_list([hipe_rtl:mk_reg(R)
+			 || {R,_} <- hipe_epiphany_registers:live_at_return()]);
     ultrasparc ->
       ordsets:from_list([hipe_rtl:mk_reg(R)
 			 || {R,_} <- hipe_sparc_registers:live_at_return()]);
@@ -276,6 +289,7 @@ live_at_return() ->
 %%
 word_size() ->
   case get(hipe_target_arch) of
+    epiphany   -> 4;
     ultrasparc -> 4;
     powerpc    -> 4;
     ppc64      -> 8;
@@ -299,6 +313,7 @@ word_size() ->
 %%
 log2_word_size() ->
   case get(hipe_target_arch) of
+    epiphany   -> 2;
     ultrasparc -> 2;
     powerpc    -> 2;
     ppc64      -> 3;
@@ -313,6 +328,7 @@ log2_word_size() ->
 %%
 endianess() ->
   case get(hipe_target_arch) of
+    epiphany   -> little;
     ultrasparc -> big;
     powerpc    -> big;
     ppc64      -> big;
@@ -557,6 +573,7 @@ eval_cond_bits(Cond, N, Z, V, C) ->
   Res.
 
 %%----------------------------------------------------------------------
+%% ETODO: Float on epiphany
 
 fwait() ->
     case ?ERTS_NO_FPE_SIGNALS of
@@ -627,6 +644,8 @@ pcb_address(Dst, Off) ->
 
 proc_pointer() ->	% must not be exported
   case get(hipe_target_arch) of
+    epiphany ->
+      hipe_rtl:mk_reg_gcsafe(hipe_epiphany_registers:proc_pointer());
     ultrasparc ->
       hipe_rtl:mk_reg_gcsafe(hipe_sparc_registers:proc_pointer());
     powerpc ->
@@ -652,6 +671,8 @@ call_bif(Dst, Name, Args, Cont, Fail) ->
 
 nr_of_return_regs() ->
   case get(hipe_target_arch) of
+    epiphany ->
+      hipe_epiphany_registers:nr_rets();
     ultrasparc ->
       1;
     %% hipe_sparc_registers:nr_rets();
