@@ -225,8 +225,12 @@ ifeq (@EMU_LOCK_CHECKING@,yes)
 NO_INLINE_FUNCTIONS=true
 endif
 
-# Since we're memory limited, code size is of utmost importance for performance
-OPT_LEVEL = -Os
+ifeq ($(TYPE),opt)
+ifndef OPT_LEVEL
+OPT_LEVEL=-O2
+endif
+CFLAGS += $(OPT_LEVEL)
+endif
 
 ifeq ($(GCC),yes)
 ifeq ($(NO_INLINE_FUNCTIONS),true)
