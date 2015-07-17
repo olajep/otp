@@ -37,6 +37,7 @@
 -type type() :: tagged | untagged.
 
 -record(epiphany_mfa, {m::atom(), f::atom(), a::arity()}).
+-record(epiphany_prim, {prim::atom()}).
 -record(epiphany_temp, {reg::reg(), type::type(), allocatable::boolean()}).
 -record(epiphany_simm11, {value :: ?SIGNED_RANGE(11)}).
 -record(epiphany_simm24, {value :: ?SIGNED_RANGE(24)}). %% Only pc-relative
@@ -58,6 +59,7 @@
 
 -type temp() :: #epiphany_temp{allocatable::true}.
 -type pseudo_temp() :: #epiphany_temp{}.
+-type link_time_immediate() :: atom() | {label, none()}.
 
 %%% Instructions:
 
@@ -72,10 +74,13 @@
 	      src2 :: temp() | #epiphany_simm11{} | #epiphany_uimm5{}}).
 -record(label, {label :: non_neg_integer()}).
 %%-record(movcc, {'cond' = 'always' :: 'cond'(), dst :: temp(), src :: temp()}).
--record(mov, {dst :: temp(), src :: #epiphany_uimm16{}}).
--record(movt, {dst :: temp(), src :: #epiphany_uimm16{}}).
+-record(mov, {dst :: temp(), src :: #epiphany_uimm16{} | {lo16, link_time_immediate()}}).
+-record(movt, {dst :: temp(), src :: #epiphany_uimm16{} | {hi16, link_time_immediate()}}).
 %% At most one operand may be a pseudo
 -record(pseudo_move, {dst :: pseudo_temp(), src :: pseudo_temp()}).
+-record(pseudo_tailcall, {funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
+			  arity::arity(), stkargs::[temp()], linkage::remote}).
+-record(pseudo_tailcall_prepare, {}).
 -record(pseudo_bcc, {'cond' = 'always' :: 'cond'(),
 		     true_label :: non_neg_integer(),
 		     false_label :: non_neg_integer(),

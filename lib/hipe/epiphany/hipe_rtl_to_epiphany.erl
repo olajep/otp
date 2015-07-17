@@ -95,12 +95,12 @@ conv_insn(I, Map, Data) ->
     #branch{} -> conv_branch(I, Map, Data);
     %% #call{} -> conv_call(I, Map, Data);
     %% #comment{} -> conv_comment(I, Map, Data);
-    %% #enter{} -> conv_enter(I, Map, Data);
+    #enter{} -> conv_enter(I, Map, Data);
     %% #goto{} -> conv_goto(I, Map, Data);
     #label{} -> conv_label(I, Map, Data);
     %% #load{} -> conv_load(I, Map, Data);
     %% #load_address{} -> conv_load_address(I, Map, Data);
-    %% #load_atom{} -> conv_load_atom(I, Map, Data);
+    #load_atom{} -> conv_load_atom(I, Map, Data);
     #move{} -> conv_move(I, Map, Data);
     %% #return{} -> conv_return(I, Map, Data);
     %% #store{} -> conv_store(I, Map, Data);
@@ -269,9 +269,28 @@ commute_cond(Cond) ->	% (x Cond y) iff (y commute_cond(Cond) x)
     'lteu' -> 'gteu'	% <=u, >=u
   end.
 
+conv_enter(I, Map, Data) ->
+  {Args, Map0} = conv_src_list(hipe_rtl:enter_arglist(I), Map),
+  {Fun, Map1} = conv_fun(hipe_rtl:enter_fun(I), Map0),
+  I2 = mk_enter(Fun, Args, hipe_rtl:enter_type(I)),
+  {I2, Map1, Data}.
+
+mk_enter(Fun, Args, Linkage) ->
+  Arity = length(Args),
+  {RegArgs,StkArgs} = split_args(Args),
+  move_actuals(RegArgs,
+	       [hipe_epiphany:mk_pseudo_tailcall_prepare(),
+		hipe_epiphany:mk_pseudo_tailcall(Fun, Arity, StkArgs, Linkage)]).
+
 conv_label(I, Map, Data) ->
   I2 = [hipe_epiphany:mk_label(hipe_rtl:label_name(I))],
   {I2, Map, Data}.
+
+conv_load_atom(I, Map, Data) ->
+  {Dst, Map0} = conv_dst(hipe_rtl:load_atom_dst(I), Map),
+  Src = hipe_rtl:load_atom_atom(I),
+  I2 = hipe_epiphany:mk_movi(Dst, Src),
+  {I2, Map0, Data}.
 
 conv_move(I, Map, Data) ->
   {Dst, Map0} = conv_dst(hipe_rtl:move_dst(I), Map),
@@ -317,18 +336,45 @@ split_args(I, N, [Arg|Args], RegArgs) when I < N ->
 split_args(_, _, StkArgs, RegArgs) ->
   {RegArgs, StkArgs}.
 
+%%% Convert a list of actual parameters passed in
+%%% registers (from split_args/1) to a list of moves.
+
+move_actuals([{Src,Dst}|Actuals], Rest) ->
+  move_actuals(Actuals, mk_move(Dst, Src, Rest));
+move_actuals([], Rest) ->
+  Rest.
+
 %%% Convert a list of formal parameters passed in
 %%% registers (from split_args/1) to a list of moves.
 
 move_formals([{Dst,Src}|Formals], Rest) ->
-  move_formals(Formals, [hipe_epiphany:mk_pseudo_move(Src, Dst) | Rest]);
+  move_formals(Formals, [hipe_epiphany:mk_pseudo_move(Dst, Src) | Rest]);
 move_formals([], Rest) ->
   Rest.
 
+%%% Convert a 'fun' operand (MFA, prim, or temp)
+
+conv_fun(Fun, Map) ->
+  case hipe_rtl:is_var(Fun) of
+    true ->
+      conv_dst(Fun, Map);
+    false ->
+      case hipe_rtl:is_reg(Fun) of
+	true ->
+	  conv_dst(Fun, Map);
+	false ->
+	  if is_atom(Fun) ->
+	      {hipe_epiphany:mk_prim(Fun), Map};
+	     true ->
+	      {conv_mfa(Fun), Map}
+	  end
+      end
+  end.
+
 %%% Convert an MFA operand.
 
-%% conv_mfa({M,F,A}) when is_atom(M), is_atom(F), is_integer(A) ->
-%%   hipe_epiphany:mk_mfa(M, F, A).
+conv_mfa({M,F,A}) when is_atom(M), is_atom(F), is_integer(A) ->
+  hipe_epiphany:mk_mfa(M, F, A).
 
 %%% Convert an RTL source operand (imm/var/reg).
 %%% Returns a temp or a naked integer.
@@ -344,12 +390,12 @@ conv_src(Opnd, Map) ->
       conv_dst(Opnd, Map)
   end.
 
-%% conv_src_list([O|Os], Map) ->
-%%   {V, Map1} = conv_src(O, Map),
-%%   {Vs, Map2} = conv_src_list(Os, Map1),
-%%   {[V|Vs], Map2};
-%% conv_src_list([], Map) ->
-%%   {[], Map}.
+conv_src_list([O|Os], Map) ->
+  {V, Map1} = conv_src(O, Map),
+  {Vs, Map2} = conv_src_list(Os, Map1),
+  {[V|Vs], Map2};
+conv_src_list([], Map) ->
+  {[], Map}.
 
 %%% Convert an RTL destination operand (var/reg).
 

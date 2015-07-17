@@ -36,12 +36,15 @@
 
 	 mk_mfa/3,
 
+	 mk_prim/1,
+
 	 mk_alu/4,
 
 	 mk_label/1,
 	 is_label/1,
 	 label_label/1,
 
+	 mk_movi/2,
 	 mk_movi/3,
 
 	 mk_pseudo_bcc/4,
@@ -50,6 +53,13 @@
 	 is_pseudo_move/1,
 	 pseudo_move_dst/1,
 	 pseudo_move_src/1,
+
+	 mk_pseudo_tailcall/4,
+	 pseudo_tailcall_funv/1,
+	 pseudo_tailcall_stkargs/1,
+	 pseudo_tailcall_linkage/1,
+
+	 mk_pseudo_tailcall_prepare/0,
 
 	 mk_defun/8,
 	 defun_mfa/1,
@@ -91,6 +101,9 @@ mk_uimm16(Value) when 0 =< Value, Value < 16#10000 ->
 
 mk_mfa(M, F, A) -> #epiphany_mfa{m=M, f=F, a=A}.
 
+mk_prim(Prim) when is_atom(Prim) ->
+  #epiphany_prim{prim=Prim}.
+
 mk_alu(AluOp, Dst, Src1, Src2) ->
   #alu{aluop=AluOp, dst=Dst, src1=Src1, src2=Src2}.
 
@@ -102,15 +115,21 @@ label_label(#label{label=Label}) -> Label.
 %%   #movcc{'cond'=Cond, dst=Dst, src=Src}.
 
 mk_mov(Dst=#epiphany_temp{allocatable=true}, Imm=#epiphany_uimm16{}) ->
+  #mov{dst=Dst, src=Imm};
+mk_mov(Dst=#epiphany_temp{allocatable=true}, Imm={lo16, _}) ->
   #mov{dst=Dst, src=Imm}%% ;
 %% mk_mov(Dst=#epiphany_temp{allocatable=true}, Src=#epiphany_temp{allocatable=true}) ->
 %%   mk_movcc('always', Dst, Src)
     .
 
 mk_movt(Dst=#epiphany_temp{allocatable=true}, Src=#epiphany_uimm16{}) ->
+  #movt{dst=Dst, src=Src};
+mk_movt(Dst=#epiphany_temp{allocatable=true}, Src={hi16, _}) ->
   #movt{dst=Dst, src=Src}.
 
-mk_movi(Dst, Value, Tail) ->
+mk_movi(Dst, Value) -> mk_movi(Dst, Value, []).
+
+mk_movi(Dst, Value, Tail) when is_integer(Value) ->
   if 0 =< Value, Value < 16#10000 ->
       [mk_mov(Dst, mk_uimm16(Value)) | Tail];
      true ->
@@ -119,7 +138,15 @@ mk_movi(Dst, Value, Tail) ->
       [mk_mov(Dst, Lo16),
        mk_movt(Dst, Hi16) |
        Tail]
-  end.
+  end;
+mk_movi(Dst, Value, Tail) ->
+  ok = case Value of
+	 Atom when is_atom(Atom) -> ok;
+	 {label, _} -> ok
+       end,
+  [mk_mov(Dst, {lo16, Value}),
+   mk_movt(Dst, {hi16, Value}) |
+   Tail].
 
 mk_pseudo_bcc(Cond, TrueLab, FalseLab, Pred) ->
   if Pred >= 0.5 ->
@@ -151,6 +178,14 @@ mk_pseudo_move(Dst, Src) -> #pseudo_move{dst=Dst, src=Src}.
 is_pseudo_move(I) -> case I of #pseudo_move{} -> true; _ -> false end.
 pseudo_move_dst(#pseudo_move{dst=Dst}) -> Dst.
 pseudo_move_src(#pseudo_move{src=Src}) -> Src.
+
+mk_pseudo_tailcall(FunV, Arity, StkArgs, Linkage=remote) ->
+  #pseudo_tailcall{funv=FunV, arity=Arity, stkargs=StkArgs, linkage=Linkage}.
+pseudo_tailcall_funv(#pseudo_tailcall{funv=FunV}) -> FunV.
+pseudo_tailcall_stkargs(#pseudo_tailcall{stkargs=StkArgs}) -> StkArgs.
+pseudo_tailcall_linkage(#pseudo_tailcall{linkage=Linkage}) -> Linkage.
+
+mk_pseudo_tailcall_prepare() -> #pseudo_tailcall_prepare{}.
 
 mk_defun(MFA, Formals, IsClosure, IsLeaf, Code, Data, VarRange, LabelRange) ->
   #defun{mfa=MFA, formals=Formals, code=Code, data=Data,
