@@ -37,17 +37,35 @@
 	 mk_mfa/3,
 
 	 mk_prim/1,
+	 is_prim/1,
+	 prim_prim/1,
+
+	 mk_sdesc/4,
 
 	 mk_alu/4,
+
+	 mk_bcc/2,
+
+	 mk_rts/0,
 
 	 mk_label/1,
 	 is_label/1,
 	 label_label/1,
 
+	 mk_ldr/5,
+
 	 mk_movi/2,
 	 mk_movi/3,
 
+	 mk_movfs/2,
+
 	 mk_pseudo_bcc/4,
+
+	 mk_pseudo_call/4,
+	 pseudo_call_contlab/1,
+	 pseudo_call_funv/1,
+	 pseudo_call_sdesc/1,
+	 pseudo_call_linkage/1,
 
 	 mk_pseudo_move/2,
 	 is_pseudo_move/1,
@@ -101,11 +119,22 @@ mk_uimm16(Value) when 0 =< Value, Value < 16#10000 ->
 
 mk_mfa(M, F, A) -> #epiphany_mfa{m=M, f=F, a=A}.
 
-mk_prim(Prim) when is_atom(Prim) ->
-  #epiphany_prim{prim=Prim}.
+mk_prim(Prim) when is_atom(Prim) -> #epiphany_prim{prim=Prim}.
+is_prim(X) -> case X of #epiphany_prim{} -> true; _ -> false end.
+prim_prim(#epiphany_prim{prim=Prim}) -> Prim.
+
+mk_sdesc(ExnLab, FSize, Arity, Live={})
+  when (([] == ExnLab) or (is_integer(ExnLab) and (ExnLab >= 0))),
+       is_integer(FSize), FSize >= 0, is_integer(Arity), Arity >= 0 ->
+  #epiphany_sdesc{exnlab=ExnLab, fsize=FSize, arity=Arity, live=Live}.
 
 mk_alu(AluOp, Dst, Src1, Src2) ->
   #alu{aluop=AluOp, dst=Dst, src1=Src1, src2=Src2}.
+
+mk_bcc(Cond, Label) ->
+  #bcc{'cond'=Cond, label=Label}.
+
+mk_rts() -> #rts{}.
 
 mk_label(Label) -> #label{label=Label}.
 is_label(I) -> case I of #label{} -> true; _ -> false end.
@@ -127,6 +156,9 @@ mk_movt(Dst=#epiphany_temp{allocatable=true}, Src=#epiphany_uimm16{}) ->
 mk_movt(Dst=#epiphany_temp{allocatable=true}, Src={hi16, _}) ->
   #movt{dst=Dst, src=Src}.
 
+mk_ldr(Size, Dst, Base, Sign, Offset) ->
+  #ldr{size=Size, dst=Dst, base=Base, sign=Sign, offset=Offset}.
+
 mk_movi(Dst, Value) -> mk_movi(Dst, Value, []).
 
 mk_movi(Dst, Value, Tail) when is_integer(Value) ->
@@ -147,6 +179,9 @@ mk_movi(Dst, Value, Tail) ->
   [mk_mov(Dst, {lo16, Value}),
    mk_movt(Dst, {hi16, Value}) |
    Tail].
+
+mk_movfs(Dst, Src) ->
+  #movfs{dst=Dst, src=Src}.
 
 mk_pseudo_bcc(Cond, TrueLab, FalseLab, Pred) ->
   if Pred >= 0.5 ->
@@ -171,8 +206,17 @@ negate_cond(Cond) ->
     'ltu'  -> 'gteu';	% <u, >=u
     'gteu' -> 'ltu';	% >=u, <u
     'gtu'  -> 'lteu';	% >u, <=u
-    'lteu' -> 'gtu'	% <=u, >u
+    'lteu' -> 'gtu';	% <=u, >u
+    'beq'  -> 'bne';	% == (FPU), != (FPU)
+    'bne'  -> 'beq'	% =! (FPU), == (FPU)
   end.
+
+mk_pseudo_call(FunV, SDesc, ContLab, Linkage) ->
+  #pseudo_call{funv=FunV, sdesc=SDesc, contlab=ContLab, linkage=Linkage}.
+pseudo_call_funv(#pseudo_call{funv=FunV}) -> FunV.
+pseudo_call_sdesc(#pseudo_call{sdesc=SDesc}) -> SDesc.
+pseudo_call_contlab(#pseudo_call{contlab=ContLab}) -> ContLab.
+pseudo_call_linkage(#pseudo_call{linkage=Linkage}) -> Linkage.
 
 mk_pseudo_move(Dst, Src) -> #pseudo_move{dst=Dst, src=Src}.
 is_pseudo_move(I) -> case I of #pseudo_move{} -> true; _ -> false end.

@@ -26,6 +26,9 @@
 	 is_precoloured/1,
 	 all_precoloured/0,
 
+	 heap_pointer/0,
+	 proc_pointer/0,
+
 	 allocatable/0,
 	 is_fixed/1,
 
@@ -135,9 +138,9 @@
 -define(RET2, ?ARG2).
 -define(RET3, ?ARG3).
 
-%%-define(HEAP_POINTER, ?R).
+-define(HEAP_POINTER, ?R32).
 -define(STACK_POINTER, ?R13).
-%%-define(PROC_POINTER, ?R).
+-define(PROC_POINTER, ?R33).
 
 reg_name(R) when R =< ?LAST_PRECOLOURED -> [$r | integer_to_list(R)].
 
@@ -150,10 +153,16 @@ all_precoloured() -> lists:seq(0, ?LAST_PRECOLOURED).
 %% ETODO: Reserve regs for C?
 fixed() -> [
 	    %% fixed global registers
-	    %%?HEAP_POINTER,
-	    %%?PROC_POINTER,
-	    ?STACK_POINTER
+	    ?HEAP_POINTER,
+	    ?PROC_POINTER,
+	    ?STACK_POINTER,
+	    %% "Reserved for constants" by C
+	    ?R28, ?R29, ?R30, ?R31
 	   ].
+
+heap_pointer() -> ?HEAP_POINTER.
+
+proc_pointer() -> ?PROC_POINTER.
 
 allocatable() ->
   all_precoloured() -- fixed().
@@ -217,6 +226,6 @@ tailcall_clobbered() ->		% tailcall crapola needs one temp
 
 live_at_return() ->
   [{?STACK_POINTER,untagged}
-  %%,{?PROC_POINTER,untagged}
-  %%,{?HEAP_POINTER,untagged}
+  ,{?PROC_POINTER,untagged}
+  ,{?HEAP_POINTER,untagged}
   ].

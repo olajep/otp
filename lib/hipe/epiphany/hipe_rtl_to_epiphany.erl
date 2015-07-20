@@ -52,6 +52,7 @@
 
 -define(FITS_SIMM11(Val), ((-16#400 =< (Val)) and ((Val) < 16#400))).
 -define(FITS_UIMM5(Val), ((0 =< (Val)) and ((Val) < 16#20))).
+-define(FITS_UIMM11(Val), ((0 =< (Val)) and ((Val) < 16#800))).
 
 translate(RTL) ->
   hipe_gensym:init(epiphany),
@@ -91,18 +92,18 @@ conv_insn_list([], _, Data) ->
 conv_insn(I, Map, Data) ->
   case I of
     #alu{} -> conv_alu(I, Map, Data);
-    %% #alub{} -> conv_alub(I, Map, Data);
+    #alub{} -> conv_alub(I, Map, Data);
     #branch{} -> conv_branch(I, Map, Data);
-    %% #call{} -> conv_call(I, Map, Data);
+    #call{} -> conv_call(I, Map, Data);
     %% #comment{} -> conv_comment(I, Map, Data);
     #enter{} -> conv_enter(I, Map, Data);
-    %% #goto{} -> conv_goto(I, Map, Data);
+    #goto{} -> conv_goto(I, Map, Data);
     #label{} -> conv_label(I, Map, Data);
-    %% #load{} -> conv_load(I, Map, Data);
+    #load{} -> conv_load(I, Map, Data);
     %% #load_address{} -> conv_load_address(I, Map, Data);
     #load_atom{} -> conv_load_atom(I, Map, Data);
     #move{} -> conv_move(I, Map, Data);
-    %% #return{} -> conv_return(I, Map, Data);
+    #return{} -> conv_return(I, Map, Data);
     %% #store{} -> conv_store(I, Map, Data);
     %% #switch{} -> conv_switch(I, Map, Data);
     _ -> exit({?MODULE,conv_insn,I})
@@ -193,6 +194,46 @@ alu_allowed_imm(AluOp) ->
    },
   maps:get(AluOp, Map, none).
 
+conv_alub(I, Map, Data) ->
+  %% dst = src1 aluop src2; if COND goto label
+  {Dst, Map0} = conv_dst(hipe_rtl:alub_dst(I), Map),
+  {Src1, Map1} = conv_src(hipe_rtl:alub_src1(I), Map0),
+  {Src2, Map2} = conv_src(hipe_rtl:alub_src2(I), Map1),
+  RtlAluOp = hipe_rtl:alub_op(I),
+  RtlCond = hipe_rtl:alub_cond(I),
+  Class = case RtlAluOp of
+	    add -> au;
+	    sub -> au;
+	    mul -> fpu; %% sic!
+	    _ -> lu
+	  end,
+  Overflow = RtlCond =:= overflow orelse RtlCond =:= not_overflow,
+  {Cond, I2} =
+    case {Class, Overflow} of
+      {fpu, false} -> {conv_fpu_cond(RtlCond), []};
+      {_, false} -> {conv_ialu_cond(RtlCond), []};
+      {au, true} ->
+	%% Since there is no condition code that tests just the overflow flag,
+	%% we mask it from the STATUS special register instead.
+	TmpStatus = new_untagged_temp(),
+	TmpMask = new_untagged_temp(),
+	OverflowFlagMask = 1 bsl 7,
+	MaskInstr = hipe_epiphany:mk_alu('and', TmpStatus, TmpStatus, TmpMask),
+	ExtractOverflowFlag =
+	  [hipe_epiphany:mk_movfs(TmpStatus, status) |
+	   hipe_epiphany:mk_movi(TmpMask, OverflowFlagMask, [MaskInstr])],
+	{case RtlCond of
+	   overflow -> ne; %% non-zero
+	   not_overflow -> eq %% zero
+	 end, ExtractOverflowFlag}
+    end,
+  I1 = mk_alu(Dst, Src1, RtlAluOp, Src2),
+  I3 = [hipe_epiphany:mk_pseudo_bcc(Cond,
+				    hipe_rtl:alub_true_label(I),
+				    hipe_rtl:alub_false_label(I),
+				    hipe_rtl:alub_pred(I))],
+  {I1 ++ I2 ++ I3, Map2, Data}.
+
 conv_branch(I, Map, Data) ->
   %% <unused> = src1 - src2; if COND goto label
   {Src1, Map0} = conv_src(hipe_rtl:branch_src1(I), Map),
@@ -226,8 +267,7 @@ mk_branch_2(Src1, Cond, Src2, TrueLab, FalseLab, Pred) ->
 
 conv_ialu_cond(Cond) ->	% only signed
   %% There is an overflow flag from the IALU pipeline (required for [lg]te?),
-  %% but it is not available as a condition code. If required, we can mask it
-  %% out of the STATUS special register.
+  %% but it is not available as a condition code.
 
   %% These condition codes have identical formulae to the x86 equivalents; thus
   %% we can be relatively calm that they will behave as expected for IALU
@@ -253,6 +293,13 @@ conv_branch_cond(Cond) -> % may be unsigned
     _   -> conv_ialu_cond(Cond)
   end.
 
+conv_fpu_cond(Cond) ->
+  %% Does any other cond make sense for multiplication?
+  case Cond of
+    eq -> 'beq';
+    ne -> 'bne'
+  end.
+
 %%% Commute an Epiphany condition code.
 
 commute_cond(Cond) ->	% (x Cond y) iff (y commute_cond(Cond) x)
@@ -269,6 +316,89 @@ commute_cond(Cond) ->	% (x Cond y) iff (y commute_cond(Cond) x)
     'lteu' -> 'gteu'	% <=u, >=u
   end.
 
+conv_call(I, Map, Data) ->
+  {Args, Map0} = conv_src_list(hipe_rtl:call_arglist(I), Map),
+  {Dsts, Map1} = conv_dst_list(hipe_rtl:call_dstlist(I), Map0),
+  {Fun, Map2} = conv_fun(hipe_rtl:call_fun(I), Map1),
+  ContLab = hipe_rtl:call_continuation(I),
+  ExnLab = hipe_rtl:call_fail(I),
+  Linkage = hipe_rtl:call_type(I),
+  I2 = mk_call(Dsts, Fun, Args, ContLab, ExnLab, Linkage),
+  {I2, Map2, Data}.
+
+mk_call(Dsts, Fun, Args, ContLab, ExnLab, Linkage) ->
+  case hipe_epiphany:is_prim(Fun) of
+    true ->
+      mk_primop_call(Dsts, Fun, Args, ContLab, ExnLab, Linkage);
+    false ->
+      mk_general_call(Dsts, Fun, Args, ContLab, ExnLab, Linkage)
+  end.
+
+mk_primop_call(Dsts, Prim, Args, ContLab, ExnLab, Linkage) ->
+  case hipe_epiphany:prim_prim(Prim) of
+    %% no Epiphany-specific primops defined yet
+    _ ->
+      mk_general_call(Dsts, Prim, Args, ContLab, ExnLab, Linkage)
+  end.
+
+mk_general_call(Dsts, Fun, Args, ContLab, ExnLab, Linkage) ->
+  %% The backend does not support pseudo_calls without a
+  %% continuation label, so we make sure each call has one.
+  {RealContLab, Tail} =
+    case mk_call_results(0, Dsts, []) of
+      [] ->
+	%% Avoid consing up a dummy basic block if the moves list
+	%% is empty, as is typical for calls to suspend/0.
+	%% This should be subsumed by a general "optimise the CFG"
+	%% module, and could probably be removed.
+	case ContLab of
+	  [] ->
+	    NewContLab = hipe_gensym:get_next_label(epiphany),
+	    {NewContLab, [hipe_epiphany:mk_label(NewContLab)]};
+	  _ ->
+	    {ContLab, []}
+	end;
+      Moves ->
+	%% Change the call to continue at a new basic block.
+	%% In this block move the result registers to the Dsts,
+	%% then continue at the call's original continuation.
+	NewContLab = hipe_gensym:get_next_label(epiphany),
+	case ContLab of
+	  [] ->
+	    %% This is just a fallthrough
+	    %% No jump back after the moves.
+	    {NewContLab,
+	     [hipe_epiphany:mk_label(NewContLab) |
+	      Moves]};
+	  _ ->
+	    %% The call has a continuation. Jump to it.
+	    {NewContLab,
+	     [hipe_epiphany:mk_label(NewContLab) |
+	      Moves ++
+	      [hipe_epiphany:mk_bcc('always', ContLab)]]}
+	end
+    end,
+  SDesc = hipe_epiphany:mk_sdesc(ExnLab, 0, length(Args), {}),
+  CallInsn = hipe_epiphany:mk_pseudo_call(Fun, SDesc, RealContLab, Linkage),
+  {RegArgs,StkArgs} = split_args(Args),
+  mk_push_args(StkArgs, move_actuals(RegArgs, [CallInsn | Tail])).
+
+mk_push_args(StkArgs, Tail) ->
+  case length(StkArgs) of
+    0 ->
+      Tail;
+    _NrStkArgs ->
+      %% ETODO
+      exit({?MODULE, mk_push_args, StkArgs})
+      %% [hipe_epiphany:mk_pseudo_call_prepare(NrStkArgs) |
+      %%  mk_store_args(StkArgs, NrStkArgs * word_size(), Tail)]
+  end.
+
+mk_call_results(_, [], Tail) -> Tail;
+mk_call_results(N, [Dst|Dsts], Tail) ->
+  Reg = hipe_epiphany:mk_temp(hipe_epiphany_registers:ret(N), 'tagged'),
+  mk_call_results(N+1, Dsts, [hipe_epiphany:mk_pseudo_move(Dst, Reg) | Tail]).
+
 conv_enter(I, Map, Data) ->
   {Args, Map0} = conv_src_list(hipe_rtl:enter_arglist(I), Map),
   {Fun, Map1} = conv_fun(hipe_rtl:enter_fun(I), Map0),
@@ -282,9 +412,68 @@ mk_enter(Fun, Args, Linkage) ->
 	       [hipe_epiphany:mk_pseudo_tailcall_prepare(),
 		hipe_epiphany:mk_pseudo_tailcall(Fun, Arity, StkArgs, Linkage)]).
 
+conv_goto(I, Map, Data) ->
+  I2 = [hipe_epiphany:mk_bcc('always', hipe_rtl:goto_label(I))],
+  {I2, Map, Data}.
+
 conv_label(I, Map, Data) ->
   I2 = [hipe_epiphany:mk_label(hipe_rtl:label_name(I))],
   {I2, Map, Data}.
+
+conv_load(I, Map, Data) ->
+  {Dst, Map0} = conv_dst(hipe_rtl:load_dst(I), Map),
+  {Base1, Map1} = conv_src(hipe_rtl:load_src(I), Map0),
+  {Base2, Map2} = conv_src(hipe_rtl:load_offset(I), Map1),
+  LoadSize = hipe_rtl:load_size(I),
+  LoadSign = hipe_rtl:load_sign(I),
+  I2 = mk_load(Dst, Base1, Base2, LoadSize, LoadSign),
+  {I2, Map2, Data}.
+
+mk_load(Dst, Base1, Base2, LoadSize, LoadSign) ->
+  %% Sign-extend
+  Extend =
+    case {LoadSize,LoadSign} of
+      {byte,signed} ->
+	[hipe_epiphany:mk_alu('lsr', Dst, Dst, hipe_epiphany:mk_uimm5(24)),
+	 hipe_epiphany:mk_alu('asr', Dst, Dst, hipe_epiphany:mk_uimm5(24))];
+      _ -> []
+    end,
+  {Size, SizeBytes} =
+    case LoadSize of
+      byte  -> {'b', 1};
+      int32 -> {'w', 4};
+      word  -> {'w', 4}
+    end,
+  %% Ensure lhs is a temp
+  {I1, Lhs, Rhs1} =
+    case {hipe_epiphany:is_temp(Base1), hipe_epiphany:is_temp(Base2)} of
+      {false, false} ->
+	io:format("~w: RTL load with two immediates\n", [?MODULE]),
+	Tmp = new_untagged_temp(),
+	Movi = hipe_epiphany:mk_movi(Tmp, (Base1 + Base2) band (1 bsl 32 - 1)),
+	{Movi, Tmp, 0};
+      {false, true} -> {[], Base2, Base1};
+      _ -> {[], Base1, Base2}
+    end,
+  %% Ensure rhs is a temp or fits in an immediate
+  {I2, Sign, Rhs} =
+    case hipe_epiphany:is_temp(Rhs1) of
+      true -> {[], '+', Rhs1};
+      false ->
+	%% Immediates are multiplied by the alignment size
+	ImmVal = Rhs1 div SizeBytes,
+	case Rhs1 rem SizeBytes of
+	  0 when ?FITS_UIMM11(ImmVal) ->
+	    {[], '+', hipe_epiphany:mk_uimm11(ImmVal)};
+	  0 when ?FITS_UIMM11(-ImmVal) ->
+	    {[], '-', hipe_epiphany:mk_uimm11(-ImmVal)};
+	  _ ->
+	    Tmp2 = new_untagged_temp(),
+	    Movi2 = hipe_epiphany:mk_movi(Tmp2, Rhs1),
+	    {Movi2, '+', Tmp2}
+	end
+    end,
+  I1 ++ I2 ++ [hipe_epiphany:mk_ldr(Size, Dst, Lhs, Sign, Rhs)] ++ Extend.
 
 conv_load_atom(I, Map, Data) ->
   {Dst, Map0} = conv_dst(hipe_rtl:load_atom_dst(I), Map),
@@ -303,6 +492,16 @@ mk_move(Dst, Src, Tail) ->
     true -> [hipe_epiphany:mk_pseudo_move(Dst, Src) | Tail];
     _ -> mk_movi(Dst, Src, Tail)
   end.
+
+conv_return(I, Map, Data) ->
+  {Args, Map0} = conv_src_list(hipe_rtl:return_varlist(I), Map),
+  I2 = move_returns(0, Args, [hipe_epiphany:mk_rts()]),
+  {I2, Map0, Data}.
+
+move_returns(_, [], Tail) -> Tail;
+move_returns(N, [Ret|Rets], Tail) ->
+  Reg = hipe_epiphany:mk_temp(hipe_epiphany_registers:ret(N), 'tagged'),
+  move_returns(N-1, Rets, mk_move(Reg, Ret, Tail)).
 
 %%% Load an integer constant into a register.
 
@@ -425,12 +624,12 @@ conv_dst(Opnd, Map) ->
       end
   end.
 
-%% conv_dst_list([O|Os], Map) ->
-%%   {Dst, Map1} = conv_dst(O, Map),
-%%   {Dsts, Map2} = conv_dst_list(Os, Map1),
-%%   {[Dst|Dsts], Map2};
-%% conv_dst_list([], Map) ->
-%%   {[], Map}.
+conv_dst_list([O|Os], Map) ->
+  {Dst, Map1} = conv_dst(O, Map),
+  {Dsts, Map2} = conv_dst_list(Os, Map1),
+  {[Dst|Dsts], Map2};
+conv_dst_list([], Map) ->
+  {[], Map}.
 
 conv_formals(Os, Map) ->
   conv_formals(hipe_epiphany_registers:nr_args(), Os, Map, []).

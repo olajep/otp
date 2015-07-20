@@ -38,9 +38,13 @@
 
 -record(epiphany_mfa, {m::atom(), f::atom(), a::arity()}).
 -record(epiphany_prim, {prim::atom()}).
+-record(epiphany_sdesc, {exnlab=[]::non_neg_integer()|[],
+			 fsize::non_neg_integer(),
+			 arity::arity(),
+			 live={}::{}}).
 -record(epiphany_temp, {reg::reg(), type::type(), allocatable::boolean()}).
 -record(epiphany_simm11, {value :: ?SIGNED_RANGE(11)}).
--record(epiphany_simm24, {value :: ?SIGNED_RANGE(24)}). %% Only pc-relative
+%% -record(epiphany_simm24, {value :: ?SIGNED_RANGE(24)}). %% Only pc-relative
 -record(epiphany_uimm5,  {value :: ?UNSIGNED_RANGE(5)}).
 -record(epiphany_uimm16, {value :: ?UNSIGNED_RANGE(16)}).
 
@@ -52,7 +56,7 @@
 %% Short immediates for halfword-sized instructions.
 -ifdef(undef).
 -record(epiphany_simm3,  {value :: ?SIGNED_RANGE(3)}). %% Expands to simm11
--record(epiphany_simm8,  {value :: ?SIGNED_RANGE(8)}). %% Expands to simm24, only pc-relative
+-record(epiphany_simm8,  {value :: ?SIGNED_RANGE(8)}). %% Expands to simm24
 -record(epiphany_uimm3,  {value :: ?UNSIGNED_RANGE(3)}). %% Expands to uimm11
 -record(epiphany_uimm8,  {value :: ?UNSIGNED_RANGE(8)}). %% Expands to uimm16
 -endif.
@@ -65,26 +69,40 @@
 
 -type 'cond'() :: 'always'
 		| 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'gtu' | 'ltu'
-		| 'gteu' | 'lteu'.
+		| 'gteu' | 'lteu'
+		| 'beq' | 'bne'.
 -type aluop() :: 'add' | 'sub'
 	       | 'orr' | 'and' | 'eor' | 'lsl' | 'lsr' | 'asr'
 	       | 'imul'.
+-type spec_reg() :: status.
+-type linkage() :: remote | not_remote.
+-type mem_size() :: 'b' | 'h' | 'w' | 'd'.
+-type addr_sign() :: '+' | '-'.
 
 -record(alu, {aluop :: aluop(), dst :: temp(), src1 :: temp(),
 	      src2 :: temp() | #epiphany_simm11{} | #epiphany_uimm5{}}).
+-record(bcc, {'cond' = 'always' :: 'cond'(), label :: non_neg_integer()}).
 -record(label, {label :: non_neg_integer()}).
+-record(ldr, {size::mem_size(), dst::temp(), base::temp(), sign::addr_sign(),
+	      offset :: temp() | #epiphany_uimm11{}}).
 %%-record(movcc, {'cond' = 'always' :: 'cond'(), dst :: temp(), src :: temp()}).
 -record(mov, {dst :: temp(), src :: #epiphany_uimm16{} | {lo16, link_time_immediate()}}).
 -record(movt, {dst :: temp(), src :: #epiphany_uimm16{} | {hi16, link_time_immediate()}}).
+-record(movfs, {dst :: temp(), src :: spec_reg()}).
+-record(pseudo_call, {funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
+		      sdesc::#epiphany_sdesc{}, contlab::non_neg_integer(),
+		      linkage::linkage()}).
 %% At most one operand may be a pseudo
 -record(pseudo_move, {dst :: pseudo_temp(), src :: pseudo_temp()}).
 -record(pseudo_tailcall, {funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
-			  arity::arity(), stkargs::[temp()], linkage::remote}).
+			  arity::arity(), stkargs::[temp()],
+			  linkage::linkage()}).
 -record(pseudo_tailcall_prepare, {}).
 -record(pseudo_bcc, {'cond' = 'always' :: 'cond'(),
 		     true_label :: non_neg_integer(),
 		     false_label :: non_neg_integer(),
 		     pred :: number()}).
+-record(rts, {}). %% Alias for "jr lr"
 
 
 %%% Function definitions.

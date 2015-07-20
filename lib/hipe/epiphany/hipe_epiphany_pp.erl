@@ -57,8 +57,18 @@ pp_insn(Dev, I, Pre) ->
       io:format(Dev, ", ", []),
       pp_operand(Dev, Src2),
       io:format(Dev, "\n", []);
+    #bcc{'cond'=Cond, label=Label} ->
+      io:format(Dev, "\tb~s .~s_~w\n", [cond_name(Cond), Pre, Label]);
     #label{label=Label} ->
       io:format(Dev, ".~s_~w:~n", [Pre, Label]);
+    #ldr{size=Size, dst=Dst, base=Base, sign=Sign, offset=Offset} ->
+      io:format(Dev, "\tldr~s ", [mem_size_name(Size)]),
+      pp_operand(Dev, Dst),
+      io:format(Dev, ", [", []),
+      pp_operand(Dev, Base),
+      io:format(Dev, ", ~s", [addr_sign_name(Sign)]),
+      pp_operand(Dev, Offset),
+      io:format(Dev, "]\n", []);
     #mov{dst=Dst, src=Src} ->
       io:format(Dev, "\tmov ", []),
       pp_operand(Dev, Dst),
@@ -71,9 +81,19 @@ pp_insn(Dev, I, Pre) ->
       io:format(Dev, ", ", []),
       pp_operand(Dev, Src),
       io:format(Dev, "\n", []);
+    #movfs{dst=Dst, src=Src} ->
+      io:format(Dev, "\tmovfs ", []),
+      pp_operand(Dev, Dst),
+      io:format(Dev, ", ~s\n", [atom_to_list(Src)]);
     #pseudo_bcc{'cond'=Cond, true_label=TrueLab, false_label=FalseLab, pred=Pred} ->
-      io:format(Dev, "\tpseudo_b~s, .~s_~w # .~s_~w ~.2f\n",
+      io:format(Dev, "\tpseudo_b~s .~s_~w # .~s_~w ~.2f\n",
 		[cond_name(Cond), Pre, TrueLab, Pre, FalseLab, Pred]);
+    #pseudo_call{funv=FunV, sdesc=SDesc, contlab=ContLab, linkage=Linkage} ->
+      io:format(Dev, "\tpseudo_call ", []),
+      pp_funv(Dev, FunV),
+      io:format(Dev, " # contlab .~s_~w", [Pre, ContLab]),
+      pp_sdesc(Dev, Pre, SDesc),
+      io:format(Dev, " ~w\n", [Linkage]);
     #pseudo_move{dst=Dst, src=Src} ->
       io:format(Dev, "\tpseudo_move ", []),
       pp_operand(Dev, Dst),
@@ -88,6 +108,8 @@ pp_insn(Dev, I, Pre) ->
       io:format(Dev, ") ~w\n", [Linkage]);
     #pseudo_tailcall_prepare{} ->
       io:format(Dev, "\tpseudo_tailcall_prepare\n", []);
+    #rts{} ->
+      io:format(Dev, "\trts\n", []);
     _ -> exit({?MODULE, pp_insn, I})
   end.
 
@@ -102,7 +124,7 @@ pp_operand(Dev, {hi16, LTImm}) ->
       pp_ltimm(Dev, LTImm),
       io:format(Dev, ")", []);
 pp_operand(Dev, #epiphany_simm11{value=Value}) -> io:format(Dev, "#~w", [Value]);
-pp_operand(Dev, #epiphany_simm24{value=Value}) -> io:format(Dev, "#~w", [Value]);
+%%pp_operand(Dev, #epiphany_simm24{value=Value}) -> io:format(Dev, "#~w", [Value]);
 pp_operand(Dev, #epiphany_uimm5{value=Value}) -> io:format(Dev, "#~w", [Value]);
 pp_operand(Dev, #epiphany_uimm11{value=Value}) -> io:format(Dev, "#~w", [Value]);
 pp_operand(Dev, #epiphany_uimm16{value=Value}) -> io:format(Dev, "#~w", [Value]);
@@ -125,6 +147,30 @@ pp_ltimm(Dev, {label, Label}) ->
 pp_ltimm(Dev, Atom) when is_atom(Atom) ->
   io:format(Dev, "%atom(~w)", [Atom]).
 
+to_hex(N) ->
+  io_lib:format("~.16x", [N, "0x"]).
+
+pp_sdesc(Dev, Pre, #epiphany_sdesc{
+		      exnlab=ExnLab,fsize=FSize,arity=Arity,live=Live}) ->
+  pp_sdesc_exnlab(Dev, Pre, ExnLab),
+  io:format(Dev, " ~s ~w [", [to_hex(FSize), Arity]),
+  pp_sdesc_live(Dev, Live),
+  io:format(Dev, "]", []).
+
+pp_sdesc_exnlab(Dev, _, []) -> io:format(Dev, " []", []);
+pp_sdesc_exnlab(Dev, Pre, ExnLab) -> io:format(Dev, " .~s_~w", [Pre, ExnLab]).
+
+pp_sdesc_live(_, {}) -> [];
+pp_sdesc_live(Dev, Live) -> pp_sdesc_live(Dev, Live, 1).
+
+pp_sdesc_live(Dev, Live, I) ->
+  io:format(Dev, "~s", [to_hex(element(I, Live))]),
+  if I < tuple_size(Live) ->
+      io:format(Dev, ",", []),
+      pp_sdesc_live(Dev, Live, I+1);
+     true -> []
+  end.
+
 pp_fun(Dev, Fun) ->
   case Fun of
     #epiphany_mfa{m=M, f=F, a=A} ->
@@ -143,6 +189,12 @@ pp_funv(Dev, FunV) ->
 
 cond_name(always) -> "";
 cond_name(Cond) -> atom_to_list(Cond).
+
+mem_size_name('w') -> "";
+mem_size_name(Size) -> atom_to_list(Size).
+
+addr_sign_name('+') -> "";
+addr_sign_name('-') -> "-".
 
 pp_args(Dev, [A|As]) ->
   pp_operand(Dev, A),
