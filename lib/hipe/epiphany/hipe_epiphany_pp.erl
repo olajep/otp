@@ -50,161 +50,128 @@ pp_insn(I) ->
 pp_insn(Dev, I, Pre) ->
   case I of
     #alu{aluop=AluOp, dst=Dst, src1=Src1, src2=Src2} ->
-      io:format(Dev, "\t~s ", [alu_op_name(AluOp)]),
-      pp_operand(Dev, Dst),
-      io:format(Dev, ", ", []),
-      pp_operand(Dev, Src1),
-      io:format(Dev, ", ", []),
-      pp_operand(Dev, Src2),
-      io:format(Dev, "\n", []);
+      io:format(Dev, "\t~s ~s, ~s, ~s\n",
+		[alu_op(AluOp), operand(Dst), operand(Src1), operand(Src2)]);
     #bcc{'cond'=Cond, label=Label} ->
       io:format(Dev, "\tb~s .~s_~w\n", [cond_name(Cond), Pre, Label]);
     #label{label=Label} ->
       io:format(Dev, ".~s_~w:~n", [Pre, Label]);
     #ldr{size=Size, dst=Dst, base=Base, sign=Sign, offset=Offset} ->
-      io:format(Dev, "\tldr~s ", [mem_size_name(Size)]),
-      pp_operand(Dev, Dst),
-      io:format(Dev, ", [", []),
-      pp_operand(Dev, Base),
-      io:format(Dev, ", ~s", [addr_sign_name(Sign)]),
-      pp_operand(Dev, Offset),
-      io:format(Dev, "]\n", []);
+      io:format(Dev, "\tldr~s ~s, [~s, ~s~s]\n",
+		[mem_size(Size), operand(Dst), operand(Base), addr_sign(Sign),
+		 operand(Offset)]);
     #mov{dst=Dst, src=Src} ->
-      io:format(Dev, "\tmov ", []),
-      pp_operand(Dev, Dst),
-      io:format(Dev, ", ", []),
-      pp_operand(Dev, Src),
-      io:format(Dev, "\n", []);
+      io:format(Dev, "\tmov ~s, ~s\n", [operand(Dst), operand(Src)]);
     #movt{dst=Dst, src=Src} ->
-      io:format(Dev, "\tmovt ", []),
-      pp_operand(Dev, Dst),
-      io:format(Dev, ", ", []),
-      pp_operand(Dev, Src),
-      io:format(Dev, "\n", []);
+      io:format(Dev, "\tmovt ~s, ~s\n", [operand(Dst), operand(Src)]);
     #movfs{dst=Dst, src=Src} ->
-      io:format(Dev, "\tmovfs ", []),
-      pp_operand(Dev, Dst),
-      io:format(Dev, ", ~s\n", [atom_to_list(Src)]);
-    #pseudo_bcc{'cond'=Cond, true_label=TrueLab, false_label=FalseLab, pred=Pred} ->
+      io:format(Dev, "\tmovfs ~s, ~s\n", [operand(Dst), atom_to_list(Src)]);
+    #pseudo_bcc{'cond'=Cond, true_label=TrueLab, false_label=FalseLab,
+		pred=Pred} ->
       io:format(Dev, "\tpseudo_b~s .~s_~w # .~s_~w ~.2f\n",
 		[cond_name(Cond), Pre, TrueLab, Pre, FalseLab, Pred]);
     #pseudo_call{funv=FunV, sdesc=SDesc, contlab=ContLab, linkage=Linkage} ->
-      io:format(Dev, "\tpseudo_call ", []),
-      pp_funv(Dev, FunV),
-      io:format(Dev, " # contlab .~s_~w", [Pre, ContLab]),
-      pp_sdesc(Dev, Pre, SDesc),
-      io:format(Dev, " ~w\n", [Linkage]);
+      io:format(Dev, "\tpseudo_call ~s # contlab .~s_~w~s ~w\n",
+		[funv(FunV), Pre, ContLab, sdesc(Pre, SDesc), Linkage]);
     #pseudo_move{dst=Dst, src=Src} ->
-      io:format(Dev, "\tpseudo_move ", []),
-      pp_operand(Dev, Dst),
-      io:format(Dev, ", ", []),
-      pp_operand(Dev, Src),
-      io:format(Dev, "\n", []);
+      io:format(Dev, "\tpseudo_move ~s, ~s\n", [operand(Dst), operand(Src)]);
     #pseudo_tailcall{funv=FunV, arity=Arity, stkargs=StkArgs, linkage=Linkage} ->
-      io:format(Dev, "\tpseudo_tailcall ", []),
-      pp_funv(Dev, FunV),
-      io:format(Dev, "/~w (", [Arity]),
-      pp_args(Dev, StkArgs),
-      io:format(Dev, ") ~w\n", [Linkage]);
+      io:format(Dev, "\tpseudo_tailcall ~s/~w (~s) ~w\n",
+		[funv(FunV), Arity, pp_args(StkArgs), Linkage]);
     #pseudo_tailcall_prepare{} ->
       io:format(Dev, "\tpseudo_tailcall_prepare\n", []);
     #rts{} ->
       io:format(Dev, "\trts\n", []);
+    #str{size=Size, src=Src, base=Base, sign=Sign, offset=Offset} ->
+      io:format(Dev, "\tstr~s ~s, [~s, ~s~s]\n",
+		[mem_size(Size), operand(Src), operand(Base),
+		 addr_sign(Sign), operand(Offset)]);
     _ -> exit({?MODULE, pp_insn, I})
   end.
 
-alu_op_name(AluOp) -> atom_to_list(AluOp).
+alu_op(AluOp) -> atom_to_list(AluOp).
 
-pp_operand(Dev, {lo16, LTImm}) ->
-      io:format(Dev, "%low(", []),
-      pp_ltimm(Dev, LTImm),
-      io:format(Dev, ")", []);
-pp_operand(Dev, {hi16, LTImm}) ->
-      io:format(Dev, "%high(", []),
-      pp_ltimm(Dev, LTImm),
-      io:format(Dev, ")", []);
-pp_operand(Dev, #epiphany_simm11{value=Value}) -> io:format(Dev, "#~w", [Value]);
-%%pp_operand(Dev, #epiphany_simm24{value=Value}) -> io:format(Dev, "#~w", [Value]);
-pp_operand(Dev, #epiphany_uimm5{value=Value}) -> io:format(Dev, "#~w", [Value]);
-pp_operand(Dev, #epiphany_uimm11{value=Value}) -> io:format(Dev, "#~w", [Value]);
-pp_operand(Dev, #epiphany_uimm16{value=Value}) -> io:format(Dev, "#~w", [Value]);
-pp_operand(Dev, Temp=#epiphany_temp{reg=Reg, type=Type}) ->
+operand({lo16, LTImm}) ->
+      io_lib:format("%low(~s)", [pp_ltimm(LTImm)]);
+operand({hi16, LTImm}) ->
+      io_lib:format("%high(~s)", [pp_ltimm(LTImm)]);
+operand(#epiphany_simm11{value=Value}) -> io_lib:format("#~w", [Value]);
+%%pp_operand(#epiphany_simm24{value=Value}) -> io_lib:format("#~w", [Value]);
+operand(#epiphany_uimm5{value=Value}) -> io_lib:format("#~w", [Value]);
+operand(#epiphany_uimm11{value=Value}) -> io_lib:format("#~w", [Value]);
+operand(#epiphany_uimm16{value=Value}) -> io_lib:format("#~w", [Value]);
+operand(Temp=#epiphany_temp{reg=Reg, type=Type}) ->
   case hipe_epiphany:temp_is_precoloured(Temp) of
     true ->
-      Name = hipe_epiphany_registers:reg_name(Reg),
-      io:format(Dev, "~s", [Name]);
+      hipe_epiphany_registers:reg_name(Reg);
     false ->
       Tag =
 	case Type of
 	  tagged -> "t";
 	  untagged -> "u"
 	end,
-      io:format(Dev, "~s~w", [Tag, Reg])
+      io_lib:format("~s~w", [Tag, Reg])
   end.
 
-pp_ltimm(Dev, {label, Label}) ->
-  io:format(Dev, "~w", [Label]);
-pp_ltimm(Dev, Atom) when is_atom(Atom) ->
-  io:format(Dev, "%atom(~w)", [Atom]).
+pp_ltimm({label, Label}) ->
+  io_lib:format("~w", [Label]);
+pp_ltimm(Atom) when is_atom(Atom) ->
+  io_lib:format("%atom(~w)", [Atom]).
 
 to_hex(N) ->
   io_lib:format("~.16x", [N, "0x"]).
 
-pp_sdesc(Dev, Pre, #epiphany_sdesc{
-		      exnlab=ExnLab,fsize=FSize,arity=Arity,live=Live}) ->
-  pp_sdesc_exnlab(Dev, Pre, ExnLab),
-  io:format(Dev, " ~s ~w [", [to_hex(FSize), Arity]),
-  pp_sdesc_live(Dev, Live),
-  io:format(Dev, "]", []).
+sdesc(Pre, #epiphany_sdesc{
+	      exnlab=ExnLab,fsize=FSize,arity=Arity,live=Live}) ->
+  io_lib:format("~s ~s ~w [~s]",
+		[pp_sdesc_exnlab(Pre, ExnLab), to_hex(FSize), Arity,
+		 pp_sdesc_live(Live)]).
 
-pp_sdesc_exnlab(Dev, _, []) -> io:format(Dev, " []", []);
-pp_sdesc_exnlab(Dev, Pre, ExnLab) -> io:format(Dev, " .~s_~w", [Pre, ExnLab]).
+pp_sdesc_exnlab(_, []) -> " []";
+pp_sdesc_exnlab(Pre, ExnLab) -> io_lib:format(" .~s_~w", [Pre, ExnLab]).
 
-pp_sdesc_live(_, {}) -> [];
-pp_sdesc_live(Dev, Live) -> pp_sdesc_live(Dev, Live, 1).
+pp_sdesc_live({}) -> [];
+pp_sdesc_live(Live) -> pp_sdesc_live(Live, 1).
 
-pp_sdesc_live(Dev, Live, I) ->
-  io:format(Dev, "~s", [to_hex(element(I, Live))]),
-  if I < tuple_size(Live) ->
-      io:format(Dev, ",", []),
-      pp_sdesc_live(Dev, Live, I+1);
-     true -> []
-  end.
+pp_sdesc_live(Live, I) ->
+  [to_hex(element(I, Live)) |
+    if I < tuple_size(Live) ->
+	"," ++
+	  pp_sdesc_live(Live, I+1);
+       true -> ""
+    end].
 
-pp_fun(Dev, Fun) ->
+pp_fun(Fun) ->
   case Fun of
     #epiphany_mfa{m=M, f=F, a=A} ->
-      io:format(Dev, "~w:~w/~w", [M, F, A]);
+      io_lib:format("~w:~w/~w", [M, F, A]);
     #epiphany_prim{prim=Prim} ->
-      io:format(Dev, "~w", [Prim])
+      io_lib:format("~w", [Prim])
   end.
 
-pp_funv(Dev, FunV) ->
+funv(FunV) ->
   case FunV of
     #epiphany_temp{} ->
-      pp_operand(Dev, FunV);
+      operand(FunV);
     Fun ->
-      pp_fun(Dev, Fun)
+      pp_fun(Fun)
   end.
 
 cond_name(always) -> "";
 cond_name(Cond) -> atom_to_list(Cond).
 
-mem_size_name('w') -> "";
-mem_size_name(Size) -> atom_to_list(Size).
+mem_size('w') -> "";
+mem_size(Size) -> atom_to_list(Size).
 
-addr_sign_name('+') -> "";
-addr_sign_name('-') -> "-".
+addr_sign('+') -> "";
+addr_sign('-') -> "-".
 
-pp_args(Dev, [A|As]) ->
-  pp_operand(Dev, A),
-  pp_comma_args(Dev, As);
-pp_args(_, []) ->
-  [].
+pp_args([A|As]) -> [operand(A) | pp_comma_args(As)];
+pp_args([]) -> "".
 
-pp_comma_args(Dev, [A|As]) ->
-  io:format(Dev, ", ", []),
-  pp_operand(Dev, A),
-  pp_comma_args(Dev, As);
-pp_comma_args(_, []) ->
-  [].
+pp_comma_args([A|As]) ->
+  [", ",
+   operand(A),
+   pp_comma_args(As)];
+pp_comma_args([]) ->
+  "".

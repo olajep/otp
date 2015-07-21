@@ -51,6 +51,7 @@ MODULES = hipe_ig hipe_ig_moves hipe_moves \
 	  hipe_graph_coloring_regalloc \
 	  hipe_regalloc_loop \
 	  hipe_ls_regalloc \
+	  hipe_epiphany_specific \
 	  hipe_ppc_specific hipe_ppc_specific_fp \
 	  hipe_sparc_specific hipe_sparc_specific_fp \
 	  hipe_arm_specific \

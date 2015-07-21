@@ -104,7 +104,7 @@ conv_insn(I, Map, Data) ->
     #load_atom{} -> conv_load_atom(I, Map, Data);
     #move{} -> conv_move(I, Map, Data);
     #return{} -> conv_return(I, Map, Data);
-    %% #store{} -> conv_store(I, Map, Data);
+    #store{} -> conv_store(I, Map, Data);
     %% #switch{} -> conv_switch(I, Map, Data);
     _ -> exit({?MODULE,conv_insn,I})
   end.
@@ -426,10 +426,6 @@ conv_load(I, Map, Data) ->
   {Base2, Map2} = conv_src(hipe_rtl:load_offset(I), Map1),
   LoadSize = hipe_rtl:load_size(I),
   LoadSign = hipe_rtl:load_sign(I),
-  I2 = mk_load(Dst, Base1, Base2, LoadSize, LoadSign),
-  {I2, Map2, Data}.
-
-mk_load(Dst, Base1, Base2, LoadSize, LoadSign) ->
   %% Sign-extend
   Extend =
     case {LoadSize,LoadSign} of
@@ -438,8 +434,12 @@ mk_load(Dst, Base1, Base2, LoadSize, LoadSign) ->
 	 hipe_epiphany:mk_alu('asr', Dst, Dst, hipe_epiphany:mk_uimm5(24))];
       _ -> []
     end,
+  I2 = mk_mem(ldr, Dst, Base1, Base2, LoadSize, Extend),
+  {I2, Map2, Data}.
+
+mk_mem(Instr, Reg, Base1, Base2, RtlSize, Tail) ->
   {Size, SizeBytes} =
-    case LoadSize of
+    case RtlSize of
       byte  -> {'b', 1};
       int32 -> {'w', 4};
       word  -> {'w', 4}
@@ -448,7 +448,7 @@ mk_load(Dst, Base1, Base2, LoadSize, LoadSign) ->
   {I1, Lhs, Rhs1} =
     case {hipe_epiphany:is_temp(Base1), hipe_epiphany:is_temp(Base2)} of
       {false, false} ->
-	io:format("~w: RTL load with two immediates\n", [?MODULE]),
+	io:format("~w: RTL mem with two immediates\n", [?MODULE]),
 	Tmp = new_untagged_temp(),
 	Movi = hipe_epiphany:mk_movi(Tmp, (Base1 + Base2) band (1 bsl 32 - 1)),
 	{Movi, Tmp, 0};
@@ -473,7 +473,19 @@ mk_load(Dst, Base1, Base2, LoadSize, LoadSign) ->
 	    {Movi2, '+', Tmp2}
 	end
     end,
-  I1 ++ I2 ++ [hipe_epiphany:mk_ldr(Size, Dst, Lhs, Sign, Rhs)] ++ Extend.
+  MkFun = case Instr of
+	    ldr -> fun hipe_epiphany:mk_ldr/5;
+	    str -> fun hipe_epiphany:mk_str/5
+	  end,
+  I1 ++ I2 ++ [MkFun(Size, Reg, Lhs, Sign, Rhs)] ++ Tail.
+
+conv_store(I, Map, Data) ->
+  {Base, Map0} = conv_dst(hipe_rtl:store_base(I), Map),
+  {Src, Map1} = conv_src(hipe_rtl:store_src(I), Map0),
+  {Offset, Map2} = conv_src(hipe_rtl:store_offset(I), Map1),
+  StoreSize = hipe_rtl:store_size(I),
+  I2 = mk_mem(str, Src, Base, Offset, StoreSize, []),
+  {I2, Map2, Data}.
 
 conv_load_atom(I, Map, Data) ->
   {Dst, Map0} = conv_dst(hipe_rtl:load_atom_dst(I), Map),

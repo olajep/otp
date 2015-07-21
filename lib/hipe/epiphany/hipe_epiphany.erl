@@ -54,6 +54,8 @@
 
 	 mk_ldr/5,
 
+	 mk_str/5,
+
 	 mk_movi/2,
 	 mk_movi/3,
 
@@ -158,6 +160,9 @@ mk_movt(Dst=#epiphany_temp{allocatable=true}, Src={hi16, _}) ->
 
 mk_ldr(Size, Dst, Base, Sign, Offset) ->
   #ldr{size=Size, dst=Dst, base=Base, sign=Sign, offset=Offset}.
+
+mk_str(Size, Src, Base, Sign, Offset) ->
+  #str{size=Size, src=Src, base=Base, sign=Sign, offset=Offset}.
 
 mk_movi(Dst, Value) -> mk_movi(Dst, Value, []).
 

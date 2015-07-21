@@ -103,7 +103,8 @@
 		     false_label :: non_neg_integer(),
 		     pred :: number()}).
 -record(rts, {}). %% Alias for "jr lr"
-
+-record(str, {size::mem_size(), src::temp(), base::temp(), sign::addr_sign(),
+	      offset :: temp() | #epiphany_uimm11{}}).
 
 %%% Function definitions.
 

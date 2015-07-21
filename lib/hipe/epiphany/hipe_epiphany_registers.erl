@@ -26,8 +26,14 @@
 	 is_precoloured/1,
 	 all_precoloured/0,
 
+	 temp1/0,
+	 temp2/0,
+	 temp3/0,
+
 	 heap_pointer/0,
 	 proc_pointer/0,
+
+	 lr/0,
 
 	 allocatable/0,
 	 is_fixed/1,
@@ -130,8 +136,8 @@
 -define(ARG3, ?R3).
 
 -define(TEMP1, ?R15).
-%%-define(TEMP2, ?R).
-%%-define(TEMP3, ?R).
+-define(TEMP2, ?R34).
+-define(TEMP3, ?R35). %% For spilling STR (INDEX) :(
 
 -define(RET0, ?ARG0). %% The return registers are the argument registers
 -define(RET1, ?ARG1).
@@ -141,6 +147,8 @@
 -define(HEAP_POINTER, ?R32).
 -define(STACK_POINTER, ?R13).
 -define(PROC_POINTER, ?R33).
+
+-define(LR, ?R14).
 
 reg_name(R) when R =< ?LAST_PRECOLOURED -> [$r | integer_to_list(R)].
 
@@ -160,9 +168,12 @@ fixed() -> [
 	    ?R28, ?R29, ?R30, ?R31
 	   ].
 
+temp1() -> ?TEMP1.
+temp2() -> ?TEMP2.
+temp3() -> ?TEMP3.
 heap_pointer() -> ?HEAP_POINTER.
-
 proc_pointer() -> ?PROC_POINTER.
+lr() -> ?LR.
 
 allocatable() ->
   all_precoloured() -- fixed().
