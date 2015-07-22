@@ -31,12 +31,17 @@ insn_def(I) ->
     #alu{dst=Dst} -> [Dst];
     #ldr{dst=Dst} -> [Dst];
     #mov{dst=Dst} -> [Dst];
-    %%#movcc{dst=Dst} -> [Dst];
+    #movcc{dst=Dst} -> [Dst];
     #movt{dst=Dst} -> [Dst];
     #movfs{dst=Dst} -> [Dst];
     #pseudo_call{} -> call_clobbered();
     #pseudo_move{dst=Dst} -> [Dst];
     #pseudo_tailcall_prepare{} -> tailcall_clobbered();
+    %% Instructions introduced after RA (not allowed)
+    #b{}    -> exit({?MODULE, insn_def, I});
+    #bl{}   -> exit({?MODULE, insn_def, I});
+    #jalr{} -> exit({?MODULE, insn_def, I});
+    #jr{}   -> exit({?MODULE, insn_def, I});
     _ -> []
   end.
 
@@ -56,11 +61,14 @@ insn_use(I) ->
   case I of
     #alu{src1=Src1,src2=Src2} -> operand_use(Src2, [Src1]);
     #ldr{base=Base,offset=Offset} -> operand_use(Offset, [Base]);
-    %%#movcc{src=Src} -> [Src];
+    #movcc{'cond'='always',src=Src} -> [Src];
+    #movcc{dst=Dst,src=Src} -> addtemp(Dst, [Src]);
     #movt{dst=Dst} -> [Dst]; %% sic!
     #pseudo_call{funv=FunV,sdesc=#epiphany_sdesc{arity=Arity}} ->
       funv_use(FunV, arity_use(Arity));
-    %% #pseudo_switch{jtab=JTabR,index=IndexR} -> addtemp(JTabR, [IndexR]);
+    #pseudo_move{src=Src} -> [Src];
+    #pseudo_switch{jtab=JTabR,index=IndexR} ->
+      addtemps([temp3(), JTabR], [IndexR]);
     #pseudo_tailcall{funv=FunV,arity=Arity,stkargs=StkArgs} ->
       addargs(StkArgs, addtemps(tailcall_clobbered(),
 				funv_use(FunV, arity_use(Arity))));
@@ -69,6 +77,11 @@ insn_use(I) ->
        rets()];
     #str{src=Src,base=Base,offset=Offset} ->
       operand_use(Offset, addtemp(Base, [Src]));
+    %% Instructions introduced after RA (not allowed)
+    #b{}    -> exit({?MODULE, insn_use, I});
+    #bl{}   -> exit({?MODULE, insn_use, I});
+    #jalr{} -> exit({?MODULE, insn_use, I});
+    #jr{}   -> exit({?MODULE, insn_use, I});
     _ -> []
   end.
 
@@ -96,6 +109,9 @@ operand_use(Opd, Set) ->
 rets() ->
   [hipe_epiphany:mk_temp(hipe_epiphany_registers:ret(N), 'tagged')
    || N <- lists:seq(0, hipe_epiphany_registers:nr_rets() - 1)].
+
+temp3() ->
+  hipe_epiphany:mk_temp(hipe_epiphany_registers:temp3(), 'untagged').
 
 %%%
 %%% Auxiliary operations on sets of temps

@@ -31,6 +31,7 @@
 	 temp3/0,
 
 	 heap_pointer/0,
+	 stack_pointer/0,
 	 proc_pointer/0,
 
 	 lr/0,
@@ -150,6 +151,8 @@
 
 -define(LR, ?R14).
 
+reg_name(?STACK_POINTER) -> "sp";
+reg_name(?LR) -> "lr";
 reg_name(R) when R =< ?LAST_PRECOLOURED -> [$r | integer_to_list(R)].
 
 first_virtual() -> ?LAST_PRECOLOURED + 1.
@@ -172,6 +175,7 @@ temp1() -> ?TEMP1.
 temp2() -> ?TEMP2.
 temp3() -> ?TEMP3.
 heap_pointer() -> ?HEAP_POINTER.
+stack_pointer() -> ?STACK_POINTER.
 proc_pointer() -> ?PROC_POINTER.
 lr() -> ?LR.
 

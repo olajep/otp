@@ -52,20 +52,43 @@ pp_insn(Dev, I, Pre) ->
     #alu{aluop=AluOp, dst=Dst, src1=Src1, src2=Src2} ->
       io:format(Dev, "\t~s ~s, ~s, ~s\n",
 		[alu_op(AluOp), operand(Dst), operand(Src1), operand(Src2)]);
+    #b{funv=FunV, linkage=Linkage} ->
+      io:format(Dev, "\tb ~s # ~w\n",
+		[funv(FunV), Linkage]);
     #bcc{'cond'=Cond, label=Label} ->
-      io:format(Dev, "\tb~s .~s_~w\n", [cond_name(Cond), Pre, Label]);
+      io:format(Dev, "\tb~s .~s_~w\n",
+		[cond_name(Cond), Pre, Label]);
+    #bl{funv=FunV, sdesc=SDesc, linkage=Linkage} ->
+      io:format(Dev, "\tbl ~s #~s ~w\n",
+		[funv(FunV), sdesc(Pre, SDesc), Linkage]);
+    #comment{term=Term} ->
+      io:format(Dev, "\t# ~p\n",
+		[Term]);
+    #jalr{funv=FunV, sdesc=SDesc} ->
+      io:format(Dev, "\tjalr ~s #~s\n",
+		[funv(FunV), sdesc(Pre, SDesc)]);
+    #jr{funv=FunV} ->
+      io:format(Dev, "\tjr ~s\n",
+		[funv(FunV)]);
     #label{label=Label} ->
-      io:format(Dev, ".~s_~w:~n", [Pre, Label]);
+      io:format(Dev, ".~s_~w:~n",
+		[Pre, Label]);
     #ldr{size=Size, dst=Dst, base=Base, sign=Sign, offset=Offset} ->
       io:format(Dev, "\tldr~s ~s, [~s, ~s~s]\n",
 		[mem_size(Size), operand(Dst), operand(Base), addr_sign(Sign),
 		 operand(Offset)]);
+    #movcc{'cond'=Cond, dst=Dst, src=Src} ->
+      io:format(Dev, "\tmov~s ~s, ~s\n",
+		[cond_name(Cond), operand(Dst), operand(Src)]);
     #mov{dst=Dst, src=Src} ->
-      io:format(Dev, "\tmov ~s, ~s\n", [operand(Dst), operand(Src)]);
+      io:format(Dev, "\tmov ~s, ~s\n",
+		[operand(Dst), operand(Src)]);
     #movt{dst=Dst, src=Src} ->
-      io:format(Dev, "\tmovt ~s, ~s\n", [operand(Dst), operand(Src)]);
+      io:format(Dev, "\tmovt ~s, ~s\n",
+		[operand(Dst), operand(Src)]);
     #movfs{dst=Dst, src=Src} ->
-      io:format(Dev, "\tmovfs ~s, ~s\n", [operand(Dst), atom_to_list(Src)]);
+      io:format(Dev, "\tmovfs ~s, ~s\n",
+		[operand(Dst), atom_to_list(Src)]);
     #pseudo_bcc{'cond'=Cond, true_label=TrueLab, false_label=FalseLab,
 		pred=Pred} ->
       io:format(Dev, "\tpseudo_b~s .~s_~w # .~s_~w ~.2f\n",
@@ -74,14 +97,20 @@ pp_insn(Dev, I, Pre) ->
       io:format(Dev, "\tpseudo_call ~s # contlab .~s_~w~s ~w\n",
 		[funv(FunV), Pre, ContLab, sdesc(Pre, SDesc), Linkage]);
     #pseudo_move{dst=Dst, src=Src} ->
-      io:format(Dev, "\tpseudo_move ~s, ~s\n", [operand(Dst), operand(Src)]);
+      io:format(Dev, "\tpseudo_move ~s, ~s\n",
+		[operand(Dst), operand(Src)]);
+    #pseudo_switch{jtab=JTab, index=Index, labels=Labels} ->
+      io:format(Dev, "\tpseudo_switch ~s[~s] #~s\n",
+		[operand(JTab), operand(Index), labels(Labels, Pre)]);
     #pseudo_tailcall{funv=FunV, arity=Arity, stkargs=StkArgs, linkage=Linkage} ->
       io:format(Dev, "\tpseudo_tailcall ~s/~w (~s) ~w\n",
 		[funv(FunV), Arity, pp_args(StkArgs), Linkage]);
     #pseudo_tailcall_prepare{} ->
-      io:format(Dev, "\tpseudo_tailcall_prepare\n", []);
+      io:format(Dev, "\tpseudo_tailcall_prepare\n",
+		[]);
     #rts{} ->
-      io:format(Dev, "\trts\n", []);
+      io:format(Dev, "\trts\n",
+		[]);
     #str{size=Size, src=Src, base=Base, sign=Sign, offset=Offset} ->
       io:format(Dev, "\tstr~s ~s, [~s, ~s~s]\n",
 		[mem_size(Size), operand(Src), operand(Base),
@@ -140,6 +169,11 @@ pp_sdesc_live(Live, I) ->
 	  pp_sdesc_live(Live, I+1);
        true -> ""
     end].
+
+labels([Label|Labels], Pre) ->
+  [io_lib:format(" .~s_~w", [Pre, Label]) |
+   labels(Labels, Pre)];
+labels([], _Pre) -> "".
 
 pp_fun(Fun) ->
   case Fun of

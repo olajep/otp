@@ -44,9 +44,17 @@
 
 	 mk_alu/4,
 
+	 mk_b/2,
+
 	 mk_bcc/2,
 
-	 mk_rts/0,
+	 mk_bl/3,
+
+	 mk_comment/1,
+
+	 mk_jalr/2,
+
+	 mk_jr/1,
 
 	 mk_label/1,
 	 is_label/1,
@@ -54,12 +62,16 @@
 
 	 mk_ldr/5,
 
-	 mk_str/5,
+	 mk_movcc/3,
 
 	 mk_movi/2,
 	 mk_movi/3,
 
 	 mk_movfs/2,
+
+	 mk_rts/0,
+
+	 mk_str/5,
 
 	 mk_pseudo_bcc/4,
 
@@ -73,6 +85,8 @@
 	 is_pseudo_move/1,
 	 pseudo_move_dst/1,
 	 pseudo_move_src/1,
+
+	 mk_pseudo_switch/3,
 
 	 mk_pseudo_tailcall/4,
 	 pseudo_tailcall_funv/1,
@@ -133,17 +147,30 @@ mk_sdesc(ExnLab, FSize, Arity, Live={})
 mk_alu(AluOp, Dst, Src1, Src2) ->
   #alu{aluop=AluOp, dst=Dst, src1=Src1, src2=Src2}.
 
+mk_b(FunLit, Linkage) ->
+  #b{funv=FunLit, linkage=Linkage}.
+
 mk_bcc(Cond, Label) ->
   #bcc{'cond'=Cond, label=Label}.
 
-mk_rts() -> #rts{}.
+mk_comment(Term) ->
+  #comment{term=Term}.
+
+mk_bl(FunLit, SDesc,Linkage) ->
+  #bl{funv=FunLit, sdesc=SDesc, linkage=Linkage}.
+
+mk_jalr(FunV, SDesc) ->
+  #jalr{funv=FunV, sdesc=SDesc}.
+
+mk_jr(FunV) ->
+  #jr{funv=FunV}.
 
 mk_label(Label) -> #label{label=Label}.
 is_label(I) -> case I of #label{} -> true; _ -> false end.
 label_label(#label{label=Label}) -> Label.
 
-%% mk_movcc(Cond, Dst, Src) ->
-%%   #movcc{'cond'=Cond, dst=Dst, src=Src}.
+mk_movcc(Cond, Dst, Src) ->
+  #movcc{'cond'=Cond, dst=Dst, src=Src}.
 
 mk_mov(Dst=#epiphany_temp{allocatable=true}, Imm=#epiphany_uimm16{}) ->
   #mov{dst=Dst, src=Imm};
@@ -160,9 +187,6 @@ mk_movt(Dst=#epiphany_temp{allocatable=true}, Src={hi16, _}) ->
 
 mk_ldr(Size, Dst, Base, Sign, Offset) ->
   #ldr{size=Size, dst=Dst, base=Base, sign=Sign, offset=Offset}.
-
-mk_str(Size, Src, Base, Sign, Offset) ->
-  #str{size=Size, src=Src, base=Base, sign=Sign, offset=Offset}.
 
 mk_movi(Dst, Value) -> mk_movi(Dst, Value, []).
 
@@ -187,6 +211,16 @@ mk_movi(Dst, Value, Tail) ->
 
 mk_movfs(Dst, Src) ->
   #movfs{dst=Dst, src=Src}.
+
+mk_rts() -> #rts{}.
+
+mk_str(Size, Src=#epiphany_temp{allocatable=true},
+       Base=#epiphany_temp{allocatable=true}, Sign, Offset) ->
+  case Offset of
+    #epiphany_temp{allocatable=true} -> ok;
+    #epiphany_uimm11{} -> ok
+  end,
+  #str{size=Size, src=Src, base=Base, sign=Sign, offset=Offset}.
 
 mk_pseudo_bcc(Cond, TrueLab, FalseLab, Pred) ->
   if Pred >= 0.5 ->
@@ -227,6 +261,9 @@ mk_pseudo_move(Dst, Src) -> #pseudo_move{dst=Dst, src=Src}.
 is_pseudo_move(I) -> case I of #pseudo_move{} -> true; _ -> false end.
 pseudo_move_dst(#pseudo_move{dst=Dst}) -> Dst.
 pseudo_move_src(#pseudo_move{src=Src}) -> Src.
+
+mk_pseudo_switch(JTab, Index, Labels) ->
+  #pseudo_switch{jtab=JTab, index=Index, labels=Labels}.
 
 mk_pseudo_tailcall(FunV, Arity, StkArgs, Linkage=remote) ->
   #pseudo_tailcall{funv=FunV, arity=Arity, stkargs=StkArgs, linkage=Linkage}.

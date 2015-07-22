@@ -53,16 +53,21 @@ do_insn(I, TempMap, Strategy) ->
   case I of
     #alu{} -> do_alu(I, TempMap, Strategy);
     #ldr{} -> do_ldr(I, TempMap, Strategy);
-    %% #movcc{} -> do_movcc(I, TempMap, Strategy);
     #mov{} -> do_mov(I, TempMap, Strategy);
     #movt{} -> do_movt(I, TempMap, Strategy);
     #movfs{} -> do_movfs(I, TempMap, Strategy);
     #pseudo_call{} -> do_pseudo_call(I, TempMap, Strategy);
     #pseudo_move{} -> do_pseudo_move(I, TempMap, Strategy);
-    %%#pseudo_switch{} -> do_pseudo_switch(I, TempMap, Strategy);
+    #pseudo_switch{} -> do_pseudo_switch(I, TempMap, Strategy);
     #pseudo_tailcall{} -> do_pseudo_tailcall(I, TempMap, Strategy);
     %% rts should not be needed -- it only reads precoloured registers
     #str{} -> do_str(I, TempMap, Strategy);
+    %% Instructions that should only be introduced after RA
+    #b{}     -> exit({?MODULE, do_insn, I});
+    #bl{}    -> exit({?MODULE, do_insn, I});
+    #jalr{}  -> exit({?MODULE, do_insn, I});
+    #jr{}    -> exit({?MODULE, do_insn, I});
+    #movcc{} -> exit({?MODULE, do_insn, I});
     _ -> {[I], false}
   end.
 
@@ -117,6 +122,12 @@ do_pseudo_move(I=#pseudo_move{dst=Dst,src=Src}, TempMap, Strategy) ->
     _ ->
       {[I], false}
   end.
+
+do_pseudo_switch(I=#pseudo_switch{jtab=JTab,index=Index}, TempMap, Strategy) ->
+  {FixJTab,  NewJTab,  DidSpill1} = fix_src1(JTab,  TempMap, Strategy),
+  {FixIndex, NewIndex, DidSpill2} = fix_src2(Index, TempMap, Strategy),
+  NewI = I#pseudo_switch{jtab=NewJTab,index=NewIndex},
+  {FixJTab ++ FixIndex ++ [NewI], DidSpill1 or DidSpill2}.
 
 do_pseudo_tailcall(I=#pseudo_tailcall{funv=FunV}, TempMap, Strategy) ->
   {FixFunV,NewFunV,DidSpill} = fix_funv(FunV, TempMap, Strategy),

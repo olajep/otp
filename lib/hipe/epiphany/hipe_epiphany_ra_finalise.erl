@@ -46,12 +46,18 @@ ra_insn(I, Map) ->
     #pseudo_call{funv=FunV} -> I#pseudo_call{funv=funv(FunV, Map)};
     #pseudo_move{dst=Dst,src=Src} ->
       I#pseudo_move{dst=opnd(Dst, Map),src=opnd(Src, Map)};
-    %% #pseudo_switch{jtab=JTab,index=Index} ->
-    %%   I#pseudo_switch{jtab=opnd(JTab, Map),index=opnd(Index, Map)};
+    #pseudo_switch{jtab=JTab,index=Index} ->
+      I#pseudo_switch{jtab=opnd(JTab, Map),index=opnd(Index, Map)};
     #pseudo_tailcall{funv=FunV,stkargs=StkArgs} ->
       I#pseudo_tailcall{funv=funv(FunV, Map),stkargs=args(StkArgs, Map)};
     #str{src=Src,base=Base,offset=Offset} ->
       I#str{src=opnd(Src, Map),base=opnd(Base, Map),offset=opnd(Offset, Map)};
+    %% Instructions that should only be introduced after RA
+    #b{}     -> exit({?MODULE, ra_insn, I});
+    #bl{}    -> exit({?MODULE, ra_insn, I});
+    #jalr{}  -> exit({?MODULE, ra_insn, I});
+    #jr{}    -> exit({?MODULE, ra_insn, I});
+    #movcc{} -> exit({?MODULE, ra_insn, I});
     _ -> I
     end.
 

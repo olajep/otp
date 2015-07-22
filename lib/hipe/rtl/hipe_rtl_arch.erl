@@ -148,6 +148,8 @@ heap_pointer_from_pcb() ->
 
 heap_limit() ->	% {GetHLIMITInsn, HLIMITReg}
   case get(hipe_target_arch) of
+    epiphany ->
+      heap_limit_from_pcb();
     ultrasparc ->
       heap_limit_from_pcb();
     powerpc ->

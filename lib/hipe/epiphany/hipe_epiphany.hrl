@@ -63,7 +63,7 @@
 
 -type temp() :: #epiphany_temp{allocatable::true}.
 -type pseudo_temp() :: #epiphany_temp{}.
--type link_time_immediate() :: atom() | {label, none()}.
+-type link_time_immediate() :: atom() | {label, {non_neg_integer(), constant}}.
 
 %%% Instructions:
 
@@ -82,10 +82,10 @@
 -record(alu, {aluop :: aluop(), dst :: temp(), src1 :: temp(),
 	      src2 :: temp() | #epiphany_simm11{} | #epiphany_uimm5{}}).
 -record(bcc, {'cond' = 'always' :: 'cond'(), label :: non_neg_integer()}).
+-record(comment, {term::term()}).
 -record(label, {label :: non_neg_integer()}).
--record(ldr, {size::mem_size(), dst::temp(), base::temp(), sign::addr_sign(),
+-record(ldr, {size::mem_size(), dst::temp(), base::temp(), sign='+'::addr_sign(),
 	      offset :: temp() | #epiphany_uimm11{}}).
-%%-record(movcc, {'cond' = 'always' :: 'cond'(), dst :: temp(), src :: temp()}).
 -record(mov, {dst :: temp(), src :: #epiphany_uimm16{} | {lo16, link_time_immediate()}}).
 -record(movt, {dst :: temp(), src :: #epiphany_uimm16{} | {hi16, link_time_immediate()}}).
 -record(movfs, {dst :: temp(), src :: spec_reg()}).
@@ -94,6 +94,7 @@
 		      linkage::linkage()}).
 %% At most one operand may be a pseudo
 -record(pseudo_move, {dst :: pseudo_temp(), src :: pseudo_temp()}).
+-record(pseudo_switch, {jtab::temp(), index::temp(), labels::[non_neg_integer()]}).
 -record(pseudo_tailcall, {funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
 			  arity::arity(), stkargs::[temp()],
 			  linkage::linkage()}).
@@ -103,8 +104,21 @@
 		     false_label :: non_neg_integer(),
 		     pred :: number()}).
 -record(rts, {}). %% Alias for "jr lr"
--record(str, {size::mem_size(), src::temp(), base::temp(), sign::addr_sign(),
+-record(str, {size::mem_size(), src::temp(), base::temp(), sign='+'::addr_sign(),
 	      offset :: temp() | #epiphany_uimm11{}}).
+
+%%% Instructions introduced by lowering pseudos, after register allocation:
+
+%% A tail-recursive call
+-record(b, {funv::#epiphany_mfa{} | #epiphany_prim{}, linkage::linkage()}).
+%% A (non-tail) recursive call
+-record(bl, {funv::#epiphany_mfa{} | #epiphany_prim{}, sdesc::#epiphany_sdesc{},
+	     linkage::linkage()}).
+%% A (non-tail) recursive call
+-record(jalr, {funv::temp(), sdesc::#epiphany_sdesc{}}).
+%% A tail-recursive call
+-record(jr, {funv::temp()}).
+-record(movcc, {'cond' = 'always' :: 'cond'(), dst :: temp(), src :: temp()}).
 
 %%% Function definitions.
 

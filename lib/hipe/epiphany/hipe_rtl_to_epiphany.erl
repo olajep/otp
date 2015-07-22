@@ -95,17 +95,17 @@ conv_insn(I, Map, Data) ->
     #alub{} -> conv_alub(I, Map, Data);
     #branch{} -> conv_branch(I, Map, Data);
     #call{} -> conv_call(I, Map, Data);
-    %% #comment{} -> conv_comment(I, Map, Data);
+    #comment{} -> conv_comment(I, Map, Data);
     #enter{} -> conv_enter(I, Map, Data);
     #goto{} -> conv_goto(I, Map, Data);
     #label{} -> conv_label(I, Map, Data);
     #load{} -> conv_load(I, Map, Data);
-    %% #load_address{} -> conv_load_address(I, Map, Data);
+    #load_address{} -> conv_load_address(I, Map, Data);
     #load_atom{} -> conv_load_atom(I, Map, Data);
     #move{} -> conv_move(I, Map, Data);
     #return{} -> conv_return(I, Map, Data);
     #store{} -> conv_store(I, Map, Data);
-    %% #switch{} -> conv_switch(I, Map, Data);
+    #switch{} -> conv_switch(I, Map, Data);
     _ -> exit({?MODULE,conv_insn,I})
   end.
 
@@ -399,6 +399,10 @@ mk_call_results(N, [Dst|Dsts], Tail) ->
   Reg = hipe_epiphany:mk_temp(hipe_epiphany_registers:ret(N), 'tagged'),
   mk_call_results(N+1, Dsts, [hipe_epiphany:mk_pseudo_move(Dst, Reg) | Tail]).
 
+conv_comment(I, Map, Data) ->
+  I2 = [hipe_epiphany:mk_comment(hipe_rtl:comment_text(I))],
+  {I2, Map, Data}.
+
 conv_enter(I, Map, Data) ->
   {Args, Map0} = conv_src_list(hipe_rtl:enter_arglist(I), Map),
   {Fun, Map1} = conv_fun(hipe_rtl:enter_fun(I), Map0),
@@ -437,15 +441,24 @@ conv_load(I, Map, Data) ->
   I2 = mk_mem(ldr, Dst, Base1, Base2, LoadSize, Extend),
   {I2, Map2, Data}.
 
-mk_mem(Instr, Reg, Base1, Base2, RtlSize, Tail) ->
+mk_mem(Instr, Reg0, Base1, Base2, RtlSize, Tail) ->
   {Size, SizeBytes} =
     case RtlSize of
       byte  -> {'b', 1};
       int32 -> {'w', 4};
       word  -> {'w', 4}
     end,
+  %% Ensure reg is a temp
+  {I1, Reg} =
+    case {hipe_epiphany:is_temp(Reg0), Instr} of
+      {true, _} -> {[], Reg0};
+      {false, str} ->
+	RegTmp = new_untagged_temp(),
+	MovReg = hipe_epiphany:mk_movi(RegTmp, Reg0),
+	{MovReg, RegTmp}
+    end,
   %% Ensure lhs is a temp
-  {I1, Lhs, Rhs1} =
+  {I2, Lhs, Rhs1} =
     case {hipe_epiphany:is_temp(Base1), hipe_epiphany:is_temp(Base2)} of
       {false, false} ->
 	io:format("~w: RTL mem with two immediates\n", [?MODULE]),
@@ -456,7 +469,7 @@ mk_mem(Instr, Reg, Base1, Base2, RtlSize, Tail) ->
       _ -> {[], Base1, Base2}
     end,
   %% Ensure rhs is a temp or fits in an immediate
-  {I2, Sign, Rhs} =
+  {I3, Sign, Rhs} =
     case hipe_epiphany:is_temp(Rhs1) of
       true -> {[], '+', Rhs1};
       false ->
@@ -487,6 +500,13 @@ conv_store(I, Map, Data) ->
   I2 = mk_mem(str, Src, Base, Offset, StoreSize, []),
   {I2, Map2, Data}.
 
+conv_load_address(I, Map, Data) ->
+  {Dst, Map0} = conv_dst(hipe_rtl:load_address_dst(I), Map),
+  Addr = hipe_rtl:load_address_addr(I),
+  Type = hipe_rtl:load_address_type(I),
+  I2 = hipe_epiphany:mk_movi(Dst, {label, {Addr,Type}}),
+  {I2, Map0, Data}.
+
 conv_load_atom(I, Map, Data) ->
   {Dst, Map0} = conv_dst(hipe_rtl:load_atom_dst(I), Map),
   Src = hipe_rtl:load_atom_atom(I),
@@ -514,6 +534,26 @@ move_returns(_, [], Tail) -> Tail;
 move_returns(N, [Ret|Rets], Tail) ->
   Reg = hipe_epiphany:mk_temp(hipe_epiphany_registers:ret(N), 'tagged'),
   move_returns(N-1, Rets, mk_move(Reg, Ret, Tail)).
+
+conv_switch(I, Map, Data) ->
+  Labels = hipe_rtl:switch_labels(I),
+  LMap = [{label,L} || L <- Labels],
+  {NewData, JTabLab} =
+    case hipe_rtl:switch_sort_order(I) of
+      [] ->
+	hipe_consttab:insert_block(Data, word, LMap);
+      SortOrder ->
+	hipe_consttab:insert_sorted_block(
+	  Data, word, LMap, SortOrder)
+    end,
+  %% no immediates allowed here
+  {IndexR, Map1} = conv_dst(hipe_rtl:switch_src(I), Map),
+  JTabR = new_untagged_temp(),
+  I2 =
+    hipe_epiphany:mk_movi(
+      JTabR, {label, {JTabLab,constant}},
+      [hipe_epiphany:mk_pseudo_switch(JTabR, IndexR, Labels)]),
+  {I2, Map1, NewData}.
 
 %%% Load an integer constant into a register.
 

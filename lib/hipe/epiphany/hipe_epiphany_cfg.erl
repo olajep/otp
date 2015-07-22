@@ -52,23 +52,34 @@ init(Defun) ->
 
 is_branch(I) ->
   case I of
+    #b{} -> true;
     #bcc{'cond'=Cond} -> 'always' = Cond, true;
+    #jr{} -> true;
+    #pseudo_bcc{} -> true;
     #pseudo_call{} -> true;
-    %% #pseudo_switch{} -> true;
+    #pseudo_switch{} -> true;
     #pseudo_tailcall{} -> true;
+    #rts{} -> true;
+    %% Branching instructions with fallthrough (not allowed)
+    #bl{}   -> exit({?MODULE, is_branch, I});
+    #jalr{} -> exit({?MODULE, is_branch, I});
     _ -> false
   end.
 
 branch_successors(Branch) ->
   case Branch of
+    #b{} -> [];
     #bcc{'cond'='always',label=Label} -> [Label];
+    #jr{} -> [];
+    #pseudo_bcc{true_label=TrueLab,false_label=FalseLab} -> [FalseLab,TrueLab];
     #pseudo_call{contlab=ContLab, sdesc=#epiphany_sdesc{exnlab=ExnLab}} ->
       case ExnLab of
 	[] -> [ContLab];
 	_ -> [ContLab,ExnLab]
       end;
-    %% #pseudo_switch{labels=Labels} -> Labels;
-    #pseudo_tailcall{} -> []
+    #pseudo_switch{labels=Labels} -> Labels;
+    #pseudo_tailcall{} -> [];
+    #rts{} -> []
   end.
 
 -ifdef(REMOVE_TRIVIAL_BBS_NEEDED).
