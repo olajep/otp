@@ -45,8 +45,10 @@ RELSYSDIR = $(RELEASE_PATH)/lib/hipe-$(VSN)
 # ----------------------------------------------------
 # Please keep this list sorted.
 MODULES=hipe_epiphany \
+	hipe_epiphany_assemble \
 	hipe_epiphany_cfg \
 	hipe_epiphany_defuse \
+	hipe_epiphany_encode \
 	hipe_epiphany_finalise \
 	hipe_epiphany_frame \
 	hipe_epiphany_liveness \
@@ -110,7 +112,9 @@ release_spec: opt
 release_docs_spec:
 
 # Please keep this list sorted.
-# $(EBIN)/hipe_epiphany_assemble.beam: ../main/hipe.hrl ../../kernel/src/hipe_ext_format.hrl ../rtl/hipe_literals.hrl
+$(EBIN)/hipe_epiphany_assemble.beam: ../main/hipe.hrl \
+	../../kernel/src/hipe_ext_format.hrl ../rtl/hipe_literals.hrl \
+	../misc/hipe_sdi.hrl
 $(EBIN)/hipe_epiphany_cfg.beam: ../flow/cfg.hrl ../flow/cfg.inc
 $(EBIN)/hipe_epiphany_frame.beam: ../rtl/hipe_literals.hrl
 $(EBIN)/hipe_epiphany_liveness.beam: ../flow/liveness.inc

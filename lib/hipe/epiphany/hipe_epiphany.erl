@@ -33,6 +33,7 @@
 	 mk_uimm5/1,
 	 mk_uimm11/1,
 	 mk_uimm16/1,
+	 mk_simm24/1,
 
 	 mk_mfa/3,
 
@@ -133,15 +134,19 @@ mk_uimm11(Value) when 0 =< Value, Value < 16#800 ->
 mk_uimm16(Value) when 0 =< Value, Value < 16#10000 ->
   #epiphany_uimm16{value=Value}.
 
+mk_simm24(Value) when -16#800000 =< Value, Value < 16#800000 ->
+  #epiphany_simm24{value=Value}.
+
 mk_mfa(M, F, A) -> #epiphany_mfa{m=M, f=F, a=A}.
 
 mk_prim(Prim) when is_atom(Prim) -> #epiphany_prim{prim=Prim}.
 is_prim(X) -> case X of #epiphany_prim{} -> true; _ -> false end.
 prim_prim(#epiphany_prim{prim=Prim}) -> Prim.
 
-mk_sdesc(ExnLab, FSize, Arity, Live={})
+mk_sdesc(ExnLab, FSize, Arity, Live)
   when (([] == ExnLab) or (is_integer(ExnLab) and (ExnLab >= 0))),
-       is_integer(FSize), FSize >= 0, is_integer(Arity), Arity >= 0 ->
+       is_integer(FSize), FSize >= 0, is_integer(Arity), Arity >= 0,
+       is_tuple(Live) ->
   #epiphany_sdesc{exnlab=ExnLab, fsize=FSize, arity=Arity, live=Live}.
 
 mk_alu(AluOp, Dst, Src1, Src2) ->

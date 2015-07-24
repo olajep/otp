@@ -41,10 +41,11 @@
 -record(epiphany_sdesc, {exnlab=[]::non_neg_integer()|[],
 			 fsize::non_neg_integer(),
 			 arity::arity(),
-			 live={}::{}}).
+			 %% live is a sorted tuple of frame slot numbers
+			 live={}::tuple()}).
 -record(epiphany_temp, {reg::reg(), type::type(), allocatable::boolean()}).
 -record(epiphany_simm11, {value :: ?SIGNED_RANGE(11)}).
-%% -record(epiphany_simm24, {value :: ?SIGNED_RANGE(24)}). %% Only pc-relative
+-record(epiphany_simm24, {value :: ?SIGNED_RANGE(24)}). %% Only pc-relative
 -record(epiphany_uimm5,  {value :: ?UNSIGNED_RANGE(5)}).
 -record(epiphany_uimm16, {value :: ?UNSIGNED_RANGE(16)}).
 
