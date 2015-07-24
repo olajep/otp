@@ -108,6 +108,9 @@
 
 -include("hipe_epiphany.hrl").
 
+-export_type([instr/0]).
+
+-spec mk_temp(reg(), type(), boolean()) -> pseudo_temp().
 mk_temp(Reg, Type, Allocatable) ->
   #epiphany_temp{reg=Reg, type=Type, allocatable=Allocatable}.
 mk_temp(Reg, Type) -> mk_temp(Reg, Type, true).
@@ -149,52 +152,69 @@ mk_sdesc(ExnLab, FSize, Arity, Live)
        is_tuple(Live) ->
   #epiphany_sdesc{exnlab=ExnLab, fsize=FSize, arity=Arity, live=Live}.
 
+-spec mk_alu(aluop(), temp(), temp(),
+	     temp() | #epiphany_simm11{} | #epiphany_uimm5{}) -> alu().
 mk_alu(AluOp, Dst, Src1, Src2) ->
   #alu{aluop=AluOp, dst=Dst, src1=Src1, src2=Src2}.
 
+-spec mk_b(#epiphany_mfa{} | #epiphany_prim{}, linkage()) -> b().
 mk_b(FunLit, Linkage) ->
   #b{funv=FunLit, linkage=Linkage}.
 
+-spec mk_bcc('cond'(), non_neg_integer()) -> bcc().
 mk_bcc(Cond, Label) ->
   #bcc{'cond'=Cond, label=Label}.
 
+-spec mk_comment(term()) -> comment().
 mk_comment(Term) ->
   #comment{term=Term}.
 
+-spec mk_bl(#epiphany_mfa{} | #epiphany_prim{}, #epiphany_sdesc{}, linkage())
+	   -> bl().
 mk_bl(FunLit, SDesc,Linkage) ->
   #bl{funv=FunLit, sdesc=SDesc, linkage=Linkage}.
 
+-spec mk_jalr(temp(), #epiphany_sdesc{}) -> jalr().
 mk_jalr(FunV, SDesc) ->
   #jalr{funv=FunV, sdesc=SDesc}.
 
+-spec mk_jr(temp()) -> jr().
 mk_jr(FunV) ->
   #jr{funv=FunV}.
 
-mk_label(Label) -> #label{label=Label}.
+-spec mk_label(non_neg_integer()) -> label().
+mk_label(Label) when is_integer(Label), Label >= 0 -> #label{label=Label}.
 is_label(I) -> case I of #label{} -> true; _ -> false end.
 label_label(#label{label=Label}) -> Label.
 
+-spec mk_movcc('cond'(), temp(), temp()) -> movcc().
 mk_movcc(Cond, Dst, Src) ->
   #movcc{'cond'=Cond, dst=Dst, src=Src}.
 
+-spec mk_mov(temp(), #epiphany_uimm16{} | {lo16, link_time_immediate()})
+	    -> mov().
 mk_mov(Dst=#epiphany_temp{allocatable=true}, Imm=#epiphany_uimm16{}) ->
   #mov{dst=Dst, src=Imm};
 mk_mov(Dst=#epiphany_temp{allocatable=true}, Imm={lo16, _}) ->
-  #mov{dst=Dst, src=Imm}%% ;
-%% mk_mov(Dst=#epiphany_temp{allocatable=true}, Src=#epiphany_temp{allocatable=true}) ->
-%%   mk_movcc('always', Dst, Src)
-    .
+  #mov{dst=Dst, src=Imm}.
 
+-spec mk_movt(temp(), #epiphany_uimm16{} | {hi16, link_time_immediate()})
+	     -> movt().
 mk_movt(Dst=#epiphany_temp{allocatable=true}, Src=#epiphany_uimm16{}) ->
   #movt{dst=Dst, src=Src};
 mk_movt(Dst=#epiphany_temp{allocatable=true}, Src={hi16, _}) ->
   #movt{dst=Dst, src=Src}.
 
+-spec mk_ldr(mem_size(), temp(), temp(), addr_sign(),
+	     temp() | #epiphany_uimm11{}) -> ldr().
 mk_ldr(Size, Dst, Base, Sign, Offset) ->
   #ldr{size=Size, dst=Dst, base=Base, sign=Sign, offset=Offset}.
 
+-spec mk_movi(temp(), integer() | link_time_immediate()) -> [mov() | movt()].
 mk_movi(Dst, Value) -> mk_movi(Dst, Value, []).
 
+-spec mk_movi(temp(), integer() | link_time_immediate(), [T])
+	     -> [mov() | movt() | T].
 mk_movi(Dst, Value, Tail) when is_integer(Value) ->
   if 0 =< Value, Value < 16#10000 ->
       [mk_mov(Dst, mk_uimm16(Value)) | Tail];
@@ -214,11 +234,14 @@ mk_movi(Dst, Value, Tail) ->
    mk_movt(Dst, {hi16, Value}) |
    Tail].
 
+-spec mk_movfs(temp(), spec_reg()) -> movfs().
 mk_movfs(Dst, Src) ->
   #movfs{dst=Dst, src=Src}.
 
 mk_rts() -> #rts{}.
 
+-spec mk_str(mem_size(), temp(), temp(), addr_sign(),
+	     temp() | #epiphany_uimm11{}) -> str().
 mk_str(Size, Src=#epiphany_temp{allocatable=true},
        Base=#epiphany_temp{allocatable=true}, Sign, Offset) ->
   case Offset of
@@ -227,6 +250,8 @@ mk_str(Size, Src=#epiphany_temp{allocatable=true},
   end,
   #str{size=Size, src=Src, base=Base, sign=Sign, offset=Offset}.
 
+-spec mk_pseudo_bcc('cond'(), non_neg_integer(), non_neg_integer(), number())
+		   -> pseudo_bcc().
 mk_pseudo_bcc(Cond, TrueLab, FalseLab, Pred) ->
   if Pred >= 0.5 ->
       mk_pseudo_bcc_simple(negate_cond(Cond), FalseLab,
@@ -255,6 +280,9 @@ negate_cond(Cond) ->
     'bne'  -> 'beq'	% =! (FPU), == (FPU)
   end.
 
+-spec mk_pseudo_call(#epiphany_mfa{} | #epiphany_prim{} | temp(),
+		     #epiphany_sdesc{}, non_neg_integer(), linkage())
+		    -> pseudo_call().
 mk_pseudo_call(FunV, SDesc, ContLab, Linkage) ->
   #pseudo_call{funv=FunV, sdesc=SDesc, contlab=ContLab, linkage=Linkage}.
 pseudo_call_funv(#pseudo_call{funv=FunV}) -> FunV.
@@ -262,14 +290,21 @@ pseudo_call_sdesc(#pseudo_call{sdesc=SDesc}) -> SDesc.
 pseudo_call_contlab(#pseudo_call{contlab=ContLab}) -> ContLab.
 pseudo_call_linkage(#pseudo_call{linkage=Linkage}) -> Linkage.
 
+-spec mk_pseudo_move(#epiphany_temp{allocatable::false}, temp()) -> pseudo_move();
+		    (temp(), #epiphany_temp{allocatable::false}) -> pseudo_move();
+		    (temp(), temp()) -> pseudo_move().
 mk_pseudo_move(Dst, Src) -> #pseudo_move{dst=Dst, src=Src}.
 is_pseudo_move(I) -> case I of #pseudo_move{} -> true; _ -> false end.
 pseudo_move_dst(#pseudo_move{dst=Dst}) -> Dst.
 pseudo_move_src(#pseudo_move{src=Src}) -> Src.
 
+-spec mk_pseudo_switch(temp(), temp(), [non_neg_integer()])
+		      -> pseudo_switch().
 mk_pseudo_switch(JTab, Index, Labels) ->
   #pseudo_switch{jtab=JTab, index=Index, labels=Labels}.
 
+-spec mk_pseudo_tailcall(#epiphany_mfa{} | #epiphany_prim{} | temp(),
+			 arity(), [temp()], linkage()) -> pseudo_tailcall().
 mk_pseudo_tailcall(FunV, Arity, StkArgs, Linkage=remote) ->
   #pseudo_tailcall{funv=FunV, arity=Arity, stkargs=StkArgs, linkage=Linkage}.
 pseudo_tailcall_funv(#pseudo_tailcall{funv=FunV}) -> FunV.
@@ -278,6 +313,10 @@ pseudo_tailcall_linkage(#pseudo_tailcall{linkage=Linkage}) -> Linkage.
 
 mk_pseudo_tailcall_prepare() -> #pseudo_tailcall_prepare{}.
 
+-spec mk_defun(mfa(), [pseudo_temp()], boolean(), boolean(), [instr()],
+	       hipe_consttab(),
+	       [] | {non_neg_integer(), non_neg_integer()},
+	       [] | {non_neg_integer(), non_neg_integer()}) -> #defun{}.
 mk_defun(MFA, Formals, IsClosure, IsLeaf, Code, Data, VarRange, LabelRange) ->
   #defun{mfa=MFA, formals=Formals, code=Code, data=Data,
 	 isclosure=IsClosure, isleaf=IsLeaf,

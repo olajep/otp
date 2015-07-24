@@ -34,6 +34,7 @@ ra_code([I|Insns], Map, Accum) ->
 ra_code([], _Map, Accum) ->
   lists:reverse(Accum).
 
+-spec ra_insn(instr(), _) -> instr().
 ra_insn(I, Map) ->
   case I of
     #alu{dst=Dst,src1=Src1,src2=Src2} ->

@@ -89,6 +89,7 @@ conv_insn_list([H|T], Map, Data) ->
 conv_insn_list([], _, Data) ->
   {[], Data}.
 
+-spec conv_insn(_, _, _) -> {[hipe_epiphany:instr()], _, _}.
 conv_insn(I, Map, Data) ->
   case I of
     #alu{} -> conv_alu(I, Map, Data);

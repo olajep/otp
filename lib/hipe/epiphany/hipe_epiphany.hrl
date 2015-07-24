@@ -66,7 +66,38 @@
 -type pseudo_temp() :: #epiphany_temp{}.
 -type link_time_immediate() :: atom() | {label, {non_neg_integer(), constant}}.
 
-%%% Instructions:
+%%% Instructions (see below for field types):
+
+-record(alu, {aluop, dst, src1, src2}).
+-record(bcc, {'cond' = 'always', label}).
+-record(comment, {term}).
+-record(label, {label}).
+-record(ldr, {size, dst, base, sign='+', offset}).
+-record(mov, {dst, src}).
+-record(movt, {dst, src}).
+-record(movfs, {dst, src}).
+-record(pseudo_call, {funv, sdesc, contlab, linkage}).
+-record(pseudo_move, {dst, src}).
+-record(pseudo_switch, {jtab, index, labels}).
+-record(pseudo_tailcall, {funv, arity, stkargs, linkage}).
+-record(pseudo_tailcall_prepare, {}).
+-record(pseudo_bcc, {'cond' = 'always', true_label, false_label, pred}).
+-record(rts, {}). %% Alias for "jr lr"
+-record(str, {size, src, base, sign='+', offset}).
+
+%%% Instructions introduced by lowering pseudos, after register allocation:
+
+%% A tail-recursive call
+-record(b, {funv, linkage}).
+%% A (non-tail) recursive call
+-record(bl, {funv, sdesc, linkage}).
+%% A (non-tail) recursive call
+-record(jalr, {funv, sdesc}).
+%% A tail-recursive call
+-record(jr, {funv}).
+-record(movcc, {'cond' = 'always', dst, src}).
+
+%% Types for the instruction records:
 
 -type 'cond'() :: 'always'
 		| 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'gtu' | 'ltu'
@@ -80,54 +111,64 @@
 -type mem_size() :: 'b' | 'h' | 'w' | 'd'.
 -type addr_sign() :: '+' | '-'.
 
--record(alu, {aluop :: aluop(), dst :: temp(), src1 :: temp(),
-	      src2 :: temp() | #epiphany_simm11{} | #epiphany_uimm5{}}).
--record(bcc, {'cond' = 'always' :: 'cond'(), label :: non_neg_integer()}).
--record(comment, {term::term()}).
--record(label, {label :: non_neg_integer()}).
--record(ldr, {size::mem_size(), dst::temp(), base::temp(), sign='+'::addr_sign(),
-	      offset :: temp() | #epiphany_uimm11{}}).
--record(mov, {dst :: temp(), src :: #epiphany_uimm16{} | {lo16, link_time_immediate()}}).
--record(movt, {dst :: temp(), src :: #epiphany_uimm16{} | {hi16, link_time_immediate()}}).
--record(movfs, {dst :: temp(), src :: spec_reg()}).
--record(pseudo_call, {funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
-		      sdesc::#epiphany_sdesc{}, contlab::non_neg_integer(),
-		      linkage::linkage()}).
-%% At most one operand may be a pseudo
--record(pseudo_move, {dst :: pseudo_temp(), src :: pseudo_temp()}).
--record(pseudo_switch, {jtab::temp(), index::temp(), labels::[non_neg_integer()]}).
--record(pseudo_tailcall, {funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
-			  arity::arity(), stkargs::[temp()],
-			  linkage::linkage()}).
--record(pseudo_tailcall_prepare, {}).
--record(pseudo_bcc, {'cond' = 'always' :: 'cond'(),
-		     true_label :: non_neg_integer(),
-		     false_label :: non_neg_integer(),
-		     pred :: number()}).
--record(rts, {}). %% Alias for "jr lr"
--record(str, {size::mem_size(), src::temp(), base::temp(), sign='+'::addr_sign(),
-	      offset :: temp() | #epiphany_uimm11{}}).
+-type alu() :: #alu{aluop::aluop(), dst::temp(), src1::temp(),
+		    src2::temp() | #epiphany_simm11{} | #epiphany_uimm5{}}.
+-type b() :: #b{funv::#epiphany_mfa{} | #epiphany_prim{}, linkage::linkage()}.
+-type bcc() :: #bcc{'cond'::'cond'(), label::non_neg_integer()}.
+-type comment() :: #comment{}.
+-type bl() :: #bl{funv::#epiphany_mfa{} | #epiphany_prim{},
+		  sdesc::#epiphany_sdesc{}, linkage::linkage()}.
+-type jalr() :: #jalr{funv::temp(), sdesc::#epiphany_sdesc{}}.
+-type jr() :: #jr{funv::temp()}.
+-type label() :: #label{label :: non_neg_integer()}.
+-type movcc() :: #movcc{'cond' :: 'cond'(), dst :: temp(), src :: temp()}.
+-type mov() :: #mov{dst :: temp(), src :: #epiphany_uimm16{} |
+					  {lo16, link_time_immediate()}}.
+-type movt() :: #movt{dst :: temp(), src :: #epiphany_uimm16{} |
+					    {hi16, link_time_immediate()}}.
+-type ldr() :: #ldr{size::mem_size(), dst::temp(), base::temp(),
+		    sign::addr_sign(), offset :: temp() | #epiphany_uimm11{}}.
+-type movfs() :: #movfs{dst :: temp(), src :: spec_reg()}.
+-type rts() :: #rts{}.
+-type str() :: #str{size::mem_size(), src::temp(), base::temp(),
+		    sign::addr_sign(), offset :: temp() | #epiphany_uimm11{}}.
+-type pseudo_call() ::
+	#pseudo_call{funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
+		     sdesc::#epiphany_sdesc{}, contlab::non_neg_integer(),
+		     linkage::linkage()}.
+-type pseudo_move() :: #pseudo_move{dst :: temp(),        src :: pseudo_temp()}
+		     | #pseudo_move{dst :: pseudo_temp(), src :: temp()}.
+-type pseudo_switch() ::
+	#pseudo_switch{jtab::temp(), index::temp(), labels::[non_neg_integer()]}.
+-type pseudo_tailcall() ::
+	#pseudo_tailcall{funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
+			 arity::arity(), stkargs::[temp()],
+			 linkage::linkage()}.
+-type pseudo_tailcall_prepare() :: #pseudo_tailcall_prepare{}.
+-type pseudo_bcc() :: #pseudo_bcc{'cond' :: 'cond'(),
+				  true_label :: non_neg_integer(),
+				  false_label :: non_neg_integer(),
+				  pred :: number()}.
 
-%%% Instructions introduced by lowering pseudos, after register allocation:
+-type common_instr() :: alu() | bcc() | comment() | label() | mov() | movt()
+		      | ldr() | movfs() | rts() | str().
+-type lowered_instr() :: b() | bl() | jalr() | jr() | movcc().
+-type pseudo_instr() :: pseudo_call() | pseudo_move() | pseudo_switch()
+		      | pseudo_tailcall() | pseudo_tailcall_prepare()
+		      | pseudo_bcc().
 
-%% A tail-recursive call
--record(b, {funv::#epiphany_mfa{} | #epiphany_prim{}, linkage::linkage()}).
-%% A (non-tail) recursive call
--record(bl, {funv::#epiphany_mfa{} | #epiphany_prim{}, sdesc::#epiphany_sdesc{},
-	     linkage::linkage()}).
-%% A (non-tail) recursive call
--record(jalr, {funv::temp(), sdesc::#epiphany_sdesc{}}).
-%% A tail-recursive call
--record(jr, {funv::temp()}).
--record(movcc, {'cond' = 'always' :: 'cond'(), dst :: temp(), src :: temp()}).
+-type instr() :: common_instr() | lowered_instr() | pseudo_instr().
 
 %%% Function definitions.
 
 -include("../misc/hipe_consttab.hrl").
 
--record(defun, {mfa :: mfa(), formals, code,
-	       	data	  :: hipe_consttab(),
-	        isclosure :: boolean(),
-		isleaf    :: boolean(),
-		var_range = [],
-		label_range = []}).
+-record(defun,
+	{mfa :: mfa(),
+	 formals :: [pseudo_temp()],
+	 code :: [instr()],
+	 data	  :: hipe_consttab(),
+	 isclosure :: boolean(),
+	 isleaf    :: boolean(),
+	 var_range   = [] :: [] | {non_neg_integer(), non_neg_integer()},
+	 label_range = [] :: [] | {non_neg_integer(), non_neg_integer()}}).
