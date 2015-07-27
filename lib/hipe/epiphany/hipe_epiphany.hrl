@@ -82,7 +82,7 @@
 -record(pseudo_tailcall, {funv, arity, stkargs, linkage}).
 -record(pseudo_tailcall_prepare, {}).
 -record(pseudo_bcc, {'cond' = 'always', true_label, false_label, pred}).
--record(rts, {}). %% Alias for "jr lr"
+-record(rts, {nr_rets}). %% Alias for "jr lr"
 -record(str, {size, src, base, sign='+', offset}).
 
 %%% Instructions introduced by lowering pseudos, after register allocation:
@@ -129,7 +129,7 @@
 -type ldr() :: #ldr{size::mem_size(), dst::temp(), base::temp(),
 		    sign::addr_sign(), offset :: temp() | #epiphany_uimm11{}}.
 -type movfs() :: #movfs{dst :: temp(), src :: spec_reg()}.
--type rts() :: #rts{}.
+-type rts() :: #rts{nr_rets::non_neg_integer()}.
 -type str() :: #str{size::mem_size(), src::temp(), base::temp(),
 		    sign::addr_sign(), offset :: temp() | #epiphany_uimm11{}}.
 -type pseudo_call() ::

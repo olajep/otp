@@ -72,9 +72,9 @@ insn_use(I) ->
     #pseudo_tailcall{funv=FunV,arity=Arity,stkargs=StkArgs} ->
       addargs(StkArgs, addtemps(tailcall_clobbered(),
 				funv_use(FunV, arity_use(Arity))));
-    #rts{} ->
+    #rts{nr_rets=NrRets} ->
       [hipe_epiphany:mk_temp(hipe_epiphany_registers:lr(), 'untagged') |
-       rets()];
+       rets(NrRets)];
     #str{src=Src,base=Base,offset=Offset} ->
       operand_use(Offset, addtemp(Base, [Src]));
     %% Instructions introduced after RA (not allowed)
@@ -106,9 +106,9 @@ operand_use(Opd, Set) ->
     _Immediate -> Set
   end.
 
-rets() ->
+rets(NrRets) when is_integer(NrRets) ->
   [hipe_epiphany:mk_temp(hipe_epiphany_registers:ret(N), 'tagged')
-   || N <- lists:seq(0, hipe_epiphany_registers:nr_rets() - 1)].
+   || N <- lists:seq(0, min(NrRets, hipe_epiphany_registers:nr_rets()) - 1)].
 
 temp3() ->
   hipe_epiphany:mk_temp(hipe_epiphany_registers:temp3(), 'untagged').

@@ -70,7 +70,7 @@
 
 	 mk_movfs/2,
 
-	 mk_rts/0,
+	 mk_rts/1,
 
 	 mk_str/5,
 
@@ -238,7 +238,8 @@ mk_movi(Dst, Value, Tail) ->
 mk_movfs(Dst, Src) ->
   #movfs{dst=Dst, src=Src}.
 
-mk_rts() -> #rts{}.
+-spec mk_rts(non_neg_integer()) -> rts().
+mk_rts(NrRets) when is_integer(NrRets) -> #rts{nr_rets=NrRets}.
 
 -spec mk_str(mem_size(), temp(), temp(), addr_sign(),
 	     temp() | #epiphany_uimm11{}) -> str().

@@ -528,7 +528,7 @@ mk_move(Dst, Src, Tail) ->
 
 conv_return(I, Map, Data) ->
   {Args, Map0} = conv_src_list(hipe_rtl:return_varlist(I), Map),
-  I2 = move_returns(0, Args, [hipe_epiphany:mk_rts()]),
+  I2 = move_returns(0, Args, [hipe_epiphany:mk_rts(length(Args))]),
   {I2, Map0, Data}.
 
 move_returns(_, [], Tail) -> Tail;
