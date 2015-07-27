@@ -137,6 +137,32 @@
 #undef TEMP_RV
 #undef LOAD_ARG_REGS
 #undef STORE_ARG_REGS
+#include "hipe_epiphany_asm.h"
+#undef P
+#undef NSP
+#undef HP
+#undef TEMP_LR
+#undef SAVE_CACHED_STATE
+#undef RESTORE_CACHED_STATE
+#undef SAVE_CONTEXT_QUICK
+#undef RESTORE_CONTEXT_QUICK
+#undef SAVE_CONTEXT_BIF
+#undef RESTORE_CONTEXT_BIF
+#undef SAVE_CONTEXT_GC
+#undef RESTORE_CONTEXT_GC
+#undef NR_ARG_REGS
+#undef NR_RET_REGS
+#undef LOAD_ARG_REGS
+#undef STORE_ARG_REGS
+#undef TEMP_ARG0
+#undef TEMP_ARG1
+#undef TEMP_ARG2
+#undef ARG0
+#undef ARG1
+#undef ARG2
+#undef ARG3
+#undef ARG4
+#undef ARG5
 #include "hipe_sparc_asm.h"
 #include "erl_binary.h"
 
@@ -390,6 +416,11 @@ static const struct literal {
     /* SPARC */
     { "SPARC_LEAF_WORDS", SPARC_LEAF_WORDS },
     { "SPARC_NR_ARG_REGS", SPARC_NR_ARG_REGS},
+
+    { "EPIPHANY_LEAF_WORDS", EPIPHANY_LEAF_WORDS },
+    { "EPIPHANY_NR_ARG_REGS", EPIPHANY_NR_ARG_REGS },
+    { "EPIPHANY_NR_RET_REGS", EPIPHANY_NR_RET_REGS },
+
 };
 
 #define NR_LITERALS	ARRAY_SIZE(literals)

@@ -60,6 +60,7 @@
 -define(HPPC_TAG,"HPPC").
 -define(HP64_TAG,"HP64").
 -define(HARM_TAG,"HARM").
+-define(HEPI_TAG,"HEPI").
 -define(HX86_TAG,"HX86").
 -define(HA64_TAG,"HA64").
 
@@ -74,6 +75,8 @@ chunk_name(Architecture) ->
   case Architecture of
     amd64 ->      ?HA64_TAG; %% HiPE, x86_64, (implicit: 64-bit, Unix)
     arm ->	  ?HARM_TAG; %% HiPE, arm, v5 (implicit: 32-bit, Linux)
+    %% HiPE, Epiphany-III and -IV (implicit: 32-bit, bare-metal)
+    epiphany ->   ?HEPI_TAG;
     powerpc ->    ?HPPC_TAG; %% HiPE, PowerPC (implicit: 32-bit, Linux)
     ppc64 ->	  ?HP64_TAG; %% HiPE, ppc64 (implicit: 64-bit, Linux)
     ultrasparc -> ?HS8P_TAG; %% HiPE, SPARC, V8+ (implicit: 32-bit)

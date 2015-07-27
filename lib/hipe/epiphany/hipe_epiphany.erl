@@ -82,6 +82,9 @@
 	 pseudo_call_sdesc/1,
 	 pseudo_call_linkage/1,
 
+	 mk_pseudo_call_prepare/1,
+	 pseudo_call_prepare_nrstkargs/1,
+
 	 mk_pseudo_move/2,
 	 is_pseudo_move/1,
 	 pseudo_move_dst/1,
@@ -291,6 +294,11 @@ pseudo_call_sdesc(#pseudo_call{sdesc=SDesc}) -> SDesc.
 pseudo_call_contlab(#pseudo_call{contlab=ContLab}) -> ContLab.
 pseudo_call_linkage(#pseudo_call{linkage=Linkage}) -> Linkage.
 
+-spec mk_pseudo_call_prepare(non_neg_integer()) -> pseudo_call_prepare().
+mk_pseudo_call_prepare(NrStkArgs) -> #pseudo_call_prepare{nrstkargs=NrStkArgs}.
+pseudo_call_prepare_nrstkargs(#pseudo_call_prepare{nrstkargs=NrStkArgs}) ->
+  NrStkArgs.
+
 -spec mk_pseudo_move(#epiphany_temp{allocatable::false}, temp()) -> pseudo_move();
 		    (temp(), #epiphany_temp{allocatable::false}) -> pseudo_move();
 		    (temp(), temp()) -> pseudo_move().
@@ -306,7 +314,7 @@ mk_pseudo_switch(JTab, Index, Labels) ->
 
 -spec mk_pseudo_tailcall(#epiphany_mfa{} | #epiphany_prim{} | temp(),
 			 arity(), [temp()], linkage()) -> pseudo_tailcall().
-mk_pseudo_tailcall(FunV, Arity, StkArgs, Linkage=remote) ->
+mk_pseudo_tailcall(FunV, Arity, StkArgs, Linkage) ->
   #pseudo_tailcall{funv=FunV, arity=Arity, stkargs=StkArgs, linkage=Linkage}.
 pseudo_tailcall_funv(#pseudo_tailcall{funv=FunV}) -> FunV.
 pseudo_tailcall_stkargs(#pseudo_tailcall{stkargs=StkArgs}) -> StkArgs.

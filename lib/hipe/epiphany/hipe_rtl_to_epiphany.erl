@@ -83,7 +83,7 @@ translate(RTL) ->
 
 conv_insn_list([H|T], Map, Data) ->
   {NewH, NewMap, NewData1} = conv_insn(H, Map, Data),
-  io:format("~w \n  ==>\n ~w\n- - - - - - - - -\n",[H,NewH]),
+  %% io:format("~w \n  ==>\n ~w\n- - - - - - - - -\n",[H,NewH]),
   {NewT, NewData2} = conv_insn_list(T, NewMap, NewData1),
   {NewH ++ NewT, NewData2};
 conv_insn_list([], _, Data) ->
@@ -221,8 +221,9 @@ conv_alub(I, Map, Data) ->
 	OverflowFlagMask = 1 bsl 7,
 	MaskInstr = hipe_epiphany:mk_alu('and', TmpStatus, TmpStatus, TmpMask),
 	ExtractOverflowFlag =
-	  [hipe_epiphany:mk_movfs(TmpStatus, status) |
-	   hipe_epiphany:mk_movi(TmpMask, OverflowFlagMask, [MaskInstr])],
+	  hipe_epiphany:mk_movi(TmpMask, OverflowFlagMask,
+				[hipe_epiphany:mk_movfs(TmpStatus, status),
+				 MaskInstr]),
 	{case RtlCond of
 	   overflow -> ne; %% non-zero
 	   not_overflow -> eq %% zero
@@ -246,8 +247,7 @@ conv_branch(I, Map, Data) ->
 		 hipe_rtl:branch_pred(I)),
   {I2, Map1, Data}.
 
-mk_branch(Src1, RtlCond, Src2, TrueLab, FalseLab, Pred) ->
-  Cond = conv_branch_cond(RtlCond),
+mk_branch(Src1, Cond, Src2, TrueLab, FalseLab, Pred) ->
   case {hipe_epiphany:is_temp(Src1), hipe_epiphany:is_temp(Src2)} of
     {false, true} -> %% Commute
       mk_branch_2(Src2, commute_cond(Cond), Src1, TrueLab, FalseLab, Pred);
@@ -384,16 +384,29 @@ mk_general_call(Dsts, Fun, Args, ContLab, ExnLab, Linkage) ->
   {RegArgs,StkArgs} = split_args(Args),
   mk_push_args(StkArgs, move_actuals(RegArgs, [CallInsn | Tail])).
 
+mk_push_args([], Tail) -> Tail;
 mk_push_args(StkArgs, Tail) ->
-  case length(StkArgs) of
-    0 ->
-      Tail;
-    _NrStkArgs ->
-      %% ETODO
-      exit({?MODULE, mk_push_args, StkArgs})
-      %% [hipe_epiphany:mk_pseudo_call_prepare(NrStkArgs) |
-      %%  mk_store_args(StkArgs, NrStkArgs * word_size(), Tail)]
-  end.
+  %% We could push the arguments with postmodify-store instructions, but since
+  %% they are not available in halfword form, this is more compact.
+  NrStkArgs = length(StkArgs),
+  [hipe_epiphany:mk_pseudo_call_prepare(NrStkArgs)
+   | mk_store_args(StkArgs, NrStkArgs, Tail)].
+
+mk_store_args([Arg|Args], PrevOffset, Tail) ->
+  Offset = PrevOffset - 1,
+  {Src,FixSrc} =
+    case hipe_epiphany:is_temp(Arg) of
+      true ->
+	{Arg, []};
+      _ ->
+	Tmp = new_tagged_temp(),
+	{Tmp, hipe_epiphany:mk_movi(Tmp, Arg)}
+    end,
+  OffsetArg = hipe_epiphany:mk_uimm11(Offset),
+  Store = hipe_epiphany:mk_str('w', Src, mk_sp(), '+', OffsetArg),
+  mk_store_args(Args, Offset, FixSrc ++ [Store | Tail]);
+mk_store_args([], _, Tail) ->
+  Tail.
 
 mk_call_results(_, [], Tail) -> Tail;
 mk_call_results(N, [Dst|Dsts], Tail) ->
@@ -491,7 +504,7 @@ mk_mem(Instr, Reg0, Base1, Base2, RtlSize, Tail) ->
 	    ldr -> fun hipe_epiphany:mk_ldr/5;
 	    str -> fun hipe_epiphany:mk_str/5
 	  end,
-  I1 ++ I2 ++ [MkFun(Size, Reg, Lhs, Sign, Rhs)] ++ Tail.
+  I1 ++ I2 ++ I3 ++ [MkFun(Size, Reg, Lhs, Sign, Rhs)] ++ Tail.
 
 conv_store(I, Map, Data) ->
   {Base, Map0} = conv_dst(hipe_rtl:store_base(I), Map),
@@ -702,10 +715,18 @@ conv_formals(N, [O|Os], Map, Res) ->
 conv_formals(_, [], Map, Res) ->
   {lists:reverse(Res), Map}.
 
+mk_sp() ->
+  hipe_epiphany:mk_temp(hipe_epiphany_registers:stack_pointer(), 'untagged').
+
 %%% new_untagged_temp -- conjure up an untagged scratch reg
 
 new_untagged_temp() ->
   hipe_epiphany:mk_new_temp('untagged').
+
+%%% new_tagged_temp -- conjure up an tagged scratch reg
+
+new_tagged_temp() ->
+  hipe_epiphany:mk_new_temp('tagged').
 
 %%% Map from RTL var/reg operands to temps.
 

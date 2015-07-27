@@ -1,0 +1,94 @@
+
+ %CopyrightBegin%
+ 
+ Copyright Ericsson AB 2015. All Rights Reserved.
+ 
+ The contents of this file are subject to the Erlang Public License,
+ Version 1.1, (the "License"); you may not use this file except in
+ compliance with the License. You should have received a copy of the
+ Erlang Public License along with this software. If not, it can be
+ retrieved online at http://www.erlang.org/.
+ 
+ Software distributed under the License is distributed on an "AS IS"
+ basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ the License for the specific language governing rights and limitations
+ under the License.
+ 
+ %CopyrightEnd%
+
+
+HiPE Epiphany ABI
+============
+This document describes aspects of HiPE's runtime system that are specific to
+the Epiphany architecture.
+
+Register Usage
+--------------
+sp and r28-r31 are reserved for the C runtime system.
+
+r6, r7, and r32 are fixed (unallocatable).
+r6 (NSP) is the current process' native stack pointer.
+r7 (HP) is the current process' heap pointer.
+r32 (P) is the current process' "Process" pointer.
+
+r0-r5, r8-r12, r14 (lr), r15-r27, r33-r63 are caller-save. They are used as
+temporary scratch registers and for function call parameters and results.
+
+The runtime system uses temporaries in specific contexts:
+r8 (TEMP_LR) is used to preserve lr around BIF calls,
+and to pass the callee address in native-to-BEAM traps.
+r9 (TEMP_ARG0) is used to preserve the return value in nbif_stack_trap_ra,
+and lr in hipe_epiphany_inc_stack (the caller saved its lr in TEMP_LR).
+
+Calling Convention
+------------------
+The first NR_ARG_REGS parameters (a tunable parameter between 0 and 8,
+inclusive) are passed in r1-r5,r16-r18.
+
+r14 contains the return address during function calls.
+
+The first NR_RET_REGS return values (a tunable parameter between 0 and 4,
+inclusive) are placed in r0-r3.
+
+ARITHMODE shall be set to 0b100 (signed integer) on function entry and exit.
+
+Stack Frame Layout
+------------------
+[From top to bottom: formals in left-to-right order, incoming return
+address, fixed-size chunk for locals & spills, variable-size area
+for actuals, outgoing return address. NSP normally points at the
+bottom of the fixed-size chunk, except during a recursive call.
+The callee pops the actuals, so no NSP adjustment at return.]
+
+Notes:
+ - If we were to enforce a double-word alignment of the stack pointer at all
+   times, that might allow us to use the double-word memory ops, making the code
+   more compact.
+
+Stack Descriptors
+-----------------
+sdesc_fsize() is the frame size excluding the return address word.
+
+Epiphany SDK Calling Conventions
+================================
+
+Reg		Status		Role
+---		------		----
+r0-r3           calleR-save     Argument/result/scratch registers.
+r4-r10          calleE-save     Local variables.
+r11             calleE-save     (fp) Local variable or frame pointer.
+r12             calleR-save     "Intra-procedure call scratch register"
+r13             fixed           (sp) Stack pointer. Must be 4-byte aligned at
+                                all times.
+r14             calleE-save     (lr) Link register or local variable.
+r15             calleE-save     Local variable.
+r16-r27         calleR-save     Scratch registers.
+r28-r31         fixed           "Reserved for constants"
+r32-r43         calleE-save     Local variables.
+r44-r63         calleR-save     Scratch registers.
+
+The stack grows from high to low addresses. A process may only access (for
+reading or writing) the closed interval of the entire stack delimited by
+[SP, (stack-base - 1)]. Stack frames must be double-word aligned.
+
+ARITHMODE is calleE-save.

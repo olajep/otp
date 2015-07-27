@@ -54,14 +54,6 @@
 
 -include("../rtl/hipe_literals.hrl").
 
-%% ETODO: delete me
--ifndef(EPIPHANY_NR_ARG_REGS).
--define(EPIPHANY_NR_ARG_REGS, 4).
--endif.
--ifndef(EPIPHANY_NR_RET_REGS).
--define(EPIPHANY_NR_RET_REGS, ?EPIPHANY_NR_ARG_REGS).
--endif.
-
 -type reg() :: non_neg_integer().
 -export_type([reg/0]).
 
@@ -131,27 +123,35 @@
 -define(R63, 63).
 -define(LAST_PRECOLOURED, 63).
 
--define(ARG0, ?R0).
--define(ARG1, ?R1).
--define(ARG2, ?R2).
--define(ARG3, ?R3).
+-define(LR, ?R14).
+-define(SP, ?R13).
+
+-define(ARG0, ?R1).
+-define(ARG1, ?R2).
+-define(ARG2, ?R3).
+-define(ARG3, ?R4).
+-define(ARG4, ?R5).
+-define(ARG5, ?R16).
+-define(ARG6, ?R17).
+-define(ARG7, ?R18).
 
 -define(TEMP1, ?R15).
 -define(TEMP2, ?R34).
 -define(TEMP3, ?R35). %% For spilling STR (INDEX) :(
 
--define(RET0, ?ARG0). %% The return registers are the argument registers
--define(RET1, ?ARG1).
--define(RET2, ?ARG2).
--define(RET3, ?ARG3).
+-define(RET0, ?R0).
+-define(RET1, ?R1).
+-define(RET2, ?R2).
+-define(RET3, ?R3).
 
--define(HEAP_POINTER, ?R32).
--define(STACK_POINTER, ?R13).
--define(PROC_POINTER, ?R33).
+-define(HEAP_POINTER, ?R7).
+%% It might be seen as a waste to put the stack pointer in a low register,
+%% especially because the pro- and epilogues don't get shorter. However, since
+%% spilling is regrettably common in HiPE code, we do buy ourselves more compact
+%% code this way.
+-define(STACK_POINTER, ?R6).
+-define(PROC_POINTER, ?R32).
 
--define(LR, ?R14).
-
-reg_name(?STACK_POINTER) -> "sp";
 reg_name(?LR) -> "lr";
 reg_name(R) when R =< ?LAST_PRECOLOURED -> [$r | integer_to_list(R)].
 
@@ -161,12 +161,13 @@ is_precoloured(R) -> R =< ?LAST_PRECOLOURED.
 
 all_precoloured() -> lists:seq(0, ?LAST_PRECOLOURED).
 
-%% ETODO: Reserve regs for C?
 fixed() -> [
 	    %% fixed global registers
 	    ?HEAP_POINTER,
 	    ?PROC_POINTER,
 	    ?STACK_POINTER,
+	    %% Reserved by C
+	    ?SP,
 	    %% "Reserved for constants" by C
 	    ?R28, ?R29, ?R30, ?R31
 	   ].
@@ -202,6 +203,10 @@ arg(N) ->
 	1 -> ?ARG1;
 	2 -> ?ARG2;
 	3 -> ?ARG3;
+	4 -> ?ARG4;
+	5 -> ?ARG5;
+	6 -> ?ARG6;
+	7 -> ?ARG7;
 	_ -> exit({?MODULE, arg, N})
       end;
      true ->
@@ -214,6 +219,10 @@ is_arg(R) ->
     ?ARG1 -> ?EPIPHANY_NR_ARG_REGS > 1;
     ?ARG2 -> ?EPIPHANY_NR_ARG_REGS > 2;
     ?ARG3 -> ?EPIPHANY_NR_ARG_REGS > 3;
+    ?ARG4 -> ?EPIPHANY_NR_ARG_REGS > 4;
+    ?ARG5 -> ?EPIPHANY_NR_ARG_REGS > 5;
+    ?ARG6 -> ?EPIPHANY_NR_ARG_REGS > 6;
+    ?ARG7 -> ?EPIPHANY_NR_ARG_REGS > 7;
     _ -> false
   end.
 

@@ -530,6 +530,7 @@ HIPE_ASM +=	$(TTF_DIR)/hipe_x86_asm.h \
 		$(TTF_DIR)/hipe_amd64_asm.h \
 		$(TTF_DIR)/hipe_sparc_asm.h \
 		$(TTF_DIR)/hipe_ppc_asm.h \
+		$(TTF_DIR)/hipe_epiphany_asm.h \
 		$(TTF_DIR)/hipe_arm_asm.h
 
 GENERATE +=	$(HIPE_ASM) \

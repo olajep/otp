@@ -77,6 +77,7 @@
 -record(movt, {dst, src}).
 -record(movfs, {dst, src}).
 -record(pseudo_call, {funv, sdesc, contlab, linkage}).
+-record(pseudo_call_prepare, {nrstkargs}).
 -record(pseudo_move, {dst, src}).
 -record(pseudo_switch, {jtab, index, labels}).
 -record(pseudo_tailcall, {funv, arity, stkargs, linkage}).
@@ -136,6 +137,8 @@
 	#pseudo_call{funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
 		     sdesc::#epiphany_sdesc{}, contlab::non_neg_integer(),
 		     linkage::linkage()}.
+-type pseudo_call_prepare() ::
+	#pseudo_call_prepare{nrstkargs :: non_neg_integer()}.
 -type pseudo_move() :: #pseudo_move{dst :: temp(),        src :: pseudo_temp()}
 		     | #pseudo_move{dst :: pseudo_temp(), src :: temp()}.
 -type pseudo_switch() ::
@@ -153,9 +156,10 @@
 -type common_instr() :: alu() | bcc() | comment() | label() | mov() | movt()
 		      | ldr() | movfs() | rts() | str().
 -type lowered_instr() :: b() | bl() | jalr() | jr() | movcc().
--type pseudo_instr() :: pseudo_call() | pseudo_move() | pseudo_switch()
-		      | pseudo_tailcall() | pseudo_tailcall_prepare()
-		      | pseudo_bcc().
+
+-type pseudo_instr() :: pseudo_call() | pseudo_call_prepare()| pseudo_move()
+		      | pseudo_switch() | pseudo_tailcall()
+		      | pseudo_tailcall_prepare() | pseudo_bcc().
 
 -type instr() :: common_instr() | lowered_instr() | pseudo_instr().
 

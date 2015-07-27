@@ -24,11 +24,6 @@
 -include("hipe_epiphany.hrl").
 -include("../rtl/hipe_literals.hrl").
 
-%% ETODO: Delete me
--ifndef(EPIPHANY_LEAF_WORDS).
--define(EPIPHANY_LEAF_WORDS, 16).
--endif.
-
 -define(FITS_SIMM11(Val), ((-16#400 =< (Val)) and ((Val) < 16#400))).
 -define(FITS_UIMM11(Val), ((0 =< (Val)) and ((Val) < 16#800))).
 
@@ -88,10 +83,8 @@ do_insn(I, LiveOut, Context, FPoff) ->
   case I of
     #pseudo_call{} ->
       do_pseudo_call(I, LiveOut, Context, FPoff);
-    %% #pseudo_call_prepare{} ->
-    %%   do_pseudo_call_prepare(I, FPoff);
-    T when is_tuple(T), element(1, T) =:= pseudo_call_prepare ->
-      exit({?MODULE, do_insn, I});
+    #pseudo_call_prepare{} ->
+      do_pseudo_call_prepare(I, FPoff);
     #pseudo_move{} ->
       {do_pseudo_move(I, Context, FPoff), FPoff};
     #pseudo_tailcall{} ->
@@ -161,11 +154,11 @@ adjust_sp(N, Rest) ->
 %%% Recursive calls.
 %%%
 
-%% do_pseudo_call_prepare(I, FPoff0) ->
-%%   %% Create outgoing arguments area on the stack.
-%%   NrStkArgs = hipe_epiphany:pseudo_call_prepare_nrstkargs(I),
-%%   Offset = NrStkArgs * word_size(),
-%%   {adjust_sp(-Offset, []), FPoff0 + Offset}.
+do_pseudo_call_prepare(I, FPoff0) ->
+  %% Create outgoing arguments area on the stack.
+  NrStkArgs = hipe_epiphany:pseudo_call_prepare_nrstkargs(I),
+  Offset = NrStkArgs * word_size(),
+  {adjust_sp(-Offset, []), FPoff0 + Offset}.
 
 do_pseudo_call(I, LiveOut, Context, FPoff0) ->
   #epiphany_sdesc{exnlab=ExnLab,arity=OrigArity} = hipe_epiphany:pseudo_call_sdesc(I),

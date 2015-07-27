@@ -23,19 +23,19 @@
 
 rtl_to_epiphany(MFA, RTL, Options) ->
   Defun1 = hipe_rtl_to_epiphany:translate(RTL),
-  io:format("~w: after translate\n", [?MODULE]),
-  hipe_epiphany_pp:pp(Defun1),
+  %% io:format("~w: after translate\n", [?MODULE]),
+  %% hipe_epiphany_pp:pp(Defun1),
 
   Defun2 = hipe_epiphany_ra:ra(Defun1, Options),
-  io:format("~w: after regalloc\n", [?MODULE]),
-  hipe_epiphany_pp:pp(Defun2),
+  %% io:format("~w: after regalloc\n", [?MODULE]),
+  %% hipe_epiphany_pp:pp(Defun2),
 
   Defun3 = hipe_epiphany_frame:frame(Defun2),
-  io:format("~w: after frame\n", [?MODULE]),
-  hipe_epiphany_pp:pp(Defun3),
+  %% io:format("~w: after frame\n", [?MODULE]),
+  %% hipe_epiphany_pp:pp(Defun3),
 
   Defun4 = hipe_epiphany_finalise:finalise(Defun3),
-  io:format("~w: after finalise\n", [?MODULE]),
+  %% io:format("~w: after finalise\n", [?MODULE]),
   pp(Defun4, MFA, Options),
 
   {native, epiphany, {unprofiled, Defun4}}.

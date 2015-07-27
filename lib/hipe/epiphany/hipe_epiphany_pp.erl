@@ -96,6 +96,11 @@ pp_insn(Dev, I, Pre) ->
     #pseudo_call{funv=FunV, sdesc=SDesc, contlab=ContLab, linkage=Linkage} ->
       io:format(Dev, "\tpseudo_call ~s # contlab .~s_~w~s ~w\n",
 		[funv(FunV), Pre, ContLab, sdesc(Pre, SDesc), Linkage]);
+    #pseudo_call_prepare{nrstkargs=NrStkArgs} ->
+      Sp = hipe_epiphany:mk_temp(hipe_epiphany_registers:stack_pointer(),
+				 'untagged'),
+      io:format(Dev, "\tadd ~s, ~s, #~w # pseudo_call_prepare\n",
+		[operand(Sp), operand(Sp), -4 * NrStkArgs]);
     #pseudo_move{dst=Dst, src=Src} ->
       io:format(Dev, "\tpseudo_move ~s, ~s\n",
 		[operand(Dst), operand(Src)]);
