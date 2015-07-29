@@ -152,6 +152,8 @@ static void hipe_check_nstack(Process *p, unsigned nwords);
 #include "hipe_ppc_glue.h"
 #elif defined(__arm__)
 #include "hipe_arm_glue.h"
+#elif defined(__epiphany__)
+#include "hipe_epiphany_glue.h"
 #endif
 
 #define BeamOpCode(Op)		((Uint)BeamOp(Op))

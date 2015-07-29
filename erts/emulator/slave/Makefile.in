@@ -53,7 +53,7 @@ CONFIGURE_CFLAGS = @CFLAGS@
 DEFS=@DEFS@ -DDISABLE_CHILD_WAITER_THREAD
 THR_DEFS=@EMU_THR_DEFS@
 THR_LIB_NAME=@EMU_THR_LIB_NAME@
-M4FLAGS=
+M4FLAGS=-I ../
 CREATE_DIRS=
 
 LDFLAGS=@LDFLAGS@
@@ -187,6 +187,7 @@ linuxCFLAGS=
 darwinCFLAGS=-DDARWIN
 noopsysCFLAGS=
 OPSYSCFLAGS=$($(OPSYS)CFLAGS)
+ARCH=@ARCH@
 
 SLAVE_FLAGS=-DERTS_SLAVE
 
@@ -355,6 +356,7 @@ HIPE_ASM +=	$(TTF_DIR)/hipe_x86_asm.h \
 		$(TTF_DIR)/hipe_amd64_asm.h \
 		$(TTF_DIR)/hipe_sparc_asm.h \
 		$(TTF_DIR)/hipe_ppc_asm.h \
+		$(TTF_DIR)/hipe_epiphany_asm.h \
 		$(TTF_DIR)/hipe_arm_asm.h
 
 GENERATE +=	$(HIPE_ASM) \
@@ -390,6 +392,7 @@ HIPE_ultrasparc_TAB=../hipe/hipe_sparc.tab
 HIPE_ppc_TAB=../hipe/hipe_ppc.tab
 HIPE_ppc64_TAB=../hipe/hipe_ppc64.tab $(HIPE_ARCH64_TAB)
 HIPE_arm_TAB=../hipe/hipe_arm.tab
+HIPE_epiphany_TAB=../hipe/hipe_epiphany.tab
 HIPE_ARCH_TAB=$(HIPE_$(ARCH)_TAB)
 BIFS += ../hipe/hipe_bif0.tab ../hipe/hipe_bif1.tab ../hipe/hipe_bif2.tab $(HIPE_ARCH_TAB)
 ifdef USE_PERFCTR
@@ -566,7 +569,30 @@ SLAVE_OBJS = \
 
 OS_OBJS += $(OBJDIR)/sys_float.o
 
-HIPE_OBJS = $(OBJDIR)/hipe_stub.o
+HIPE_ARCH64_OBJS=$(OBJDIR)/hipe_bif64.o
+
+HIPE_x86_OS_OBJS=$(HIPE_x86_$(OPSYS)_OBJS)
+HIPE_x86_OBJS=$(OBJDIR)/hipe_x86.o $(OBJDIR)/hipe_x86_glue.o $(OBJDIR)/hipe_x86_bifs.o $(OBJDIR)/hipe_x86_signal.o $(OBJDIR)/hipe_x86_stack.o $(HIPE_x86_OS_OBJS)
+HIPE_amd64_OBJS=$(OBJDIR)/hipe_amd64.o $(OBJDIR)/hipe_amd64_glue.o $(OBJDIR)/hipe_amd64_bifs.o $(OBJDIR)/hipe_x86_signal.o $(OBJDIR)/hipe_x86_stack.o $(HIPE_ARCH64_OBJS)
+HIPE_ultrasparc_OBJS=$(OBJDIR)/hipe_sparc.o $(OBJDIR)/hipe_sparc_glue.o $(OBJDIR)/hipe_sparc_bifs.o $(OBJDIR)/hipe_risc_stack.o
+HIPE_ppc_OBJS=$(OBJDIR)/hipe_ppc.o $(OBJDIR)/hipe_ppc_glue.o $(OBJDIR)/hipe_ppc_bifs.o $(OBJDIR)/hipe_risc_stack.o
+HIPE_ppc64_OBJS=$(HIPE_ppc_OBJS) $(HIPE_ARCH64_OBJS)
+HIPE_arm_OBJS=$(OBJDIR)/hipe_arm.o $(OBJDIR)/hipe_arm_glue.o $(OBJDIR)/hipe_arm_bifs.o $(OBJDIR)/hipe_risc_stack.o
+HIPE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany.o $(OBJDIR)/hipe_epiphany_glue.o $(OBJDIR)/hipe_epiphany_bifs.o $(OBJDIR)/hipe_risc_stack.o
+HIPE_noarch_OBJS=
+HIPE_ARCH_OBJS=$(HIPE_$(ARCH)_OBJS)
+
+HIPE_OBJS= \
+	$(OBJDIR)/hipe_bif1.o \
+	$(OBJDIR)/hipe_bif2.o \
+	$(OBJDIR)/hipe_debug.o \
+	$(OBJDIR)/hipe_gc.o \
+	$(OBJDIR)/hipe_mode_switch.o \
+	$(OBJDIR)/hipe_native_bif.o \
+	$(OBJDIR)/hipe_stack.o $(HIPE_ARCH_OBJS)
+ifdef USE_PERFCTR
+HIPE_OBJS += $(OBJDIR)/hipe_perfctr.o
+endif
 
 BASE_OBJS = $(RUN_OBJS) $(EMU_OBJS) $(OS_OBJS) $(SLAVE_OBJS) $(HIPE_OBJS)
 
@@ -629,8 +655,11 @@ $(BINDIR)/$(EMULATOR_EXECUTABLE).srec: $(BINDIR)/$(EMULATOR_EXECUTABLE)
 # ----------------------------------------------------------------------
 # Dependencies
 #
-Makefile: Makefile.in config.status configure
+Makefile: Makefile.in config.status configure info.mk
 	$(gen_verbose) ./config.status --file=Makefile
+
+info.mk: info.mk.in config.status configure
+	$(gen_verbose) ./config.status --file=info.mk
 
 include/config.h: config.h.in
 	$(gen_verbose) ./config.status

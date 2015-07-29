@@ -97,5 +97,8 @@ PRIMOP_LIST(am_debug_native_called, &nbif_hipe_bifs_debug_native_called)
 #if defined(__arm__)
 #include "hipe_arm_primops.h"
 #endif
+#if defined(__epiphany__)
+#include "hipe_epiphany_primops.h"
+#endif
 
 #endif /* HIPE_PRIMOPS_H */

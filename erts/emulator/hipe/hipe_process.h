@@ -38,7 +38,8 @@ struct hipe_process_state {
 #if defined(__i386__) || defined(__x86_64__)
     Eterm *ncsp;		/* Saved C stack pointer. */
 #endif
-#if defined(__sparc__) || defined(__powerpc__) || defined(__ppc__) || defined(__powerpc64__) || defined(__arm__)
+#if defined(__sparc__) || defined(__powerpc__) || defined(__ppc__) \
+    || defined(__powerpc64__) || defined(__arm__) || defined(__epiphany__)
     void (*nra)(void);		/* Native code return address. */
 #endif
     unsigned int narity;	/* Arity of BIF call, for stack walks. */

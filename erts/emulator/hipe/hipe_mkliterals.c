@@ -538,7 +538,8 @@ static const struct rts_param rts_params[] = {
 #endif
     },
     { 45, "P_NRA",
-#if defined(__sparc__) || defined(__powerpc__) || defined(__ppc__) || defined(__powerpc64__) || defined(__arm__)
+#if defined(__sparc__) || defined(__powerpc__) || defined(__ppc__) \
+    || defined(__powerpc64__) || defined(__arm__) || defined(__epiphany__)
 	1, offsetof(struct process, hipe.nra)
 #endif
     },

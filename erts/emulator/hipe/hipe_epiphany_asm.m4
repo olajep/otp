@@ -42,38 +42,54 @@ define(NR_RET_REGS,4)dnl admissible values are 0 to 4, inclusive
 /*
  * Context switching macros.
  *
+ * Note: We *must not* use #define for multi-statement macros, since ';' starts
+ *       comments rather than separates statements in Epiphany
+ *       assembler. Failure to do this will result in macros expanding to their
+ *       first instruction only!
+ *
  * RESTORE_CONTEXT and RESTORE_CONTEXT_QUICK do not affect
  * the condition register.
  */
-`#define SAVE_CONTEXT_QUICK	\
-	mov	TEMP_LR, lr'
+`#ifdef __ASSEMBLER__'
+`       .macro SAVE_CONTEXT_QUICK
+        mov	TEMP_LR, lr
+        .endm'
 
-`#define RESTORE_CONTEXT_QUICK	\
-	mov	lr, TEMP_LR'
+`       .macro RESTORE_CONTEXT_QUICK
+        mov	lr, TEMP_LR
+        .endm'
 
-`#define SAVE_CACHED_STATE	\
-        str	HP, [P, #P_HP/4];	\
-        str	NSP, [P, #P_NSP/4]'
+`       .macro SAVE_CACHED_STATE
+        str	HP, [P, #P_HP/4]
+        str	NSP, [P, #P_NSP/4]
+        .endm'
 
-`#define RESTORE_CACHED_STATE	\
-        ldr	HP, [P, #P_HP/4];	\
-        ldr	NSP, [P, #P_NSP/4]'
+`       .macro RESTORE_CACHED_STATE
+        ldr	HP, [P, #P_HP/4]
+        ldr	NSP, [P, #P_NSP/4]
+        .endm'
 
-`#define SAVE_CONTEXT_BIF	\
-	mov	TEMP_LR, lr;	\
-        str	HP, [P, #P_HP/4]'
+`       .macro SAVE_CONTEXT_BIF
+        mov	TEMP_LR, lr
+        str	HP, [P, #P_HP/4]
+        .endm'
 
-`#define RESTORE_CONTEXT_BIF	\
-        ldr	HP, [P, #P_HP/4]'
+`       .macro RESTORE_CONTEXT_BIF
+        ldr	HP, [P, #P_HP/4]
+        .endm'
 
-`#define SAVE_CONTEXT_GC	\
-	mov	TEMP_LR, lr;	\
-        str	lr, [P, #P_NRA/4];	\
-        str	NSP, [P, #P_NSP/4];	\
-        str	HP, [P, #P_HP/4]'
+`       .macro SAVE_CONTEXT_GC
+        mov	TEMP_LR, lr
+        str	lr, [P, #P_NRA/4]
+        str	NSP, [P, #P_NSP/4]
+        str	HP, [P, #P_HP/4]
+        .endm'
 
-`#define RESTORE_CONTEXT_GC	\
-        ldr	HP, [P, #P_HP/4]'
+`       .macro RESTORE_CONTEXT_GC
+        ldr	HP, [P, #P_HP/4]
+        .endm'
+
+`#endif /* __ASSEMBLER__ */'
 
 /*
  * Argument (parameter) registers.
@@ -104,9 +120,9 @@ ifelse(eval(NR_ARG_REGS >= 5),0,,
 ifelse(eval(NR_ARG_REGS >= 6),0,,
 `defarg(5,`r16')')dnl
 ifelse(eval(NR_ARG_REGS >= 7),0,,
-`defarg(5,`r17')')dnl
+`defarg(6,`r17')')dnl
 ifelse(eval(NR_ARG_REGS >= 8),0,,
-`defarg(5,`r18')')dnl
+`defarg(7,`r18')')dnl
 
 /*
  * TEMP_ARG0:
@@ -128,21 +144,28 @@ dnl X			hipe_epiphany_glue.S support		X
 dnl X								X
 dnl XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
+`#ifdef __ASSEMBLER__'
 dnl
 dnl LOAD_ARG_REGS
 dnl
-define(LAR_1,`ldr ARG$1, [P, #P_ARG$1/4] ; ')dnl
+define(LAR_1,`       ldr ARG$1, [P, #P_ARG$1/4]
+')dnl
 define(LAR_N,`ifelse(eval($1 >= 0),0,,`LAR_N(eval($1-1))LAR_1($1)')')dnl
 define(LOAD_ARG_REGS,`LAR_N(eval(NR_ARG_REGS-1))')dnl
-`#define LOAD_ARG_REGS	'LOAD_ARG_REGS
+`       .macro LOAD_ARG_REGS'
+LOAD_ARG_REGS`       .endm'
 
 dnl
 dnl STORE_ARG_REGS
 dnl
-define(SAR_1,`str ARG$1, [P, #P_ARG$1/4] ; ')dnl
+define(SAR_1,`       str ARG$1, [P, #P_ARG$1/4]
+')dnl
 define(SAR_N,`ifelse(eval($1 >= 0),0,,`SAR_N(eval($1-1))SAR_1($1)')')dnl
 define(STORE_ARG_REGS,`SAR_N(eval(NR_ARG_REGS-1))')dnl
-`#define STORE_ARG_REGS	'STORE_ARG_REGS
+`       .macro STORE_ARG_REGS'
+STORE_ARG_REGS`       .endm'
+
+`#endif /* __ASSEMBLER__ */'
 
 dnl XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 dnl X								X

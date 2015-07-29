@@ -32,6 +32,8 @@
 #include "hipe_ppc_asm.h"
 #elif defined(__sparc__)
 #include "hipe_sparc_asm.h"
+#elif defined(__epiphany__)
+#include "hipe_epiphany_asm.h"
 #endif
 
 AEXTERN(void,nbif_fail,(void));

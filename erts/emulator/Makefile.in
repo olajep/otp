@@ -577,6 +577,7 @@ HIPE_ultrasparc_TAB=hipe/hipe_sparc.tab
 HIPE_ppc_TAB=hipe/hipe_ppc.tab
 HIPE_ppc64_TAB=hipe/hipe_ppc64.tab $(HIPE_ARCH64_TAB)
 HIPE_arm_TAB=hipe/hipe_arm.tab
+HIPE_epiphany_TAB=hipe/hipe_epiphany.tab
 HIPE_ARCH_TAB=$(HIPE_$(ARCH)_TAB)
 BIFS += hipe/hipe_bif0.tab hipe/hipe_bif1.tab hipe/hipe_bif2.tab $(HIPE_ARCH_TAB)
 ifdef USE_PERFCTR
@@ -948,8 +949,15 @@ HIPE_ultrasparc_OBJS=$(OBJDIR)/hipe_sparc.o $(OBJDIR)/hipe_sparc_glue.o $(OBJDIR
 HIPE_ppc_OBJS=$(OBJDIR)/hipe_ppc.o $(OBJDIR)/hipe_ppc_glue.o $(OBJDIR)/hipe_ppc_bifs.o $(OBJDIR)/hipe_risc_stack.o
 HIPE_ppc64_OBJS=$(HIPE_ppc_OBJS) $(HIPE_ARCH64_OBJS)
 HIPE_arm_OBJS=$(OBJDIR)/hipe_arm.o $(OBJDIR)/hipe_arm_glue.o $(OBJDIR)/hipe_arm_bifs.o $(OBJDIR)/hipe_risc_stack.o
+HIPE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany.o $(OBJDIR)/hipe_epiphany_glue.o $(OBJDIR)/hipe_epiphany_bifs.o $(OBJDIR)/hipe_risc_stack.o
 HIPE_noarch_OBJS=
 HIPE_ARCH_OBJS=$(HIPE_$(ARCH)_OBJS)
+
+ifeq ($(BUILD_SLAVE_EMU), yes)
+HIPE_SLAVE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany_slave.o
+HIPE_SLAVE_ARCH_OBJS=$(HIPE_SLAVE_$(SLAVE_ARCH)_OBJS)
+HIPE_OBJS += $(HIPE_SLAVE_ARCH_OBJS)
+endif
 
 HIPE_OBJS= \
 	$(OBJDIR)/hipe_bif0.o \
@@ -1078,6 +1086,13 @@ $(OBJDIR)/hipe_arm_bifs.o:	$(TTF_DIR)/hipe_arm_bifs.S \
 # "error: r7 cannot be used in asm here" for DEBUG build.
 $(OBJDIR)/hipe_arm.o:           hipe/hipe_arm.c
 	$(V_CC) $(subst O2,O3, $(CFLAGS)) -fomit-frame-pointer $(INCLUDES) -c $< -o $@
+
+$(OBJDIR)/hipe_epiphany_glue.o:	hipe/hipe_epiphany_glue.S $(TTF_DIR)/hipe_epiphany_asm.h \
+	hipe/hipe_mode_switch.h $(TTF_DIR)/hipe_literals.h
+$(TTF_DIR)/hipe_epiphany_bifs.S:	hipe/hipe_epiphany_bifs.m4 hipe/hipe_epiphany_asm.m4 \
+	hipe/hipe_bif_list.m4 $(TARGET)/erl_bif_list.h hipe/hipe_gbif_list.h
+$(OBJDIR)/hipe_epiphany_bifs.o:	$(TTF_DIR)/hipe_epiphany_bifs.S \
+	$(TTF_DIR)/hipe_literals.h
 
 # end of HiPE section
 ########################################

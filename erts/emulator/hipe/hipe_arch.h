@@ -46,6 +46,9 @@ extern void *hipe_make_native_stub(void *beamAddress, unsigned int beamArity);
 #if defined(__arm__)
 #include "hipe_arm.h"
 #endif
+#if defined(__epiphany__)
+#include "hipe_epiphany.h"
+#endif
 
 #if !defined(AEXTERN)
 #define AEXTERN(RET,NAME,PROTO)	extern RET NAME PROTO

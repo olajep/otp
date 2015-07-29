@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2004-2011. All Rights Reserved.
+ * Copyright Ericsson AB 2015. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -16,28 +16,14 @@
  *
  * %CopyrightEnd%
  */
+/*
+ * Stack walking helpers for native stack GC procedures.
+ * Epiphany version.
+ */
+#ifndef HIPE_EPIPHANY_GC_H
+#define HIPE_EPIPHANY_GC_H
 
+#include "hipe_epiphany_asm.h"	/* for NR_ARG_REGS */
+#include "hipe_risc_gc.h"
 
-#ifndef HIPE_GC_H
-#define HIPE_GC_H
-
-#if defined(__sparc__)
-#include "hipe_sparc_gc.h"
-#endif
-#if defined(__i386__)
-#include "hipe_x86_gc.h"
-#endif
-#if defined(__x86_64__)
-#include "hipe_amd64_gc.h"
-#endif
-#if defined(__powerpc__) || defined(__ppc__) || defined(__powerpc64__)
-#include "hipe_ppc_gc.h"
-#endif
-#if defined(__arm__)
-#include "hipe_arm_gc.h"
-#endif
-#if defined(__epiphany__)
-#include "hipe_epiphany_gc.h"
-#endif
-
-#endif /* HIPE_GC_H */
+#endif /* HIPE_EPIPHANY_GC_H */

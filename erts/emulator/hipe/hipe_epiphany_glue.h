@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
- *
- * Copyright Ericsson AB 2004-2011. All Rights Reserved.
+ * 
+ * Copyright Ericsson AB 2015. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -18,26 +18,15 @@
  */
 
 
-#ifndef HIPE_GC_H
-#define HIPE_GC_H
+#ifndef HIPE_EPIPHANY_GLUE_H
+#define HIPE_EPIPHANY_GLUE_H
 
-#if defined(__sparc__)
-#include "hipe_sparc_gc.h"
-#endif
-#if defined(__i386__)
-#include "hipe_x86_gc.h"
-#endif
-#if defined(__x86_64__)
-#include "hipe_amd64_gc.h"
-#endif
-#if defined(__powerpc__) || defined(__ppc__) || defined(__powerpc64__)
-#include "hipe_ppc_gc.h"
-#endif
-#if defined(__arm__)
-#include "hipe_arm_gc.h"
-#endif
-#if defined(__epiphany__)
-#include "hipe_epiphany_gc.h"
-#endif
+#include "hipe_epiphany_asm.h"		/* for NR_ARG_REGS, EPIPHANY_LEAF_WORDS */
+#define NR_LEAF_WORDS			EPIPHANY_LEAF_WORDS
+#define HIPE_ARCH_CALL_TO_NATIVE	hipe_epiphany_call_to_native
+#define HIPE_ARCH_RETURN_TO_NATIVE	hipe_epiphany_return_to_native
+#define HIPE_ARCH_TAILCALL_TO_NATIVE	hipe_epiphany_tailcall_to_native
+#define HIPE_ARCH_THROW_TO_NATIVE	hipe_epiphany_throw_to_native
+#include "hipe_risc_glue.h"
 
-#endif /* HIPE_GC_H */
+#endif /* HIPE_EPIPHANY_GLUE_H */
