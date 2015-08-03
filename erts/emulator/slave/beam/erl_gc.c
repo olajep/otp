@@ -133,3 +133,49 @@ erts_gc_after_bif_call(Process* p, Eterm result, Eterm* regs, Uint arity)
     BUMP_REDS(p, cost);
     return result;
 }
+
+
+/* For hipe_gc.o */
+#if defined(HIPE) && defined(DEBUG)
+static int
+within2(Eterm *ptr, Process *p, Eterm *real_htop)
+{
+    ErlHeapFragment* bp = MBUF(p);
+    ErlMessage* mp = p->msg.first;
+    Eterm *htop = real_htop ? real_htop : HEAP_TOP(p);
+
+    if (OLD_HEAP(p) && (OLD_HEAP(p) <= ptr && ptr < OLD_HEND(p))) {
+        return 1;
+    }
+    if (HEAP_START(p) <= ptr && ptr < htop) {
+        return 1;
+    }
+    while (bp != NULL) {
+        if (bp->mem <= ptr && ptr < bp->mem + bp->used_size) {
+            return 1;
+        }
+        bp = bp->next;
+    }
+    while (mp) {
+	if (mp->data.attached) {
+	    ErlHeapFragment *hfp;
+	    if (is_value(ERL_MESSAGE_TERM(mp)))
+		hfp = mp->data.heap_frag;
+	    else if (is_not_nil(ERL_MESSAGE_TOKEN(mp)))
+		hfp = erts_dist_ext_trailer(mp->data.dist_ext);
+	    else
+		hfp = NULL;
+	    if (hfp && hfp->mem <= ptr && ptr < hfp->mem + hfp->used_size)
+		return 1;
+	}
+        mp = mp->next;
+    }
+    return 0;
+}
+
+int
+within(Eterm *ptr, Process *p)
+{
+    return within2(ptr, p, NULL);
+}
+#endif

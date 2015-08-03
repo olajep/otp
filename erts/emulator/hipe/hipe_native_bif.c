@@ -26,6 +26,7 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_process.h"
+#include "erl_process_lock.h"
 #include "error.h"
 #include "bif.h"
 #include "erl_bits.h"
@@ -332,7 +333,7 @@ char *hipe_bs_allocate(int len)
     bptr = erts_bin_nrml_alloc(len);
     bptr->flags = 0;
     bptr->orig_size = len;
-    erts_smp_atomic_init_nob(&bptr->refc, 1);
+    erts_refc_init(&bptr->refc, 1);
     return bptr->orig_bytes;
 }
 
@@ -585,9 +586,13 @@ void hipe_clear_timeout(Process *c_p)
 	erts_smp_proc_unlock(c_p, ERTS_PROC_LOCKS_MSG_RECEIVE);
     }
 #endif
+#ifndef ERTS_SLAVE
     if (IS_TRACED_FL(c_p, F_TRACE_RECEIVE)) {
 	trace_receive(c_p, am_timeout);
     }
+#else
+    /* ESTUB: Tracing */
+#endif
     c_p->flags &= ~F_TIMO;
     JOIN_MESSAGE(c_p);
 }

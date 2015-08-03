@@ -27,6 +27,7 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "erl_process.h"
+#include "erl_process_lock.h"
 #include "beam_load.h"	/* which includes beam_opcodes.h */
 #include "beam_catches.h"
 #include "hipe_mode_switch.h"
@@ -161,7 +162,34 @@ static void hipe_check_nstack(Process *p, unsigned nwords);
 Uint hipe_beam_pc_return[1];	/* needed in hipe_debug.c */
 Uint hipe_beam_pc_throw[1];	/* needed in hipe_debug.c */
 Uint hipe_beam_pc_resume[1];	/* needed by hipe_set_timeout() */
-static Eterm hipe_beam_catch_throw;
+#  ifndef ERTS_SLAVE
+static
+#  endif
+Eterm hipe_beam_catch_throw;
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_syms.h"
+Uint * const hipe_slave_beam_pc_return = (Uint * const)SLAVE_SYM_hipe_beam_pc_return;
+Uint * const hipe_slave_beam_pc_throw  = (Uint * const)SLAVE_SYM_hipe_beam_pc_throw;
+Uint * const hipe_slave_beam_pc_resume = (Uint * const)SLAVE_SYM_hipe_beam_pc_resume;
+static Eterm * const hipe_slave_beam_catch_throw
+    = (Eterm * const)SLAVE_SYM_hipe_beam_catch_throw;
+#endif
+
+/* ETODO: I'm just temporary */
+#ifdef ERTS_SLAVE
+void *hipe_get_remote_na(Eterm m, Eterm f, unsigned int a)
+{
+    EPIPHANY_STUB_BT();
+    return NULL;
+}
+
+int hipe_find_mfa_from_ra(const void *ra, Eterm *m, Eterm *f, unsigned int *a)
+{
+    EPIPHANY_STUB_BT();
+    return 0;
+}
+#endif
 
 void hipe_mode_switch_init(void)
 {
@@ -171,10 +199,12 @@ void hipe_mode_switch_init(void)
     hipe_beam_pc_throw[0] = BeamOpCode(op_hipe_trap_throw);
     hipe_beam_pc_resume[0] = BeamOpCode(op_hipe_trap_resume);
 
+#ifndef ERTS_SLAVE
     hipe_beam_catch_throw =
 	make_catch(beam_catches_cons(hipe_beam_pc_throw, BEAM_CATCHES_NIL));
 
     hipe_mfa_info_table_init();
+#endif /* !ERTS_SLAVE */
 }
 
 void hipe_set_call_trap(Uint *bfun, void *nfun, int is_closure)
@@ -712,3 +742,19 @@ Eterm hipe_build_stacktrace(Process *p, struct StackTrace *s)
     HRelease(p, hp_end, hp);
     return head;
 }
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void hipe_mode_switch_slave_init(void)
+{
+    // hipe_slave_arch_glue_init();
+
+    *hipe_slave_beam_catch_throw =
+	make_catch(slave_catches_cons(hipe_slave_beam_pc_throw, BEAM_CATCHES_NIL));
+
+    /* ETODO */
+    // hipe_mfa_info_table_init();
+
+    erts_fprintf(stderr, "Not initialising slave mode switch!\n");
+}
+
+#endif

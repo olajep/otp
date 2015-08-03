@@ -192,6 +192,12 @@ erts_slave_init_load(struct master_command_setup *cmd)
     slave_init_ranges();
     slave_init_atom_table();
     slave_init_node_tables();
+#ifdef HIPE
+    erts_start_staging_code_ix();
+    hipe_mode_switch_slave_init();
+    erts_end_staging_code_ix();
+    erts_commit_staging_code_ix();
+#endif
 
     if (cmd->num_instructions != num_instructions) {
 	erl_exit(1, "Error: Got %d instructions from slave emulator, expected %d\n",

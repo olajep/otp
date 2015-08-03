@@ -66,6 +66,13 @@ extern Uint hipe_beam_pc_return[];
 extern Uint hipe_beam_pc_throw[];
 extern Uint hipe_beam_pc_resume[];
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void hipe_mode_switch_slave_init(void);
+extern Uint * const hipe_slave_beam_pc_return;
+extern Uint * const hipe_slave_beam_pc_throw;
+extern Uint * const hipe_slave_beam_pc_resume;
+#endif
+
 #endif	/* ASM */
 
 #endif /* HIPE_MODE_SWITCH_H */

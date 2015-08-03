@@ -37,6 +37,8 @@
 #include "hipe_arch.h"
 #include "hipe_stack.h"
 
+#ifndef ERTS_SLAVE
+
 static void proc_unlock(Process* c_p, Process* rp)
 {
     ErtsProcLocks locks = ERTS_PROC_LOCKS_ALL;
@@ -81,11 +83,6 @@ BIF_RETTYPE hipe_bifs_show_nstack_1(BIF_ALIST_1)
     BIF_RET(am_true);
 }
 
-BIF_RETTYPE hipe_bifs_nstack_used_size_0(BIF_ALIST_0)
-{
-    BIF_RET(make_small(hipe_nstack_used(BIF_P)));
-}
-
 BIF_RETTYPE hipe_bifs_show_pcb_1(BIF_ALIST_1)
 {
     Process *rp = erts_pid2proc(BIF_P, ERTS_PROC_LOCK_MAIN,
@@ -95,6 +92,24 @@ BIF_RETTYPE hipe_bifs_show_pcb_1(BIF_ALIST_1)
     hipe_print_pcb(rp);
     proc_unlock(BIF_P, rp);
     BIF_RET(am_true);
+}
+
+BIF_RETTYPE hipe_bifs_modeswitch_debug_on_0(BIF_ALIST_0)
+{
+    hipe_modeswitch_debug = 1;
+    BIF_RET(am_true);
+}
+
+BIF_RETTYPE hipe_bifs_modeswitch_debug_off_0(BIF_ALIST_0)
+{
+    hipe_modeswitch_debug = 0;
+    BIF_RET(am_true);
+}
+#endif /* !ERTS_SLAVE */
+
+BIF_RETTYPE hipe_bifs_nstack_used_size_0(BIF_ALIST_0)
+{
+    BIF_RET(make_small(hipe_nstack_used(BIF_P)));
 }
 
 BIF_RETTYPE hipe_bifs_show_term_1(BIF_ALIST_1)
@@ -138,18 +153,6 @@ BIF_RETTYPE hipe_bifs_show_term_1(BIF_ALIST_1)
 BIF_RETTYPE hipe_bifs_in_native_0(BIF_ALIST_0)
 {
     BIF_RET(am_false);
-}
-
-BIF_RETTYPE hipe_bifs_modeswitch_debug_on_0(BIF_ALIST_0)
-{
-    hipe_modeswitch_debug = 1;
-    BIF_RET(am_true);
-}
-
-BIF_RETTYPE hipe_bifs_modeswitch_debug_off_0(BIF_ALIST_0)
-{
-    hipe_modeswitch_debug = 0;
-    BIF_RET(am_true);
 }
 
 #if defined(ERTS_ENABLE_LOCK_CHECK) && defined(ERTS_SMP)

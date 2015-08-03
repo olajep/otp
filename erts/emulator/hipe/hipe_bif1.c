@@ -36,6 +36,7 @@
 
 #define BeamOpCode(Op)	((Uint)BeamOp(Op))
 
+#ifndef ERTS_SLAVE
 BIF_RETTYPE hipe_bifs_call_count_on_1(BIF_ALIST_1)
 {
     Eterm *pc;
@@ -109,6 +110,90 @@ BIF_RETTYPE hipe_bifs_call_count_clear_1(BIF_ALIST_1)
     hcc->count = 0;
     BIF_RET(make_small(count));
 }
+
+/*
+ * HiPE hrvtime().
+ * These implementations are currently available:
+ * + On Linux with the perfctr extension we can use the process'
+ *   virtualised time-stamp counter. To enable this mode you must
+ *   pass `--with-perfctr=/path/to/perfctr' when configuring.
+ * + The fallback, which is the same as {X,_} = runtime(statistics).
+ */
+
+static double fallback_get_hrvtime(void)
+{
+    unsigned long ms_user;
+
+    elapsed_time_both(&ms_user, NULL, NULL, NULL);
+    return (double)ms_user;
+}
+
+#if USE_PERFCTR
+
+#include "hipe_perfctr.h"
+static int hrvtime_started;	/* 0: closed, +1: perfctr, -1: fallback */
+#define hrvtime_is_started()	(hrvtime_started != 0)
+
+static void start_hrvtime(void)
+{
+    if (hipe_perfctr_hrvtime_open() >= 0)
+	hrvtime_started = 1;
+    else
+	hrvtime_started = -1;
+}
+
+static void stop_hrvtime(void)
+{
+    if (hrvtime_started > 0)
+	hipe_perfctr_hrvtime_close();
+    hrvtime_started = 0;
+}
+
+static double get_hrvtime(void)
+{
+    if (hrvtime_started > 0)
+	return hipe_perfctr_hrvtime_get();
+    else
+	return fallback_get_hrvtime();
+}
+
+#else	/* !USE_PERFCTR */
+
+/*
+ * Fallback, if nothing better exists.
+ * This is the same as {X,_} = statistics(runtime), which uses
+ * times(2) on Unix systems.
+ */
+
+#define hrvtime_is_started()	1
+#define start_hrvtime()		do{}while(0)
+#define stop_hrvtime()		do{}while(0)
+#define get_hrvtime()		fallback_get_hrvtime()
+
+#endif	/* !USE_PERFCTR */
+
+BIF_RETTYPE hipe_bifs_get_hrvtime_0(BIF_ALIST_0)
+{
+    Eterm *hp;
+    Eterm res;
+    FloatDef f;
+
+    if (!hrvtime_is_started())
+	start_hrvtime();
+    f.fd = get_hrvtime();
+    hp = HAlloc(BIF_P, FLOAT_SIZE_OBJECT);
+    res = make_float(hp);
+    PUT_DOUBLE(f, hp);
+    BIF_RET(res);
+}
+
+BIF_RETTYPE hipe_bifs_stop_hrvtime_0(BIF_ALIST_0)
+{
+    stop_hrvtime();
+    BIF_RET(am_true);
+}
+
+#endif /* ERTS_SLAVE */
 
 unsigned int hipe_trap_count;
 
@@ -848,85 +933,3 @@ BIF_RETTYPE hipe_bifs_misc_timer_clear_0(BIF_ALIST_0)
 
 #undef MAKE_TIME
 #undef MAKE_MICRO_TIME
-
-/*
- * HiPE hrvtime().
- * These implementations are currently available:
- * + On Linux with the perfctr extension we can use the process'
- *   virtualised time-stamp counter. To enable this mode you must
- *   pass `--with-perfctr=/path/to/perfctr' when configuring.
- * + The fallback, which is the same as {X,_} = runtime(statistics).
- */
-
-static double fallback_get_hrvtime(void)
-{
-    unsigned long ms_user;
-
-    elapsed_time_both(&ms_user, NULL, NULL, NULL);
-    return (double)ms_user;
-}
-
-#if USE_PERFCTR
-
-#include "hipe_perfctr.h"
-static int hrvtime_started;	/* 0: closed, +1: perfctr, -1: fallback */
-#define hrvtime_is_started()	(hrvtime_started != 0)
-
-static void start_hrvtime(void)
-{
-    if (hipe_perfctr_hrvtime_open() >= 0)
-	hrvtime_started = 1;
-    else
-	hrvtime_started = -1;
-}
-
-static void stop_hrvtime(void)
-{
-    if (hrvtime_started > 0)
-	hipe_perfctr_hrvtime_close();
-    hrvtime_started = 0;
-}
-
-static double get_hrvtime(void)
-{
-    if (hrvtime_started > 0)
-	return hipe_perfctr_hrvtime_get();
-    else
-	return fallback_get_hrvtime();
-}
-
-#else	/* !USE_PERFCTR */
-
-/*
- * Fallback, if nothing better exists.
- * This is the same as {X,_} = statistics(runtime), which uses
- * times(2) on Unix systems.
- */
-
-#define hrvtime_is_started()	1
-#define start_hrvtime()		do{}while(0)
-#define stop_hrvtime()		do{}while(0)
-#define get_hrvtime()		fallback_get_hrvtime()
-
-#endif	/* !USE_PERFCTR */
-
-BIF_RETTYPE hipe_bifs_get_hrvtime_0(BIF_ALIST_0)
-{
-    Eterm *hp;
-    Eterm res;
-    FloatDef f;
-
-    if (!hrvtime_is_started())
-	start_hrvtime();
-    f.fd = get_hrvtime();
-    hp = HAlloc(BIF_P, FLOAT_SIZE_OBJECT);
-    res = make_float(hp);
-    PUT_DOUBLE(f, hp);
-    BIF_RET(res);
-}
-
-BIF_RETTYPE hipe_bifs_stop_hrvtime_0(BIF_ALIST_0)
-{
-    stop_hrvtime();
-    BIF_RET(am_true);
-}

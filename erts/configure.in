@@ -649,7 +649,7 @@ fi
 case $chk_opsys_ in
     win32)			OPSYS=win32;;
     solaris2.*|SunOS5.*)	OPSYS=sol2;;
-    linux|Linux)		OPSYS=linux;;
+    linux|linux-*|Linux)	OPSYS=linux;;
     darwin|Darwin)		OPSYS=darwin;;
     freebsd|FreeBSD)		OPSYS=freebsd;;
     *)				OPSYS=noopsys
@@ -677,6 +677,7 @@ case $chk_arch_ in
     ppc)	ARCH=ppc;;
     ppc64)	ARCH=ppc64;;
     "Power Macintosh")	ARCH=ppc;;
+    arm)	ARCH=arm;;
     armv5b)	ARCH=arm;;
     armv5teb)	ARCH=arm;;
     armv5tel)	ARCH=arm;;
