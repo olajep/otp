@@ -1,0 +1,7 @@
+#!/bin/sh
+
+if [ -x ${ERL_TOP}/erts/emulator/runmkliterals ]; then
+    exec ${ERL_TOP}/erts/emulator/runmkliterals "$@"
+else
+    exec "$@"
+fi

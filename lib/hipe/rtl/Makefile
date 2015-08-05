@@ -131,10 +131,13 @@ endif
 
 
 HIPE_MKLITERALS=$(ERL_TOP)/bin/$(TARGET)/hipe_mkliterals$(TYPE_STR)$(FLAVOR_STR)
+HIPE_RUNMKLITERALS=$(ERL_TOP)/erts/emulator/utils/hipe_runmkliterals
 
 
 hipe_literals.hrl: $(HIPE_MKLITERALS)
-	$(gen_verbose)$(HIPE_MKLITERALS) $(MKLIT_FLAGS) -e > hipe_literals.hrl
+	$(gen_verbose)$(HIPE_RUNMKLITERALS) \
+		$(HIPE_MKLITERALS) $(MKLIT_FLAGS) -e > hipe_literals.hrl && \
+		[ -s $@ ] || (ret=$$?; rm -f $@ && exit $$ret)
 
 # Need to generate hipe.hrl from one and only one target in one and only
 # one makefile; otherwise, clearmake will force rebuilds of hipe over and

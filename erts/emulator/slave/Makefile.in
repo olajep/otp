@@ -635,7 +635,8 @@ $(OBJDIR)/hipe_mkliterals.o: ../hipe/hipe_mkliterals.c $(HIPE_ASM) $(TTF_DIR)/er
 		$(INCLUDES) -c ../hipe/hipe_mkliterals.c -o $@
 
 $(TTF_DIR)/hipe_literals.h:	$(BINDIR)/hipe_mkliterals$(TF_MARKER)
-	$(gen_verbose)e-run $(BINDIR)/hipe_mkliterals$(TF_MARKER) > $@
+	$(gen_verbose)e-run $(BINDIR)/hipe_mkliterals$(TF_MARKER) > $@ && \
+		[ -s $@ ] || (ret=$$?; rm -f $@ && exit $$ret)
 
 # end of HiPE section
 ########################################
