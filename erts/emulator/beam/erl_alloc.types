@@ -334,6 +334,10 @@ type	SL_MPATHS	SHORT_LIVED	SYSTEM		sl_migration_paths
 # Currently most hipe code use this type.
 type	HIPE		SYSTEM		SYSTEM		hipe_data
 
++if slave
+type	HIPE_SLAVE	SLAVE		SYSTEM		hipe_slave_data
++endif
+
 +endif
 
 +if heap_frag_elim_test

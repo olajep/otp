@@ -22,6 +22,11 @@ changecom(`/*', `*/')dnl
 `#ifndef HIPE_EPIPHANY_ASM_H
 #define HIPE_EPIPHANY_ASM_H'
 
+`#ifdef __ASSEMBLER__'
+/* We need the literals already for the context switching macros. */
+`#  include' "hipe_literals.h"
+`#endif'
+
 /*
  * Tunables.
  */
@@ -198,5 +203,37 @@ define(NBIF_ARG,`ifelse(eval($3 >= NR_ARG_REGS),0,`NBIF_REG_ARG($1,$3)',`NBIF_ST
 `/* #define NBIF_ARG_5_3	'NBIF_ARG(r4,5,3)` */'
 `/* #define NBIF_ARG_5_4	'NBIF_ARG(r5,5,4)` */'
 
+dnl
+dnl NBIF_RET(ARITY)
+dnl Generates a return from a native BIF, taking care to pop
+dnl any stacked formal parameters.
+dnl May only be used in BIF/primop wrappers where SAVE_CONTEXT
+dnl has saved LR in TEMP_LR.
+dnl
+define(NSP_RETN,`add	NSP, NSP, #$1
+        jr	TEMP_LR')dnl
+define(NSP_RET0,`jr	TEMP_LR')dnl
+define(RET_POP,`ifelse(eval($1 > NR_ARG_REGS),0,0,eval(4*($1 - NR_ARG_REGS)))')dnl
+define(NBIF_RET_N,`ifelse(eval($1),0,`NSP_RET0',`NSP_RETN($1)')')dnl
+define(NBIF_RET,`NBIF_RET_N(eval(RET_POP($1)))')dnl
+`/* #define NBIF_RET_0	'NBIF_RET(0)` */'
+`/* #define NBIF_RET_1	'NBIF_RET(1)` */'
+`/* #define NBIF_RET_2	'NBIF_RET(2)` */'
+`/* #define NBIF_RET_3	'NBIF_RET(3)` */'
+`/* #define NBIF_RET_5	'NBIF_RET(5)` */'
+
+dnl
+dnl QUICK_CALL_RET(CFUN,ARITY)
+dnl Used in nocons_nofail and noproc primop interfaces to optimise
+dnl      SAVE_CONTEXT_QUICK; bl CFUN; RESTORE_CONTEXT_QUICK; NBIF_RET(ARITY).
+dnl
+define(NBIF_POP_N,`ifelse(eval($1),0,`',`add NSP, NSP, #$1
+')')dnl
+define(QUICK_CALL_RET,`NBIF_POP_N(eval(RET_POP($2)))b $1')dnl
+`/* #define QUICK_CALL_RET_F_0 'QUICK_CALL_RET(F,0)` */'
+`/* #define QUICK_CALL_RET_F_1 'QUICK_CALL_RET(F,1)` */'
+`/* #define QUICK_CALL_RET_F_2 'QUICK_CALL_RET(F,2)` */'
+`/* #define QUICK_CALL_RET_F_3 'QUICK_CALL_RET(F,3)` */'
+`/* #define QUICK_CALL_RET_F_5 'QUICK_CALL_RET(F,5)` */'
 
 `#endif /* HIPE_EPIPHANY_ASM_H */'

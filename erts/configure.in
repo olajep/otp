@@ -5025,11 +5025,11 @@ if test X$enable_slave_emulator != Xno; then
    fi
 fi
 
-ERTS_BUILD_SLAVE_EMU=no
+SLAVE_ENABLED=
 if test X$enable_slave_emulator != Xno; then
-   ERTS_BUILD_SLAVE_EMU=yes
+   SLAVE_ENABLED=yes
 fi
-AC_SUBST(ERTS_BUILD_SLAVE_EMU)
+AC_SUBST(SLAVE_ENABLED)
 
 dnl ----------------------------------------------------------------------
 dnl Output the result.

@@ -29,6 +29,7 @@
 #include "erl_process_lock.h"
 #include "error.h"
 #include "bif.h"
+#include "big.h"
 #include "erl_bits.h"
 #include "erl_binary.h"
 #include "hipe_mode_switch.h"
@@ -602,4 +603,42 @@ void hipe_atomic_inc(int *counter)
     erts_smp_atomic_inc_nob((erts_smp_atomic_t*)counter);
 }
 
+#endif
+
+/* XXX: this is really a primop, not a BIF */
+BIF_RETTYPE hipe_conv_big_to_float(BIF_ALIST_1)
+{
+    Eterm res;
+    Eterm *hp;
+    FloatDef f;
+
+    if (is_not_big(BIF_ARG_1))
+	BIF_ERROR(BIF_P, BADARG);
+    if (big_to_double(BIF_ARG_1, &f.fd) < 0)
+	BIF_ERROR(BIF_P, BADARG);
+    hp = HAlloc(BIF_P, FLOAT_SIZE_OBJECT);
+    res = make_float(hp);
+    PUT_DOUBLE(f, hp);
+    BIF_RET(res);
+}
+
+
+#ifdef NO_FPE_SIGNALS
+
+/*
+   This is the current solution to make hipe run without FPE.
+   The native code is the same except that a call to this primop
+   is made after _every_ float operation to check the result.
+   The native fcheckerror still done later will detect if an
+   "emulated" FPE has occured.
+   We use p->hipe.float_result to avoid passing a 'double' argument,
+   which has its own calling convention (on amd64 at least).
+   Simple and slow...
+*/
+void hipe_emulate_fpe(Process* p)
+{
+    if (!isfinite(p->hipe.float_result)) {
+	p->fp_exception = 1;
+    }
+}
 #endif

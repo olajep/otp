@@ -192,7 +192,7 @@ erts_realloc_binary(Eterm bin, size_t size)
     }
     return bin;
 }
-#endif
+#endif /* !ERTS_SLAVE */
 
 byte*
 erts_get_aligned_binary_bytes_extra(Eterm bin, byte** base_ptr, ErtsAlcType_t allocator, unsigned extra)
@@ -475,8 +475,6 @@ static BIF_RETTYPE binary_to_list_continue(BIF_ALIST_1)
 				1);
 }
 
-HIPE_WRAPPER_BIF_DISABLE_GC(binary_to_list, 1)
-
 BIF_RETTYPE binary_to_list_1(BIF_ALIST_1)
 {
     Eterm real_bin;
@@ -504,8 +502,6 @@ BIF_RETTYPE binary_to_list_1(BIF_ALIST_1)
     error:
 	BIF_ERROR(BIF_P, BADARG);
 }
-
-HIPE_WRAPPER_BIF_DISABLE_GC(binary_to_list, 3)
 
 BIF_RETTYPE binary_to_list_3(BIF_ALIST_3)
 {
@@ -536,8 +532,6 @@ BIF_RETTYPE binary_to_list_3(BIF_ALIST_3)
     error:
 	BIF_ERROR(BIF_P, BADARG);
 }
-
-HIPE_WRAPPER_BIF_DISABLE_GC(bitstring_to_list, 1)
 
 BIF_RETTYPE bitstring_to_list_1(BIF_ALIST_1)
 {
@@ -903,14 +897,10 @@ BIF_RETTYPE erts_list_to_binary_bif(Process *c_p, Eterm arg, Export *bif)
     return ret;
 }
 
-HIPE_WRAPPER_BIF_DISABLE_GC(list_to_binary, 1)
-
 BIF_RETTYPE list_to_binary_1(BIF_ALIST_1)
 {
     return erts_list_to_binary_bif(BIF_P, BIF_ARG_1, bif_export[BIF_list_to_binary_1]);
 }
-
-HIPE_WRAPPER_BIF_DISABLE_GC(iolist_to_binary, 1)
 
 BIF_RETTYPE iolist_to_binary_1(BIF_ALIST_1)
 {
@@ -923,8 +913,6 @@ BIF_RETTYPE iolist_to_binary_1(BIF_ALIST_1)
 static int bitstr_list_len(ErtsIOListState *);
 static ErlDrvSizeT list_to_bitstr_buf_yielding(ErtsIOList2BufState *);
 static ErlDrvSizeT list_to_bitstr_buf_not_yielding(ErtsIOList2BufState *);
-
-HIPE_WRAPPER_BIF_DISABLE_GC(list_to_bitstring, 1)
 
 BIF_RETTYPE list_to_bitstring_1(BIF_ALIST_1)
 {
@@ -1013,7 +1001,13 @@ BIF_RETTYPE list_to_bitstring_1(BIF_ALIST_1)
 
     return ret;
 }
-#endif
+#endif /* !ERTS_SLAVE */
+HIPE_WRAPPER_BIF_DISABLE_GC(binary_to_list, 1)
+HIPE_WRAPPER_BIF_DISABLE_GC(binary_to_list, 3)
+HIPE_WRAPPER_BIF_DISABLE_GC(bitstring_to_list, 1)
+HIPE_WRAPPER_BIF_DISABLE_GC(list_to_binary, 1)
+HIPE_WRAPPER_BIF_DISABLE_GC(iolist_to_binary, 1)
+HIPE_WRAPPER_BIF_DISABLE_GC(list_to_bitstring, 1)
 
 BIF_RETTYPE split_binary_2(BIF_ALIST_2)
 {
@@ -1542,4 +1536,4 @@ bitstr_list_len(ErtsIOListState *state)
     ESTACK_SAVE(s, &state->estack);
     return ERTS_IOLIST_YIELD;
 }
-#endif
+#endif /* !ERTS_SLAVE */

@@ -549,7 +549,7 @@ RUN_OBJS = \
 	$(OBJDIR)/atom.o		$(OBJDIR)/erl_map.o \
 	$(OBJDIR)/erl_node_tables.o	$(OBJDIR)/erl_process_dict.o \
 	$(OBJDIR)/erl_unicode.o		$(OBJDIR)/binary.o \
-	$(OBJDIR)/erl_math.o
+	$(OBJDIR)/erl_math.o		$(OBJDIR)/external.o
 
 OS_OBJS = \
 	$(OBJDIR)/elib_memmove.o	$(OBJDIR)/sys.o \

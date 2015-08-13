@@ -24,6 +24,7 @@
 
 #include "sys.h"
 #include "slave_bif.h"
+#include "bif.h"
 
 #ifdef DEBUG
 #  include "epiphany.h"
@@ -155,3 +156,22 @@ slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     }
 SLAVE_PROXIED_BIFS_DEFINER
 #undef X
+
+/* Some bif modules also contain these wrappers */
+HIPE_WRAPPER_BIF_DISABLE_GC(binary_list_to_bin, 1)
+
+#ifdef HIPE
+/* We'd prefer if race-free table access was available natively */
+Eterm
+hipe_find_na_or_make_stub(Process *p, Eterm *args)
+{
+    EPIPHANY_STUB_BT();
+    return THE_NON_VALUE;
+}
+Eterm
+hipe_nonclosure_address(Process *p, Eterm *args)
+{
+    EPIPHANY_STUB_BT();
+    return THE_NON_VALUE;
+}
+#endif

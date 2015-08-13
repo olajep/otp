@@ -25,16 +25,17 @@
 #include "global.h"
 #include "erl_binary.h"
 
-#include "hipe_arch.h"
 #include "hipe_native_bif.h"	/* nbif_callemu() */
 #include "hipe_bif0.h"
 
 #ifndef HIPE_EPIPHANY_C_SLAVE_MODE
+#  include "hipe_arch.h"
 #  ifndef ERTS_SLAVE
 #    error This module only supports slave mode
 #  endif
 #  define GLOBAL_HIPE_FUN(Name) hipe_ ## Name
 #else
+#  include "hipe_slave.h"
 #  define GLOBAL_HIPE_FUN(Name) hipe_slave_ ## Name
 #endif
 
@@ -82,8 +83,10 @@ reachable_pcrel(void *ptr, void *from_start, Uint from_len)
 {
     const Uint farthest_distance = (1<<(23+1)) - 1;
     return from_len < farthest_distance
-	&& ABS(ptr - from_start)              < from_len
-	&& ABS(ptr - (from_start + from_len)) < from_len;
+	&& llabs((long long)(Uint)ptr - (Uint)from_start)
+	    < farthest_distance
+	&& llabs((long long)(Uint)ptr - (Uint)(from_start + from_len))
+	    < farthest_distance;
 }
 
 static Uint32 *
@@ -96,26 +99,34 @@ try_alloc(Uint nrbytes, int nrcallees, Eterm callees, Uint32 **trampvec)
      * There's no memory protection to deal with on Epiphany -- just use the
      * shared memory allocator!
      */
-    address = erts_alloc(ERTS_ALC_T_SLAVE_NATIVE_CODE, nrbytes);
+    address = erts_alloc(ERTS_ALC_T_HIPE_SLAVE, nrbytes);
     if (!address) return NULL;
 
     for (trampnr = 1; trampnr <= nrcallees; ++trampnr) {
-	Eterm mfa = tuple_val(callees)[trampnr];
-	Eterm m = tuple_val(mfa)[1];
-	Eterm f = tuple_val(mfa)[2];
-	unsigned int a = unsigned_val(tuple_val(mfa)[3]);
-	Uint32 *trampoline = hipe_mfa_get_trampoline(m, f, a);
-	ASSERT(trampoline);
-	if (!reachable_pcrel(trampoline, address, nrbytes)) {
+	Eterm m, f, mfa = tuple_val(callees)[trampnr];
+	unsigned int a;
+	Uint32 *trampoline;
+	if (is_atom(mfa))
+	    trampoline = hipe_primop_get_trampoline(mfa);
+	else {
+	    m = tuple_val(mfa)[1];
+	    f = tuple_val(mfa)[2];
+	    a = unsigned_val(tuple_val(mfa)[3]);
+	    trampoline = hipe_mfa_get_trampoline(m, f, a);
+	}
+	if (!trampoline || !reachable_pcrel(trampoline, address, nrbytes)) {
 	    /* We expect this case to be fairly rare */
-	    trampoline = erts_alloc(ERTS_ALC_T_SLAVE_NATIVE_CODE,
+	    trampoline = erts_alloc(ERTS_ALC_T_HIPE_SLAVE,
 				    3 * sizeof(Uint32));
 	    trampoline[0] = LITTLE32(0x2002800b); /* mov  r12, 0 */
 	    trampoline[1] = LITTLE32(0x3002800b); /* movt r12, 0 */
 	    trampoline[2] = LITTLE32(0x0402114f); /* jr   r12 */
 	    /* No icache and coherent DRAM access on the Epiphany; no flushing
 	     * required. */
-	    hipe_mfa_set_trampoline(m, f, a, trampoline);
+	    if (is_atom(mfa))
+		hipe_primop_set_trampoline(mfa, trampoline);
+	    else
+		hipe_mfa_set_trampoline(m, f, a, trampoline);
 	}
 	trampvec[trampnr-1] = trampoline;
     }
@@ -128,7 +139,7 @@ GLOBAL_HIPE_FUN(alloc_code)(Uint nrbytes, Eterm callees, Eterm *trampolines,
 {
     int nrcallees;
     Eterm trampvecbin;
-    Uint32 **trampvec;
+    Uint32 **trampvec, *address;
 
     nrcallees = check_callees(callees);
     if (nrcallees < 0)
@@ -136,20 +147,20 @@ GLOBAL_HIPE_FUN(alloc_code)(Uint nrbytes, Eterm callees, Eterm *trampolines,
     trampvecbin = new_binary(p, NULL, nrcallees*sizeof(Uint32*));
     trampvec = (Uint32**)binary_bytes(trampvecbin);
 
-    address = try_alloc(nrwords, nrcallees, callees, trampvec);
+    address = try_alloc(nrbytes, nrcallees, callees, trampvec);
     if (address) {
 	*trampolines = trampvecbin;
     }
     return address;
 }
 
-static unsigned int *alloc_stub(Uint nrbytes)
+static Uint32 *alloc_stub(Uint nrbytes)
 {
-    return try_alloc(nrbytes, 0, NIL, NULL;)
+    return try_alloc(nrbytes, 0, NIL, NULL);
 }
 
 #define EMIT16(P,C) ({				    \
-	    unsigned char *__p = (P);		    \
+	    char *__p = (P);			    \
 	    Uint16 __c = (C);			    \
 	    *(__p++) = __c & 0xff;		    \
 	    *(__p++) = __c >> 8;		    \
@@ -159,7 +170,7 @@ static unsigned int *alloc_stub(Uint nrbytes)
 /* This macro must deal with a misaligned P, we can't simply cast it to Uint32*
  * and write to it. */
 #define EMIT32(P,C) ({				    \
-	    unsigned char *__p = (P);		    \
+	    char *__p = (P);			    \
 	    Uint32 __c = (C);			    \
 	    *(__p++) =  __c        & 0xff;	    \
 	    *(__p++) = (__c >> 8)  & 0xff;	    \
@@ -168,13 +179,13 @@ static unsigned int *alloc_stub(Uint nrbytes)
 	    (P) = __p;				    \
 	})
 
-static Uint16 uimm8(Uint8 immediate) {
-    return immediate << 5;
+static Uint16 uimm8(char immediate) {
+    return (Uint16)immediate << 5;
 }
 
 static Uint32 uimm16(Uint16 immediate) {
     return uimm8(immediate & 0xff)
-	| ((immediate >> 8) << 20);
+	| (((Uint32)immediate >> 8) << 20);
 }
 
 static Uint32 simm24(Sint32 immediate) {
@@ -217,8 +228,8 @@ int GLOBAL_HIPE_FUN(patch_insn)(void *address, Uint32 value, Eterm type)
 void *
 GLOBAL_HIPE_FUN(make_native_stub)(void *beamAddress, unsigned int beamArity)
 {
-    unsigned char *ret, *code;
-    ret = code = alloc_stub(3 * 4 + 2);
+    char *ret, *code;
+    ret = code = (char*)alloc_stub(3 * 4 + 2);
 
     /*
      * Native code calls BEAM via a stub looking as follows:
@@ -240,13 +251,13 @@ GLOBAL_HIPE_FUN(make_native_stub)(void *beamAddress, unsigned int beamArity)
 	abort();
 
     /* mov r8, %low(beamAddress) */
-    EMIT32(code, 0x2002000b | uimm16(beamAddress & 0xffff));
+    EMIT32(code, 0x2002000b | uimm16((Uint)beamAddress & 0xffff));
     /* mov r0, #beamArity*/
     EMIT16(code, 0x0003 | uimm8(beamArity));
     /* movt r8, %high(beamAddress) */
-    EMIT32(code, 0x3002000b | uimm16(beamAddress >> 16));
+    EMIT32(code, 0x3002000b | uimm16((Uint)beamAddress >> 16));
     /* b nbif_callemu */
-    EMIT32(code, 0x000000e8 | simm24((&nbif_callemu - code) >> 1));
+    EMIT32(code, 0x000000e8 | simm24(((char*)&nbif_callemu - code) >> 1));
 
     return ret;
 }
@@ -254,7 +265,6 @@ GLOBAL_HIPE_FUN(make_native_stub)(void *beamAddress, unsigned int beamArity)
 int
 GLOBAL_HIPE_FUN(patch_call)(void *callAddress, void *destAddress, void *trampoline)
 {
-    Sint32 destOffset = ;
     if (reachable_pcrel(destAddress, callAddress, 0)) {
 	/* The destination can be reached with a b/bl instruction.
 	   This is typical for nearby Erlang code. */
@@ -265,7 +275,7 @@ GLOBAL_HIPE_FUN(patch_call)(void *callAddress, void *destAddress, void *trampoli
 	if (reachable_pcrel(trampoline, callAddress, 0)) {
 	    /* Update the trampoline's address computation.
 	       (May be redundant, but we can't tell.) */
-	    patch_li(trampoline, destAddress);
+	    patch_li(trampoline, (Uint32)destAddress);
 	    /* Update this call site. */
 	    patch_simm24(callAddress, (trampoline - callAddress) >> 1);
 	} else {
@@ -277,8 +287,9 @@ GLOBAL_HIPE_FUN(patch_call)(void *callAddress, void *destAddress, void *trampoli
 
 #endif /* !ERTS_SLAVE */
 
+#ifndef HIPE_EPIPHANY_C_SLAVE_MODE
 void
-GLOBAL_HIPE_FUN(arch_print_pcb)(struct hipe_process_state *p)
+hipe_arch_print_pcb(struct hipe_process_state *p)
 {
 #define U(n,x) \
     printf(" % 4d | %s | 0x%0*lx | %*s |\r\n", \
@@ -288,3 +299,4 @@ GLOBAL_HIPE_FUN(arch_print_pcb)(struct hipe_process_state *p)
     U("narity     ", narity);
 #undef U
 }
+#endif

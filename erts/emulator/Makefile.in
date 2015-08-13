@@ -216,14 +216,14 @@ endif
 
 ERTS_ENABLE_KERNEL_POLL=@ERTS_ENABLE_KERNEL_POLL@
 
-BUILD_SLAVE_EMU=no
-ifeq (@ERTS_BUILD_SLAVE_EMU@, yes)
+BUILD_SLAVE=
+ifdef SLAVE_ENABLED
 # We only include slave support in the smp build
 ifeq ($(FLAVOR),smp)
 # This script requires $(TF_MARKER), so we include it down here
 include slave/info.mk
 
-BUILD_SLAVE_EMU=yes
+BUILD_SLAVE=yes
 ENABLE_ALLOC_TYPE_VARS += slave
 FLAVOR_FLAGS+=-DERTS_SLAVE_EMU_ENABLED
 endif
@@ -465,7 +465,7 @@ clean:
 	$(RM) -rf zlib/obj/$(TARGET)
 	$(RM) -rf bin/$(TARGET)
 	cd $(ERTS_LIB_DIR) && $(MAKE) clean
-ifeq ($(BUILD_SLAVE_EMU), yes)
+ifdef BUILD_SLAVE
 	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) clean )
 endif
 
@@ -611,7 +611,7 @@ GENERATE += $(TARGET)/erl_version.h
 $(TTF_DIR)/driver_tab.c: Makefile.in utils/make_driver_tab
 	$(gen_verbose)LANG=C $(PERL) utils/make_driver_tab -o $@ -nifs $(STATIC_NIF_LIBS) -drivers $(DRV_OBJS) $(STATIC_DRIVER_LIBS)
 
-ifeq ($(BUILD_SLAVE_EMU), yes)
+ifdef BUILD_SLAVE
 # Poor mans cross-architecture linking; we generate a header file that, for each
 # symbol [symbol] in the slave emulator, defines SLAVE_SYM_[symbol] to a numeric
 # literal of the address of [symbol].
@@ -953,10 +953,10 @@ HIPE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany.o $(OBJDIR)/hipe_epiphany_glue.o $(OB
 HIPE_noarch_OBJS=
 HIPE_ARCH_OBJS=$(HIPE_$(ARCH)_OBJS)
 
-ifeq ($(BUILD_SLAVE_EMU), yes)
+ifdef BUILD_SLAVE
 HIPE_SLAVE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany_slave.o
 HIPE_SLAVE_ARCH_OBJS=$(HIPE_SLAVE_$(SLAVE_ARCH)_OBJS)
-HIPE_OBJS += $(HIPE_SLAVE_ARCH_OBJS)
+HIPE_ARCH_OBJS += $(HIPE_SLAVE_ARCH_OBJS)
 endif
 
 HIPE_OBJS= \
@@ -975,7 +975,7 @@ ifdef HIPE_ENABLED
 EXTRA_BASE_OBJS += $(HIPE_OBJS)
 endif
 
-ifeq ($(BUILD_SLAVE_EMU), yes)
+ifdef BUILD_SLAVE
 SLAVE_OBJS = \
 	$(OBJDIR)/slave_alloc.o \
 	$(OBJDIR)/slave_bif.o \
@@ -1099,7 +1099,7 @@ $(OBJDIR)/hipe_epiphany_bifs.o:	$(TTF_DIR)/hipe_epiphany_bifs.S \
 # end of HiPE section
 ########################################
 
-ifeq ($(BUILD_SLAVE_EMU), yes)
+ifdef BUILD_SLAVE
 
 $(SLAVE_EXECUTABLE): FORCE
 	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) )

@@ -61,6 +61,12 @@ HIPE_ENABLED=@HIPE_ENABLED@
 NATIVE_LIBS_ENABLED=@NATIVE_LIBS_ENABLED@
 
 # ----------------------------------------------------
+#	Slave (co-processor) runtime
+# ----------------------------------------------------
+
+SLAVE_ENABLED=@SLAVE_ENABLED@
+
+# ----------------------------------------------------
 #	Command macros
 # ----------------------------------------------------
 INSTALL         = @INSTALL@

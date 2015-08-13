@@ -17,4 +17,15 @@
  * %CopyrightEnd%
  */
 
-PRIMOP_LIST(am_inc_stack_0, hipe_epiphany_inc_stack)
+#ifdef HAVE_CONFIG_H
+#  include "config.h"
+#endif
+
+#include "sys.h"
+#include "global.h"
+#include "bif.h"
+
+HIPE_WRAPPER_BIF_DISABLE_GC(term_to_binary, 1)
+HIPE_WRAPPER_BIF_DISABLE_GC(term_to_binary, 2)
+HIPE_WRAPPER_BIF_DISABLE_GC(binary_to_term, 1)
+HIPE_WRAPPER_BIF_DISABLE_GC(binary_to_term, 2)

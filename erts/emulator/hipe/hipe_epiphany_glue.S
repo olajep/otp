@@ -37,40 +37,40 @@
  * - 4 bytes to pad the frame size to a multiple of 8
  * - 4 bytes for saving ARITHMODE and RMODE.
  * - 22*4 == 88 bytes for saving r4-r11, r14-r15, r32-r43
- * - 2*4 == 8 bytes for calls to hipe_bs_put_{big_integer,small_float}.
+ * - 4*4 == 16 bytes for calls to hipe_bs_put_{big_integer,small_float}.
  *   They take 5-6 parameter words: 4 in registers and 1-2 on the stack.
  *   (They take 5 regular parameters, and an additional P parameter on SMP.)
  */
 	.macro ENTER_FROM_C
-	sub	sp,  sp, #26*4
-	strd	r14, [sp, #7]
+	sub	sp,  sp, #28*4
+	strd	r14, [sp, #8]
 	bl	.enter
 	.endm
 /*
  * Note: always use the ENTER_FROM_C macro rather than directly calling .enter
  */
 .enter:
-	strd	r4,  [sp, #11]
-	strd	r6,  [sp, #10]
-	strd	r8,  [sp, #9]
-	strd	r10, [sp, #8]
-	strd	r32, [sp, #6]
-	strd	r34, [sp, #5]
-	strd	r36, [sp, #4]
-	strd	r38, [sp, #3]
-	strd	r40, [sp, #2]
+	strd	r4,  [sp, #12]
+	strd	r6,  [sp, #11]
+	strd	r8,  [sp, #10]
+	strd	r10, [sp, #9]
+	strd	r32, [sp, #7]
+	strd	r34, [sp, #6]
+	strd	r36, [sp, #5]
+	strd	r38, [sp, #4]
+	strd	r40, [sp, #3]
 	/* Save and set ARITHMODE */
 	mov	r4,  %low(#0b100 << 17)
 	/* This store was switched with the *
 	 * mov above to avoid a RaW stall. */
-	strd	r42, [sp, #1]
+	strd	r42, [sp, #2]
 	movt	r4,  %high(#0b100 << 17)
 	gid
 	movfs	r5,  config
 	orr	r6,  r5, r4
 	movts	config, r6
 	gie
-	str	r5,  [sp, #24]
+	str	r5,  [sp, #26]
 	mov	P,   r0
 	RESTORE_CACHED_STATE
 	rts
@@ -92,7 +92,7 @@
 .nosave_exit:
 	/* restore RMODE&ARITHMODE, callee-save registers, drop frame, return */
 	mov	r4,  %low(#~((0b111 << 17) | 1))
-	ldr	r5,  [sp, #24]
+	ldr	r5,  [sp, #26]
 	movt	r4,  %high(#~((0b111 << 17) | 1))
 	gid
 	movfs	r6, config
@@ -101,18 +101,18 @@
 	eor	r6, r6, r5
 	movts	config, r6
 	gie
-	ldrd	r42, [sp, #1]
-	ldrd	r40, [sp, #2]
-	ldrd	r38, [sp, #3]
-	ldrd	r36, [sp, #4]
-	ldrd	r34, [sp, #5]
-	ldrd	r32, [sp, #6]
-	ldrd	r14, [sp, #7]
-	ldrd	r10, [sp, #8]
-	ldrd	r8,  [sp, #9]
-	ldrd	r6,  [sp, #10]
-	ldrd	r4,  [sp, #11]
-	add	sp,  sp, #26*4
+	ldrd	r42, [sp, #2]
+	ldrd	r40, [sp, #3]
+	ldrd	r38, [sp, #4]
+	ldrd	r36, [sp, #5]
+	ldrd	r34, [sp, #6]
+	ldrd	r32, [sp, #7]
+	ldrd	r14, [sp, #8]
+	ldrd	r10, [sp, #9]
+	ldrd	r8,  [sp, #10]
+	ldrd	r6,  [sp, #11]
+	ldrd	r4,  [sp, #12]
+	add	sp,  sp, #28*4
 	rts
 
 /*
@@ -458,8 +458,8 @@ _nbif_stack_trap_ra:		/* a return address, not a function */
  * hipe_epiphany_inc_stack
  * Caller saved its LR in TEMP_LR (== TEMP1) before calling us.
  */
-	.global	hipe_epiphany_inc_stack
-hipe_epiphany_inc_stack:
+	.global	_hipe_epiphany_inc_stack
+_hipe_epiphany_inc_stack:
 	STORE_ARG_REGS
 	mov	TEMP_ARG0, lr
 	str	NSP, [P, #P_NSP/4]
