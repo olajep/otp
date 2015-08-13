@@ -73,6 +73,7 @@ BIF_RETTYPE code_is_module_native_1(BIF_ALIST_1)
 BIF_RETTYPE code_make_stub_module_3(BIF_ALIST_3)
 {
     Module* modp;
+    Binary* magic;
     Eterm res;
 
     if (!erts_try_seize_code_write_permission(BIF_P)) {
@@ -93,7 +94,9 @@ BIF_RETTYPE code_make_stub_module_3(BIF_ALIST_3)
 
     erts_start_staging_code_ix();
 
-    res = erts_make_stub_module(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
+    magic = erts_alloc_loader_state();
+    res = erts_make_stub_module(magic, BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
+    erts_refc_decfree(&magic->refc, 0, ERTS_DECFREE_BIN, magic);
 
     if (res == BIF_ARG_1) {
 	erts_end_staging_code_ix();

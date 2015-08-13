@@ -26,11 +26,6 @@
 #include "epiphany.h"
 #include <e-lib.h>
 
-#undef malloc
-#undef free
-#undef calloc
-#undef realloc
-
 static EPIPHANY_SRAM_DATA e_mutex_t alloc_mutex = 0;
 
 static inline void

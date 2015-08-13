@@ -631,11 +631,12 @@ $(BINDIR)/hipe_mkliterals$(TF_MARKER):	$(OBJDIR)/hipe_mkliterals.o
 # XXX: This is quite the horrid way of doing it
 $(OBJDIR)/hipe_mkliterals.o: ../hipe/hipe_mkliterals.c $(HIPE_ASM) $(TTF_DIR)/erl_alloc_types.h \
 	$(TTF_DIR)/OPCODES-GENERATED $(TARGET)/TABLES-GENERATED
-	$(V_CC) $(CFLAGS) -DEPIPHANY_NO_WRITE_REDIRECT -DDO_C_HEADER_BY_DEFAULT \
+	$(V_CC) $(CFLAGS) -DEPIPHANY_NO_WRITE_REDIRECT \
+		-DEPIPHANY_NO_ALLOC_REDIRECT -DE_RUN_ARGV_GRAB \
 		$(INCLUDES) -c ../hipe/hipe_mkliterals.c -o $@
 
 $(TTF_DIR)/hipe_literals.h:	$(BINDIR)/hipe_mkliterals$(TF_MARKER)
-	$(gen_verbose)e-run $(BINDIR)/hipe_mkliterals$(TF_MARKER) > $@ && \
+	$(gen_verbose)e-run $(BINDIR)/hipe_mkliterals$(TF_MARKER) -c > $@ && \
 		[ -s $@ ] || (ret=$$?; rm -f $@ && exit $$ret)
 
 # end of HiPE section

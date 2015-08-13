@@ -37,8 +37,8 @@ typedef struct erl_fun_entry {
 
     /* Fun entries are shared between master and slave; we thus need separate
      * address fields for the two emulators. In order to simplify the code
-     * elsewhere, the field for the current architecture is always called
-     * "address".
+     * elsewhere, the fields for the current architecture is always called
+     * "address" and "native_address".
      */
 #ifndef ERTS_SLAVE
 #  ifndef ERTS_SLAVE_EMU_ENABLED
@@ -53,7 +53,17 @@ typedef struct erl_fun_entry {
 #endif
 
 #ifdef HIPE
-    UWord* native_address;	/* Native entry code for fun. */
+#  ifndef ERTS_SLAVE
+#    ifndef ERTS_SLAVE_EMU_ENABLED
+    UWord* native_address;	  /* Native entry code for fun. */
+#    else
+    UWord* native_address;	  /* Native entry code for fun. */
+    UWord* slave_native_address;  /* Slave native entry code for fun */
+#    endif
+#  else
+    UWord* master_native_address; /* Master native entry code for fun. */
+    UWord* native_address;	  /* Native entry code for fun. */
+#  endif
 #endif
 
     Uint arity;			/* The arity of the fun. */

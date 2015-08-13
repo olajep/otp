@@ -37,6 +37,7 @@
 #else
 #  include "hipe_slave.h"
 #  define GLOBAL_HIPE_FUN(Name) hipe_slave_ ## Name
+#  define MODE am_slave
 #endif
 
 /*
@@ -107,12 +108,12 @@ try_alloc(Uint nrbytes, int nrcallees, Eterm callees, Uint32 **trampvec)
 	unsigned int a;
 	Uint32 *trampoline;
 	if (is_atom(mfa))
-	    trampoline = hipe_primop_get_trampoline(mfa);
+	    trampoline = hipe_primop_get_trampoline(MODE, mfa);
 	else {
 	    m = tuple_val(mfa)[1];
 	    f = tuple_val(mfa)[2];
 	    a = unsigned_val(tuple_val(mfa)[3]);
-	    trampoline = hipe_mfa_get_trampoline(m, f, a);
+	    trampoline = hipe_mfa_get_trampoline(MODE, m, f, a);
 	}
 	if (!trampoline || !reachable_pcrel(trampoline, address, nrbytes)) {
 	    /* We expect this case to be fairly rare */
@@ -124,9 +125,9 @@ try_alloc(Uint nrbytes, int nrcallees, Eterm callees, Uint32 **trampvec)
 	    /* No icache and coherent DRAM access on the Epiphany; no flushing
 	     * required. */
 	    if (is_atom(mfa))
-		hipe_primop_set_trampoline(mfa, trampoline);
+		hipe_primop_set_trampoline(MODE, mfa, trampoline);
 	    else
-		hipe_mfa_set_trampoline(m, f, a, trampoline);
+		hipe_mfa_set_trampoline(MODE, m, f, a, trampoline);
 	}
 	trampvec[trampnr-1] = trampoline;
     }

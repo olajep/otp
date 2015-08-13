@@ -301,10 +301,6 @@ static const struct literal {
     { "THE_NON_VALUE", (int)THE_NON_VALUE },
 
     /* funs */
-#ifdef HIPE
-    { "EFE_NATIVE_ADDRESS", offsetof(struct erl_fun_entry, native_address) },
-#endif
-    { "EFE_REFC", offsetof(struct erl_fun_entry, refc) },
     { "EFT_THING", offsetof(struct erl_fun_thing, thing_word) },
 
     /* bit syntax */
@@ -462,6 +458,12 @@ static const struct rts_param rts_params[] = {
     { 1, "P_OFF_HEAP_FUNS",
       1, offsetof(struct process, off_heap.first)
     },
+
+#ifdef HIPE
+    { 2, "EFE_NATIVE_ADDRESS",
+      1, offsetof(struct erl_fun_entry, native_address) },
+#endif
+    { 3, "EFE_REFC", 1, offsetof(struct erl_fun_entry, refc) },
 
     { 4, "EFT_NEXT",
       1, offsetof(struct erl_fun_thing, next)
@@ -640,7 +642,8 @@ static void e_define_param(FILE *fp, const struct rts_param *param)
 	    fprintf(fp, "-define(%s%s, []).\n", macro_prefix, param->name);
     }
     else {
-	fprintf(fp, "-define(%s%s, hipe_bifs:get_rts_param(%u)).\n",
+	fprintf(fp, "-define(%s%s, hipe_bifs:get_rts_param(%u, "
+		"get(hipe_target_rts))).\n",
 		macro_prefix, param->name, param->nr);
     }    
 }
@@ -663,7 +666,7 @@ static int do_c(FILE *fp, const char* this_exe)
     fprintf(fp, "#define HIPE_%sLITERALS_CRC %uU\n", macro_prefix, literals_crc);
     fprintf(fp, "#define HIPE_%sSYSTEM_CRC %uU\n", macro_prefix, system_crc);
     fprintf(fp, "\n");
-    fprintf(fp, "#define RTS_PARAMS_CASES");
+    fprintf(fp, "#define RTS_%sPARAMS_CASES", macro_prefix);
     print_params(fp, c_case_param);
     fprintf(fp, "\n#endif\n");
     return 0;
@@ -683,20 +686,59 @@ static int do_e(FILE *fp, const char* this_exe)
 	fprintf(fp, "-define(HIPE_%sSYSTEM_CRC, %u).\n", macro_prefix, system_crc);
     }
     else {
-	fprintf(fp, "-define(HIPE_%sSYSTEM_CRC, hipe_bifs:system_crc(%u)).\n",
+	fprintf(fp, "-define(HIPE_%sSYSTEM_CRC, hipe_bifs:system_crc(%u, "
+		"get(hipe_target_rts))).\n",
 		macro_prefix, literals_crc);
     }
     return 0;
 }
 
+/*
+ * When cross-compiling for the Epiphany target, we use the e-run simulator to
+ * run hipe_mkliterals. e-run, unfortunately, does not set argc&argv, but does
+ * offer filesystem syscalls. We (ab)use that to grab argc&argv from the proc
+ * filesystem.
+ *
+ * An alternative to this could be to build several hipe_mkliterals binaries,
+ * each primed to output one of the files we need without any arguments.
+ */
+#ifdef E_RUN_ARGV_GRAB
+void erun_grab_argv(int *argcp, const char ***argvp);
+
+#define MAXLEN 1024
+void erun_grab_argv(int *argcp, const char ***argvp)
+{
+    int fd, i;
+    off_t size;
+    char *buf, *bufp;
+
+    fd = open("/proc/self/cmdline", O_RDONLY);
+    if (fd == -1) { perror("open"); abort(); }
+    buf = calloc(MAXLEN + 1, 1);
+    if ((size = read(fd, buf, MAXLEN)) < 1) { perror("read"); abort(); }
+    close(fd);
+
+    /* Count args and subtract one (for the arg we skip below) */
+    *argcp = -1;
+    for (i = 0; i < size; i++)
+	*argcp += (buf[i] == '\0');
+
+    *argvp = calloc(*argcp, sizeof(**argvp));
+    for (i = 0, bufp = buf; i < *argcp; i++) {
+	/* Skip first argument (the simulator command) */
+	(*argvp)[i] = bufp = strchr(bufp, '\0') + 1;
+    }
+}
+#endif
+
 int main(int argc, const char **argv)
 {
     int i;
     int (*do_func_ptr)(FILE *, const char*) = NULL;
-#ifdef DO_C_HEADER_BY_DEFAULT
-    do_func_ptr = &do_c;
-#endif
 
+#ifdef E_RUN_ARGV_GRAB
+    erun_grab_argv(&argc, &argv);
+#endif
     compute_crc();
     for (i = 1; i < argc; i++) {
 	if      (strcmp(argv[i], "-c") == 0)

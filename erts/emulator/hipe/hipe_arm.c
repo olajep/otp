@@ -126,12 +126,12 @@ static unsigned int *try_alloc(Uint nrwords, int nrcallees, Eterm callees, unsig
     for (trampnr = 1; trampnr <= nrcallees; ++trampnr) {
 	mfa = tuple_val(callees)[trampnr];
 	if (is_atom(mfa))
-	    trampoline = hipe_primop_get_trampoline(mfa);
+	    trampoline = hipe_primop_get_trampoline(am_master, mfa);
 	else {
 	    m = tuple_val(mfa)[1];
 	    f = tuple_val(mfa)[2];
 	    a = unsigned_val(tuple_val(mfa)[3]);
-	    trampoline = hipe_mfa_get_trampoline(m, f, a);
+	    trampoline = hipe_mfa_get_trampoline(am_master, m, f, a);
 	}
 	if (!in_area(trampoline, base, SEGMENT_NRBYTES)) {
 	    if (nrfreewords < 2)
@@ -142,9 +142,9 @@ static unsigned int *try_alloc(Uint nrwords, int nrcallees, Eterm callees, unsig
 	    trampoline[1] = 0;		/* callee's address */
 	    hipe_flush_icache_range(trampoline, 2*sizeof(int));
 	    if (is_atom(mfa))
-		hipe_primop_set_trampoline(mfa, trampoline);
+		hipe_primop_set_trampoline(am_master, mfa, trampoline);
 	    else
-		hipe_mfa_set_trampoline(m, f, a, trampoline);
+		hipe_mfa_set_trampoline(am_master, m, f, a, trampoline);
 	}
 	trampvec[trampnr-1] = trampoline;
     }

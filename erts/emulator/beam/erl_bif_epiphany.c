@@ -44,6 +44,17 @@
 #  include "epiphany.h" /* For epiphany_workgroup_size() */
 #endif
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+static Binary *alloc_slave_loader_state(void)
+{
+    Binary *magic = erts_alloc_loader_state();
+    erts_set_loader_target(magic, &loader_target_slave,
+			   ERTS_ALC_T_SLAVE_CODE,
+			   ERTS_ALC_T_SLAVE_PREPARED_CODE);
+    return magic;
+}
+#endif
+
 #ifndef ERTS_SLAVE
 BIF_RETTYPE epiphany_internal_spawn_3(BIF_ALIST_3)
 {
@@ -122,10 +133,7 @@ BIF_RETTYPE epiphany_prepare_loading_2(BIF_ALIST_2)
 	goto error;
     }
 
-    magic = erts_alloc_loader_state();
-    erts_set_loader_target(magic, &loader_target_slave,
-			   ERTS_ALC_T_SLAVE_CODE,
-			   ERTS_ALC_T_SLAVE_PREPARED_CODE);
+    magic = alloc_slave_loader_state();
     sz = binary_size(BIF_ARG_2);
     reason = erts_prepare_loading(magic, BIF_P, BIF_P->group_leader,
 				  &BIF_ARG_1, code, sz);
@@ -197,5 +205,50 @@ BIF_RETTYPE epiphany_module_loaded_1(BIF_ALIST_1)
     BIF_RET(res);
 #else
     BIF_RET(am_false);
+#endif
+}
+
+BIF_RETTYPE epiphany_make_stub_module_3(BIF_ALIST_3)
+{
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    Module* modp;
+    Binary* magic;
+    Eterm res;
+
+    if (!erts_try_seize_code_write_permission(BIF_P)) {
+	ERTS_BIF_YIELD3(bif_export[BIF_code_make_stub_module_3],
+			BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
+    }
+
+    erts_smp_proc_unlock(BIF_P, ERTS_PROC_LOCK_MAIN);
+    erts_smp_thr_progress_block();
+
+    modp = erts_get_module(BIF_ARG_1, erts_active_code_ix());
+
+    if (modp && modp->curr.num_breakpoints > 0) {
+	ASSERT(modp->curr.code != NULL);
+	erts_clear_module_break(modp);
+	ASSERT(modp->curr.num_breakpoints == 0);
+    }
+
+    erts_start_staging_code_ix();
+
+    magic = alloc_slave_loader_state();
+    res = erts_make_stub_module(magic, BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
+    erts_refc_decfree(&magic->refc, 0, ERTS_DECFREE_BIN, magic);
+
+    if (res == BIF_ARG_1) {
+	erts_end_staging_code_ix();
+	erts_commit_staging_code_ix();
+    }
+    else {
+	erts_abort_staging_code_ix();
+    }
+    erts_smp_thr_progress_unblock();
+    erts_smp_proc_lock(BIF_P, ERTS_PROC_LOCK_MAIN);
+    erts_release_code_write_permission();
+    return res;
+#else
+    BIF_ERROR(BIF_P, EXC_NOTSUP);
 #endif
 }

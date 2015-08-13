@@ -936,8 +936,17 @@ assemble(CompiledCode, Closures, Exports, Options) ->
 
 set_architecture(Options) ->
   put(hipe_host_arch, erlang:system_info(hipe_architecture)),
+  put(hipe_slave_arch, erlang:system_info(hipe_slave_architecture)),
   put(hipe_target_arch,
       proplists:get_value(target, Options, get(hipe_host_arch))),
+  DefaultTargetRts =
+    case {get(hipe_target_arch), get(hipe_host_arch), get(hipe_slave_arch)} of
+      {Master, Master, _Slave} -> master;
+      {Slave, _Master,  Slave} -> slave;
+      {Other, _Master, _Slave} -> master
+    end,
+  put(hipe_target_rts,
+      proplists:get_value(target_rts, Options, DefaultTargetRts)),
   ok.
 
 %% This sets up some globally accessed stuff that are needed by the
@@ -1347,6 +1356,7 @@ opt_keys() ->
      rtl_show_translation,
      spillmin_color,
      target,
+     target_rts,
      time,
      timeout,
      timeregalloc,

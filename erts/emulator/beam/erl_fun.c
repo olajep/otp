@@ -286,6 +286,10 @@ erts_dump_fun_entries(int to, void *to_arg)
 #endif
 #ifdef HIPE
 	    erts_print(to, to_arg, "Native_address: %p\n", fe->native_address);
+#  ifdef ERTS_SLAVE_EMU_ENABLED
+	    erts_print(to, to_arg, "Slave_native_address: %p\n",
+		       fe->slave_native_address);
+#  endif
 #endif
 	    erts_print(to, to_arg, "Refc: %ld\n", erts_refc_read(&fe->refc, 1));
 	    b = b->next;
@@ -325,6 +329,9 @@ fun_alloc(ErlFunEntry* template)
 #endif
 #ifdef HIPE
     obj->native_address = NULL;
+#  ifdef ERTS_SLAVE_EMU_ENABLED
+    obj->slave_native_address = NULL;
+#  endif
 #endif
     return obj;
 }

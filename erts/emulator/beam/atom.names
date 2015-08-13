@@ -276,6 +276,7 @@ atom hidden
 atom hide
 atom high
 atom hipe_architecture
+atom hipe_slave_architecture
 atom http httph https http_response http_request http_header http_eoh http_error http_bin httph_bin
 atom id
 atom if_clause

@@ -613,6 +613,7 @@ bif epiphany:boot/0
 bif epiphany:count/0
 bif epiphany:prepare_loading/2
 bif epiphany:module_loaded/1
+bif epiphany:make_stub_module/3
 bif epiphany:host/0
 bif epiphany:state/0
 

@@ -558,6 +558,7 @@ LoaderTarget loader_target_self = {
     offsetof(Export, addressv),
     offsetof(Export, code),
     erts_put_module,
+    erts_get_module,
     beam_catches_cons,
     beam_make_current_old,
     erts_update_ranges,
@@ -5696,7 +5697,7 @@ make_stub(const LoaderState* stp, BeamInstr* fp, Eterm mod, Eterm func,
 #ifdef HIPE
     if (native) {
 	fp[5] = BeamOpCode(op_move_return_nr);
-	hipe_mfa_save_orig_beam_op(mod, func, arity, fp+5);
+	hipe_mfa_save_orig_beam_op(stp->target, mod, func, arity, fp+5);
     }
 #endif
     fp[5] = OpCode;
@@ -5962,9 +5963,9 @@ patch_funentries(Eterm Patchlist)
  */
 
 Eterm
-erts_make_stub_module(Process* p, Eterm Mod, Eterm Beam, Eterm Info)
+erts_make_stub_module(Binary* loader_state, Process* p, Eterm Mod, Eterm Beam,
+		      Eterm Info)
 {
-    Binary* magic;
     LoaderState* stp;
     BeamInstr Funcs;
     BeamInstr Patchlist;
@@ -5986,8 +5987,7 @@ erts_make_stub_module(Process* p, Eterm Mod, Eterm Beam, Eterm Info)
      * Must initialize stp->lambdas here because the error handling code
      * at label 'error' uses it.
      */
-    magic = erts_alloc_loader_state();
-    stp = ERTS_MAGIC_BIN_DATA(magic);
+    stp = ERTS_MAGIC_BIN_DATA(loader_state);
 
     if (is_not_atom(Mod)) {
 	goto error;
@@ -6179,13 +6179,11 @@ erts_make_stub_module(Process* p, Eterm Mod, Eterm Beam, Eterm Info)
 
     if (patch_funentries(Patchlist)) {
 	erts_free_aligned_binary_bytes(temp_alloc);
-	free_loader_state(magic);
 	return Mod;
     }
 
  error:
     erts_free_aligned_binary_bytes(temp_alloc);
-    free_loader_state(magic);
     BIF_ERROR(p, BADARG);
 }
 

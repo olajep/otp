@@ -40,6 +40,7 @@ LoaderTarget loader_target_slave = {
     offsetof(Export, slave_addressv),
     offsetof(Export, slave_code),
     slave_put_module,
+    slave_get_module,
     slave_catches_cons,
     slave_make_current_old,
     slave_update_ranges,

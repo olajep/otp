@@ -623,6 +623,10 @@ $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 		> $@
 
 GENERATE += $(TTF_DIR)/slave_syms.h
+
+ifdef HIPE_ENABLED
+GENERATE += $(TTF_DIR)/hipe_slave_literals.h
+endif
 endif
 
 
@@ -1046,6 +1050,10 @@ $(TTF_DIR)/hipe_literals.h:	$(BINDIR)/hipe_mkliterals$(TF_MARKER)
 		$(BINDIR)/hipe_mkliterals$(TF_MARKER) -c > $@ && \
 		[ -s $@ ] || (ret=$$?; rm -f $@ && exit $$ret)
 
+$(TTF_DIR)/hipe_slave_literals.h: $(SLAVE_MKLITERALS)$(TF_MARKER)
+	$(gen_verbose)e-run $< -c -s -x > $@ \
+		&& [ -s $@ ] || (ret=$$?; rm -f $@ && exit $$ret)
+
 $(OBJDIR)/hipe_x86_glue.o:	hipe/hipe_x86_glue.S \
 	$(TTF_DIR)/hipe_x86_asm.h $(TTF_DIR)/hipe_literals.h \
 	hipe/hipe_mode_switch.h
@@ -1103,6 +1111,11 @@ ifdef BUILD_SLAVE
 
 $(SLAVE_EXECUTABLE): FORCE
 	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) )
+
+# We're recursing twice even though building $(SLAVE_EXECUTABL) will also
+# freshen up this target, but what can we do?
+$(SLAVE_MKLITERALS)$(TF_MARKER): FORCE
+	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) $@ )
 
 # FORCE is an empty phony target used to unconditionally execute certain rules
 .PHONY: FORCE

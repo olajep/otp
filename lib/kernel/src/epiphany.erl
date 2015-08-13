@@ -22,8 +22,8 @@
 %% built-in functions that are used to manage the Epiphany co-processor.
 
 %% Built-in functions
--export([internal_spawn/3, boot/0, count/0 ,prepare_loading/2, module_loaded/1,
-	 host/0, state/0]).
+-export([internal_spawn/3, boot/0, count/0, prepare_loading/2, module_loaded/1,
+	 host/0, state/0, make_stub_module/3]).
 
 -export([load_module/2, load_module/1, spawn/3, spawn/1, spawn_monitor/3,
 	 spawn_monitor/1, spawn_link/3, spawn_link/1, spawn_opt/4,
@@ -75,6 +75,14 @@ host() ->
 -spec state() -> offline | booting | online | unavailable.
 state() ->
     erlang:nif_error(undefined).
+
+%% make_stub_module/3
+-spec make_stub_module(Module, Beam, Info) -> Module when
+      Module :: module(),
+      Beam :: binary(),
+      Info :: {list(), list()}.
+make_stub_module(_, _, _) ->
+    erlang:nif_error(undef).
 
 %% load_module/2
 -spec load_module(Module, Binary) -> {module, Module} | {error, Reason} when

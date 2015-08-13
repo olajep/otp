@@ -137,7 +137,7 @@ static unsigned int *try_alloc(Uint nrwords, int nrcallees, Eterm callees, unsig
 	Eterm m = tuple_val(mfa)[1];
 	Eterm f = tuple_val(mfa)[2];
 	unsigned int a = unsigned_val(tuple_val(mfa)[3]);
-	unsigned int *trampoline = hipe_mfa_get_trampoline(m, f, a);
+	unsigned int *trampoline = hipe_mfa_get_trampoline(am_master, m, f, a);
 	if (!in_area(trampoline, base, SEGMENT_NRBYTES)) {
 #if defined(__powerpc64__)
 	    if (nrfreewords < 7)
@@ -163,7 +163,7 @@ static unsigned int *try_alloc(Uint nrwords, int nrcallees, Eterm callees, unsig
 	    trampoline[3] = 0x4E800420; /* bctr */
 	    hipe_flush_icache_range(trampoline, 4*sizeof(int));
 #endif
-	    hipe_mfa_set_trampoline(m, f, a, trampoline);
+	    hipe_mfa_set_trampoline(am_master, m, f, a, trampoline);
 	}
 	trampvec[trampnr-1] = trampoline;
     }

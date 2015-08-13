@@ -47,6 +47,9 @@
 #ifdef HIPE
 #include "hipe_arch.h"
 #endif
+#if defined(HIPE) && defined(ERTS_SLAVE_EMU_ENABLED)
+#include "hipe_slave.h"
+#endif
 
 #ifdef ERTS_ENABLE_LOCK_COUNT
 #include "erl_lock_count.h"
@@ -2125,6 +2128,12 @@ BIF_RETTYPE system_info_1(BIF_ALIST_1)
     } else if (BIF_ARG_1 == am_hipe_architecture) {
 #if defined(HIPE)
 	BIF_RET(hipe_arch_name);
+#else
+	BIF_RET(am_undefined);
+#endif
+    } else if (BIF_ARG_1 == am_hipe_slave_architecture) {
+#if defined(HIPE) && defined(ERTS_SLAVE_EMU_ENABLED)
+	BIF_RET(hipe_slave_arch_name);
 #else
 	BIF_RET(am_undefined);
 #endif

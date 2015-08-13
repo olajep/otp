@@ -337,12 +337,12 @@ handle_call({load_binary,Mod,File,Bin}, Caller, S) ->
     do_load_binary(Mod, File, Bin, Caller, S);
 
 handle_call({load_native_partial,Mod,Bin}, {_From,_Tag}, S) ->
-    Result = (catch hipe_unified_loader:load(Mod, Bin)),
+    Result = (catch hipe_unified_loader:load(Mod, Bin, master)),
     Status = hipe_result_to_status(Result),
     {reply,Status,S};
 
 handle_call({load_native_sticky,Mod,Bin,WholeModule}, {_From,_Tag}, S) ->
-    Result = (catch hipe_unified_loader:load_module(Mod, Bin, WholeModule)),
+    Result = (catch hipe_unified_loader:load_module(Mod, Bin, WholeModule, master)),
     Status = hipe_result_to_status(Result),
     {reply,Status,S};
 
@@ -1262,20 +1262,31 @@ do_load_binary(Module, File, Binary, Caller, St) ->
 epiphany_load_binary(Mod, File, Bin, _Caller, #state{slavedb=SlaveDb}=St) ->
     case modp(Mod) andalso is_binary(Bin) of
 	true ->
-	    case epiphany:load_module(Mod, Bin) of
+	    case load_native_code(Mod, Bin, slave) of
 		{module,Mod} = Module ->
 		    ets:insert(SlaveDb, {Mod,want}),
 		    {reply,Module,St};
-		{error,What} = Error ->
-		    error_msg("Loading of ~ts failed: ~p\n", [File, What]),
-		    {reply,Error,St}
+		no_native ->
+		    case epiphany:load_module(Mod, Bin) of
+			{module,Mod} = Module ->
+			    ets:insert(SlaveDb, {Mod,want}),
+			    post_beam_load(Mod, slave),
+			    {reply,Module,St};
+			{error,What} = Error ->
+			    error_msg("Loading of ~ts failed: ~p\n", [File, What]),
+			    {reply,Error,St}
+		    end;
+		Error ->
+		    error_msg("Native loading of ~ts failed: ~p\n",
+			      [File,Error]),
+		    {reply,ok,St}
 	    end;
 	false ->
 	    {reply,{error,badarg},St}
     end.
 
 epiphany_load_uncached(Mod, From,
-		    #state{path=Path, slavedb=SlaveDb, moddb=Db}=St0) ->
+		       #state{path=Path, slavedb=SlaveDb, moddb=Db}=St0) ->
     case modp(Mod) of
 	true ->
 	    case pending_on_load(Mod, From, St0) of
@@ -1352,7 +1363,7 @@ try_load_module_1(File, Mod, Bin, Caller, #state{moddb=Db}=St) ->
 	    error_msg("Can't load module that resides in sticky dir\n",[]),
 	    {reply,{error,sticky_directory},St};
 	false ->
-	    case catch load_native_code(Mod, Bin) of
+	    case catch load_native_code(Mod, Bin, master) of
 		{module,Mod} ->
 		    ets:insert(Db, {Mod,File}),
 		    epiphany_handle_loaded(Mod, File, Bin, Caller, St);
@@ -1360,7 +1371,7 @@ try_load_module_1(File, Mod, Bin, Caller, #state{moddb=Db}=St) ->
 		    case erlang:load_module(Mod, Bin) of
 			{module,Mod} ->
 			    ets:insert(Db, {Mod,File}),
-			    post_beam_load(Mod),
+			    post_beam_load(Mod, master),
 			    epiphany_handle_loaded(Mod, File, Bin, Caller, St);
 			{error,on_load} ->
 			    handle_on_load(Mod, File, Caller, St);
@@ -1375,7 +1386,7 @@ try_load_module_1(File, Mod, Bin, Caller, #state{moddb=Db}=St) ->
 	    end
     end.
 
-load_native_code(Mod, Bin) ->
+load_native_code(Mod, Bin, Mode) ->
     %% During bootstrapping of Open Source Erlang, we don't have any hipe
     %% loader modules, but the Erlang emulator might be hipe enabled.
     %% Therefore we must test for that the loader modules are available
@@ -1384,7 +1395,7 @@ load_native_code(Mod, Bin) ->
 	false ->
 	    no_native;
 	true ->
-	    Result = hipe_unified_loader:load_native_code(Mod, Bin),
+	    Result = hipe_unified_loader:load_native_code(Mod, Bin, Mode),
 	    case Result of
 		{module,_} ->
 		    put(?ANY_NATIVE_CODE_LOADED, true);
@@ -1403,12 +1414,12 @@ hipe_result_to_status(Result) ->
 	    {error,Result}
     end.
 
-post_beam_load(Mod) ->
-    %% post_beam_load/1 can potentially be very expensive because it
+post_beam_load(Mod, Mode) ->
+    %% post_beam_load/2 can potentially be very expensive because it
     %% blocks multi-scheduling; thus we want to avoid the call if we
     %% know that it is not needed.
     case get(?ANY_NATIVE_CODE_LOADED) of
-	true -> hipe_unified_loader:post_beam_load(Mod);
+	true -> hipe_unified_loader:post_beam_load(Mod, Mode);
 	false -> ok
     end.
 
