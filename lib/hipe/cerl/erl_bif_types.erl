@@ -2481,7 +2481,7 @@ arg_types(hipe_bifs, nstack_used_size, 0) ->
 arg_types(hipe_bifs, patch_call, 3) ->
   [t_atom(), t_integer(), t_tuple([t_integer(), t_trampoline()])];
 arg_types(hipe_bifs, patch_insn, 3) ->
-  [t_integer(), t_integer(), t_insn_type()];
+  [t_atom(), t_integer(), t_tuple([t_integer(), t_insn_type()])];
 arg_types(hipe_bifs, primop_address, 2) ->
   [t_atom(), t_atom()];
 arg_types(hipe_bifs, redirect_referred_from, 2) ->

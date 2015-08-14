@@ -790,7 +790,7 @@ gen_inc_refc_notsmp(Ptr, Offset) ->
 gen_inc_refc_smp(Ptr, Offset) ->
   Refc = hipe_rtl:mk_new_reg(),
   [hipe_rtl:mk_alu(Refc, Ptr, 'add', hipe_rtl:mk_imm(Offset)),
-   hipe_rtl:mk_call([], 'atomic_inc', [Refc], [], [], not_remote)].
+   hipe_rtl:mk_call([], 'refc_inc', [Refc], [], [], not_remote)].
 
 gen_link_closure(FUNP) ->
   case ?P_OFF_HEAP_FUNS of

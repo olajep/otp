@@ -117,9 +117,9 @@ BIF_RETTYPE hipe_bifs_debug_native_called_2(BIF_ALIST_2);
  * SMP-specific stuff
  */
 #ifdef ERTS_SMP
-AEXTERN(void,nbif_atomic_inc,(void));
+AEXTERN(void,nbif_refc_inc,(void));
 AEXTERN(void,nbif_clear_timeout,(Process*));
-void hipe_atomic_inc(int*);
+void hipe_refc_inc(int*);
 void hipe_clear_timeout(Process*);
 #endif
 

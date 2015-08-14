@@ -31,7 +31,7 @@ include(`hipe/hipe_epiphany_asm.m4')
         mov    lr, %low(\f)
         movt   lr, %high(\f)
         str    lr, [r0, #P_BIF_CALLEE/4]
-        bl     hipe_debug_bif_wrapper
+        bl     _hipe_debug_bif_wrapper
         .endm
 #  define CALL_BIF(F)	_CALL_BIF_MACRO F
 #else

@@ -116,7 +116,7 @@ atom hipe_apply
 atom rethrow
 atom find_na_or_make_stub
 atom nonclosure_address
-atom atomic_inc
+atom refc_inc
 atom clear_timeout
 atom check_get_msg
 atom select_msg

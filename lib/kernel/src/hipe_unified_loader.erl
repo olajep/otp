@@ -557,19 +557,19 @@ patch_offset(Type, Data, Address, ConstAndZone, Addresses, Mode) ->
       patch_load_address(Data, Address, ConstAndZone, Addresses, Mode);
     load_atom ->
       Atom = Data,
-      patch_atom(Address, Atom);
+      patch_atom(Address, Atom, Mode);
     sdesc ->
       patch_sdesc(Data, Address, ConstAndZone, Addresses);
     x86_abs_pcrel ->
-      patch_instr(Address, Data, x86_abs_pcrel)
+      patch_instr(Address, Data, x86_abs_pcrel, Mode)
     %% _ ->
     %%   ?error_msg("Unknown ref ~w ~w ~w\n", [Type, Address, Data]),
     %%   exit({unknown_reference, Type, Address, Data})
   end.
 
-patch_atom(Address, Atom) ->
+patch_atom(Address, AtomPatch, Mode) ->
   ?ASSERT(assert_local_patch(Address)),
-  patch_instr(Address, hipe_bifs:atom_to_word(Atom), atom).
+  patch_instr(Address, hipe_bifs:atom_to_word(Atom), atom, Mode).
 
 patch_sdesc(?STACK_DESC(SymExnRA, FSize, Arity, Live),
 	    Address, {_ConstMap2,CodeAddress}, _Addresses) ->
@@ -595,11 +595,11 @@ patch_load_address(Data, Address, ConstAndZone, Addresses, Mode) ->
     {constant,Name} ->
       {ConstMap2,_CodeAddress} = ConstAndZone,
       ConstAddress = find_const(Name, ConstMap2),
-      patch_instr(Address, ConstAddress, constant);
+      patch_instr(Address, ConstAddress, constant, Mode);
     {closure,{DestMFA,Uniq,Index}} ->
       patch_closure(DestMFA, Uniq, Index, Address, Addresses, Mode);
     {c_const,CConst} ->
-      patch_instr(Address, bif_address(CConst, Mode), c_const)
+      patch_instr(Address, bif_address(CConst, Mode), c_const, Mode)
   end.
 
 patch_closure(DestMFA, Uniq, Index, Address, Addresses, Mode) ->
@@ -620,7 +620,7 @@ patch_closure(DestMFA, Uniq, Index, Address, Addresses, Mode) ->
       ?debug_msg("Patch FE(~w) to 0x~.16b->0x~.16b (emu:0x~.16b)\n",
 		 [DestMFA, FE, DestAddress, BEAMAddress]),
       ?ASSERT(assert_local_patch(Address)),
-      patch_instr(Address, FE, closure) 
+      patch_instr(Address, FE, closure, Mode)
   end.
 
 %%----------------------------------------------------------------
@@ -640,7 +640,7 @@ patch_load_mfa(CodeAddress, DestMFA, Addresses, RemoteOrLocal, Mode) ->
 	BifAddress
     end,
   ?ASSERT(assert_local_patch(CodeAddress)),
-  patch_instr(CodeAddress, DestAddress, 'load_mfa').
+  patch_instr(CodeAddress, DestAddress, 'load_mfa', Mode).
 
 %%----------------------------------------------------------------
 %% Patch references to code labels in the data segment.
@@ -676,8 +676,8 @@ sort_on_representation(List) ->
 %%
 %% Note: the values of this Type are hard-coded in file erl_bif_types.erl
 %%
-patch_instr(Address, Value, Type) ->
-  hipe_bifs:patch_insn(Address, Value, Type).
+patch_instr(Address, Value, Type, Mode) ->
+  hipe_bifs:patch_insn(Mode, Address, {Value, Type}).
 
 %%--------------------------------------------------------------------
 %% Write a data word of the machine's natural word size.

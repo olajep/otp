@@ -36,6 +36,10 @@
 #include "hipe_stack.h"
 #include "hipe_bif0.h"	/* hipe_mfa_info_table_init() */
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#include "slave_load.h" /* For SlaveOp */
+#endif
+
 #if defined(ERTS_ENABLE_LOCK_CHECK) && defined(ERTS_SMP)
 #    define ERTS_SMP_REQ_PROC_MAIN_LOCK(P) \
         if ((P)) erts_proc_lc_require_lock((P), ERTS_PROC_LOCK_MAIN,	\
@@ -158,6 +162,7 @@ static void hipe_check_nstack(Process *p, unsigned nwords);
 #endif
 
 #define BeamOpCode(Op)		((Uint)BeamOp(Op))
+#define SlaveOpCode(Op)		((Uint)SlaveOp(Op))
 
 Uint hipe_beam_pc_return[1];	/* needed in hipe_debug.c */
 Uint hipe_beam_pc_throw[1];	/* needed in hipe_debug.c */
@@ -209,11 +214,21 @@ void hipe_mode_switch_init(void)
 
 void hipe_set_call_trap(Uint *bfun, void *nfun, int is_closure)
 {
-    HIPE_ASSERT(bfun[-5] == BeamOpCode(op_i_func_info_IaaI));
-    bfun[0] =
-	is_closure
-	? BeamOpCode(op_hipe_trap_call_closure)
-	: BeamOpCode(op_hipe_trap_call);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (bfun[-5] == SlaveOpCode(op_i_func_info_IaaI)) {
+	bfun[0] =
+	    is_closure
+	    ? SlaveOpCode(op_hipe_trap_call_closure)
+	    : SlaveOpCode(op_hipe_trap_call);
+    } else
+#endif
+    {
+	HIPE_ASSERT(bfun[-5] == BeamOpCode(op_i_func_info_IaaI));
+	bfun[0] =
+	    is_closure
+	    ? BeamOpCode(op_hipe_trap_call_closure)
+	    : BeamOpCode(op_hipe_trap_call);
+    }
     bfun[-4] = (Uint)nfun;
 }
 

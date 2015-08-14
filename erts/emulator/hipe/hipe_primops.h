@@ -37,7 +37,7 @@ PRIMOP_LIST(am_bnot, nbif_bnot_1)
 PRIMOP_LIST(am_gc_1, nbif_gc_1)
 PRIMOP_LIST(am_check_get_msg, nbif_check_get_msg)
 #ifdef ERTS_SMP
-PRIMOP_LIST(am_atomic_inc, nbif_atomic_inc)
+PRIMOP_LIST(am_refc_inc, nbif_refc_inc)
 PRIMOP_LIST(am_clear_timeout, nbif_clear_timeout)
 #endif
 PRIMOP_LIST(am_select_msg, nbif_select_msg)

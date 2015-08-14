@@ -117,6 +117,16 @@ static int patch_call_mode(Eterm mode, void *callAddr, void *destAddr,
     else return -1;
 }
 
+static int patch_insn_mode(Eterm mode, void *addr, Uint value, Eterm type) {
+    if (mode == am_master)
+	return hipe_patch_insn(addr, value, type);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    else if (mode == am_slave)
+	return hipe_slave_patch_insn(addr, value, type);
+#endif
+    else return -1;
+}
+
 /*
  * BIFs for reading and writing memory. Used internally by HiPE.
  */
@@ -2066,9 +2076,9 @@ BIF_RETTYPE hipe_bifs_redirect_referred_from_2(BIF_ALIST_2)
 	    if (ref->flags & REF_FLAG_PENDING_REDIRECT) {
 		is_remote = ref->flags & REF_FLAG_IS_REMOTE;
 		new_address = hipe_get_na_nofail_locked(ix, p->m, p->f, p->a, is_remote);
-		/* ETODO: Pick correct patch function */
 		if (ref->flags & REF_FLAG_IS_LOAD_MFA)
-		    res = hipe_patch_insn(ref->address, (Uint)new_address, am_load_mfa);
+		    res = patch_insn_mode(BIF_ARG_1, ref->address,
+					  (Uint)new_address, am_load_mfa);
 		else
 		    res = patch_call_mode(BIF_ARG_1, ref->address, new_address,
 					  ref->trampoline);
@@ -2257,13 +2267,17 @@ BIF_RETTYPE hipe_bifs_code_size_1(BIF_ALIST_1)
 BIF_RETTYPE hipe_bifs_patch_insn_3(BIF_ALIST_3)
 {
     Uint *address, value;
+    Eterm *tuple;
 
-    address = term_to_address(BIF_ARG_1);
+    address = term_to_address(BIF_ARG_2);
     if (!address)
 	BIF_ERROR(BIF_P, BADARG);
-    if (!term_to_Uint(BIF_ARG_2, &value))
+    if (is_not_tuple_arity(BIF_ARG_3, 2))
 	BIF_ERROR(BIF_P, BADARG);
-    if (hipe_patch_insn(address, value, BIF_ARG_3))
+    tuple = tuple_val(BIF_ARG_3);
+    if (!term_to_Uint(tuple[1], &value))
+	BIF_ERROR(BIF_P, BADARG);
+    if (patch_insn_mode(BIF_ARG_1, address, value, tuple[2]))
 	BIF_ERROR(BIF_P, BADARG);
     BIF_RET(NIL);
 }
@@ -2282,7 +2296,7 @@ BIF_RETTYPE hipe_bifs_patch_call_3(BIF_ALIST_3)
     destAddress = term_to_address(tuple[1]);
     if (!destAddress)
 	BIF_ERROR(BIF_P, BADARG);
-    if (is_nil(BIF_ARG_3))
+    if (is_nil(tuple[2]))
 	trampAddress = NULL;
     else {
 	trampAddress = term_to_address(tuple[2]);

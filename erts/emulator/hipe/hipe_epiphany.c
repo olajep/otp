@@ -180,6 +180,12 @@ static Uint32 *alloc_stub(Uint nrbytes)
 	    (P) = __p;				    \
 	})
 
+#define LOAD32(P) load_unaligned_32(P)
+static Uint32 load_unaligned_32(const Uint32 *address) {
+    const char *p = (const char*)address;
+    return p[0] | p[1] << 8 | p[2] << 16 | p[3] << 24;
+}
+
 static Uint16 uimm8(char immediate) {
     return (Uint16)immediate << 5;
 }
@@ -193,26 +199,30 @@ static Uint32 simm24(Sint32 immediate) {
     return immediate << 8;
 }
 
-static void patch_simm24(Uint16* address, Sint32 immediate) {
-    Uint32 value = address[0] | address[1] << 16;
+static void patch_simm24(void* address, Sint32 immediate) {
+    Uint32 value = LOAD32(address);
     value &= ~simm24(-1); /* Clear immediate field */
     value |= simm24(immediate);
-    address[0] = value;
-    address[1] = value >> 16;
+    EMIT32(address, value);
 }
 
-static Uint32 patch_li(Uint32 *address, Uint32 value)
-{
-    erl_exit(1, "Immediate patching for epiphany needs some love");
+static void patch_uimm16(void* address, Uint16 immediate) {
+    Uint32 value = LOAD32(address);
+    value &= ~uimm16(~0); /* Clear immediate field */
+    value |= uimm16(immediate);
+    EMIT32(address, value);
 }
 
-void GLOBAL_HIPE_FUN(patch_load_fe)(Uint32 *address, Uint32 value)
-{
-    patch_li(address, value);
+void GLOBAL_HIPE_FUN(patch_load_fe)(Uint32 *address, Uint32 value) {
+    ASSERT(!(value >> 16));
+    patch_uimm16(address, value);
 }
 
 int GLOBAL_HIPE_FUN(patch_insn)(void *address, Uint32 value, Eterm type)
 {
+    /* Maximum immediate size is 16 bits */
+    if (value >> 16) return -1;
+
     switch (type) {
       case am_closure:
       case am_constant:
@@ -222,7 +232,7 @@ int GLOBAL_HIPE_FUN(patch_insn)(void *address, Uint32 value, Eterm type)
       default:
 	return -1;
     }
-    patch_li((Uint32*)address, value);
+    patch_uimm16(address, value);
     return 0;
 }
 
@@ -276,7 +286,8 @@ GLOBAL_HIPE_FUN(patch_call)(void *callAddress, void *destAddress, void *trampoli
 	if (reachable_pcrel(trampoline, callAddress, 0)) {
 	    /* Update the trampoline's address computation.
 	       (May be redundant, but we can't tell.) */
-	    patch_li(trampoline, (Uint32)destAddress);
+	    patch_uimm16(trampoline,   (Uint32)destAddress & 0xffff);
+	    patch_uimm16(trampoline+4, (Uint32)destAddress >> 16);
 	    /* Update this call site. */
 	    patch_simm24(callAddress, (trampoline - callAddress) >> 1);
 	} else {

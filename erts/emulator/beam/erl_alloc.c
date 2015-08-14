@@ -3848,7 +3848,7 @@ check_memory_fence(void *ptr, Uint *size, ErtsAlcType_t n, int func)
 	}
 
 	erl_exit(ERTS_ABORT_EXIT,
-		 "ERROR: Memory block (p=0x%u, sz=%u) allocated as type \"%s\","
+		 "ERROR: Memory block (p=%#x, sz=%u) allocated as type \"%s\","
 		 " but %s as type \"%s\".\n",
 		 (UWord) ptr, (UWord) sz, ftype, op_str, otype);
     }

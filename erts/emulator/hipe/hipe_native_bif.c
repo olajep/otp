@@ -598,9 +598,9 @@ void hipe_clear_timeout(Process *c_p)
     JOIN_MESSAGE(c_p);
 }
 
-void hipe_atomic_inc(int *counter)
+void hipe_refc_inc(int *counter)
 {
-    erts_smp_atomic_inc_nob((erts_smp_atomic_t*)counter);
+    erts_refc_inc((erts_refc_t*)counter, 1);
 }
 
 #endif
@@ -621,7 +621,6 @@ BIF_RETTYPE hipe_conv_big_to_float(BIF_ALIST_1)
     PUT_DOUBLE(f, hp);
     BIF_RET(res);
 }
-
 
 #ifdef NO_FPE_SIGNALS
 

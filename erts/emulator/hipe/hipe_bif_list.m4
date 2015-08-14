@@ -255,7 +255,7 @@ nocons_nofail_primop_interface_0(nbif_emulate_fpe, hipe_emulate_fpe)
  */
 ifelse(ERTS_SMP,1,`
 nocons_nofail_primop_interface_0(nbif_clear_timeout, hipe_clear_timeout)
-noproc_primop_interface_1(nbif_atomic_inc, hipe_atomic_inc)
+noproc_primop_interface_1(nbif_refc_inc, hipe_refc_inc)
 ',)dnl
 
 /*
