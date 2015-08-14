@@ -45,7 +45,6 @@ assemble(CompiledCode, Closures, Exports, Options) ->
   {CodeSize,CodeBinary,AccRefs,LabelMap,ExportMap} =
     encode(translate(Code, ConstMap), Options),
   print("Total num bytes=~w\n", [CodeSize], Options),
-  ok = file:write_file("code.bin", CodeBinary),
   %%
   SC = hipe_pack_constants:slim_constmap(ConstMap),
   DataRelocs = hipe_pack_constants:mk_data_relocs(RefsFromConsts, LabelMap),
@@ -265,9 +264,9 @@ encode_reloc(Data, Address, FunAddress, LabelMap) ->
 	end,
       {PatchTypeExt, Address, untag_mfa_or_prim(MFAorPrim)};
     {load_atom, Part, Atom} ->
-      {?LOAD_ATOM, Address, Part, Atom};
+      {?LOAD_ATOM, Address, {Part, Atom}};
     {load_address, Part, X} ->
-      {?LOAD_ADDRESS, Address, Part, X};
+      {?LOAD_ADDRESS, Address, {Part, X}};
     {sdesc, SDesc} ->
       #epiphany_sdesc{exnlab=ExnLab,fsize=FSize,arity=Arity,live=Live} = SDesc,
       ExnRA =

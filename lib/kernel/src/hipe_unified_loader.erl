@@ -412,6 +412,8 @@ find_closure_patches([]) -> [].
 
 find_closure_refs([{Dest,Offsets} | Rest], Refs) ->
   case Dest of
+    {Part, {closure,Data}} when is_atom(Part) ->
+      [{Data,Offsets}|find_closure_refs(Rest,Refs)];
     {closure,Data} ->
       [{Data,Offsets}|find_closure_refs(Rest,Refs)];
     _ ->
@@ -569,7 +571,13 @@ patch_offset(Type, Data, Address, ConstAndZone, Addresses, Mode) ->
 
 patch_atom(Address, AtomPatch, Mode) ->
   ?ASSERT(assert_local_patch(Address)),
-  patch_instr(Address, hipe_bifs:atom_to_word(Atom), atom, Mode).
+  Word = case AtomPatch of
+	   {Part, Atom} when is_atom(Part), is_atom(Atom) ->
+	     patch_part(Part, hipe_bifs:atom_to_word(Atom));
+	   Atom when is_atom(Atom) ->
+	     hipe_bifs:atom_to_word(Atom)
+	 end,
+  patch_instr(Address, Word, atom, Mode).
 
 patch_sdesc(?STACK_DESC(SymExnRA, FSize, Arity, Live),
 	    Address, {_ConstMap2,CodeAddress}, _Addresses) ->
@@ -582,27 +590,37 @@ patch_sdesc(?STACK_DESC(SymExnRA, FSize, Arity, Live),
   DBG_MFA = ?IF_DEBUG(address_to_mfa_lth(Address, _Addresses), {undefined,undefined,0}),
   hipe_bifs:enter_sdesc({Address, ExnRA, FSize, Arity, Live, DBG_MFA}).
 
+patch_part(all, Word) -> Word;
+patch_part(lo16, Word) -> Word band 16#ffff;
+patch_part(hi16, Word) -> Word bsr 16.
 
 %%----------------------------------------------------------------
 %% Handle a 'load_address'-type patch.
 %%
-patch_load_address(Data, Address, ConstAndZone, Addresses, Mode) ->
+patch_load_address(Data0, Address, ConstAndZone, Addresses, Mode) ->
+  {PatchPart, Data} =
+    case Data0 of
+      {lo16, _Data} = T -> T;
+      {hi16, _Data} = T -> T;
+      T -> {all, T}
+    end,
   case Data of
     {local_function,DestMFA} ->
-      patch_load_mfa(Address, DestMFA, Addresses, 'local', Mode);
+      patch_load_mfa(Address, PatchPart, DestMFA, Addresses, 'local', Mode);
     {remote_function,DestMFA} ->
-      patch_load_mfa(Address, DestMFA, Addresses, 'remote', Mode);
+      patch_load_mfa(Address, PatchPart, DestMFA, Addresses, 'remote', Mode);
     {constant,Name} ->
       {ConstMap2,_CodeAddress} = ConstAndZone,
       ConstAddress = find_const(Name, ConstMap2),
-      patch_instr(Address, ConstAddress, constant, Mode);
+      patch_instr(Address, patch_part(PatchPart, ConstAddress), constant, Mode);
     {closure,{DestMFA,Uniq,Index}} ->
-      patch_closure(DestMFA, Uniq, Index, Address, Addresses, Mode);
+      patch_closure(PatchPart, DestMFA, Uniq, Index, Address, Addresses, Mode);
     {c_const,CConst} ->
-      patch_instr(Address, bif_address(CConst, Mode), c_const, Mode)
+      Patch = patch_part(PatchPart, bif_address(CConst, Mode)),
+      patch_instr(Address, Patch, c_const, Mode)
   end.
 
-patch_closure(DestMFA, Uniq, Index, Address, Addresses, Mode) ->
+patch_closure(PatchPart, DestMFA, Uniq, Index, Address, Addresses, Mode) ->
   case get(hipe_patch_closures) of
     false ->
       []; % This is taken care of when registering the module.
@@ -620,14 +638,14 @@ patch_closure(DestMFA, Uniq, Index, Address, Addresses, Mode) ->
       ?debug_msg("Patch FE(~w) to 0x~.16b->0x~.16b (emu:0x~.16b)\n",
 		 [DestMFA, FE, DestAddress, BEAMAddress]),
       ?ASSERT(assert_local_patch(Address)),
-      patch_instr(Address, FE, closure, Mode)
+      patch_instr(Address, patch_part(PatchPart, FE), closure, Mode)
   end.
 
 %%----------------------------------------------------------------
 %% Patch an instruction loading the address of an MFA.
 %% RemoteOrLocal ::= 'remote' | 'local'
 %%
-patch_load_mfa(CodeAddress, DestMFA, Addresses, RemoteOrLocal, Mode) ->
+patch_load_mfa(CodeAddress, Part, DestMFA, Addresses, RemoteOrLocal, Mode) ->
   DestAddress =
     case bif_address(DestMFA, Mode) of
       false ->
@@ -640,7 +658,7 @@ patch_load_mfa(CodeAddress, DestMFA, Addresses, RemoteOrLocal, Mode) ->
 	BifAddress
     end,
   ?ASSERT(assert_local_patch(CodeAddress)),
-  patch_instr(CodeAddress, DestAddress, 'load_mfa', Mode).
+  patch_instr(CodeAddress, patch_part(Part, DestAddress), 'load_mfa', Mode).
 
 %%----------------------------------------------------------------
 %% Patch references to code labels in the data segment.

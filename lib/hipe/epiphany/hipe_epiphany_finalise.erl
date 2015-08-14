@@ -80,7 +80,8 @@ peep(Insns) ->
 
 peep_list([#bcc{label=Label} | (Insns = [#label{label=Label}|_])], Accum) ->
   peep_list(Insns, Accum);
-peep_list([#movcc{dst=Dst,src=Dst} | Insns], Accum) ->
+peep_list([#movcc{dst=#epiphany_temp{reg=Dst},
+		  src=#epiphany_temp{reg=Dst}} | Insns], Accum) ->
   peep_list(Insns, Accum);
 peep_list([#str{size=Size,src=Src,base=Base,sign=Sign,offset=Offset}=StrI,
 	   #ldr{size=Size,dst=Dst,base=Base,sign=Sign,offset=Offset} | Insns],

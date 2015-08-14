@@ -161,7 +161,7 @@ mk_alu_ri(Dst, Src1, RtlAluOp, Src2) ->
       [hipe_epiphany:mk_alu(AluOp, Dst, Src1, hipe_epiphany:mk_simm11(Src2))];
     uimm5 when ?FITS_UIMM5(Src2) ->
       [hipe_epiphany:mk_alu(AluOp, Dst, Src1, hipe_epiphany:mk_uimm5(Src2))];
-    none ->
+    _ ->
       Tmp = new_untagged_temp(),
       mk_movi(Tmp, Src2,
 	      mk_alu_rr(Dst, Src1, RtlAluOp, Tmp))
@@ -209,10 +209,12 @@ conv_alub(I, Map, Data) ->
 	    _ -> lu
 	  end,
   Overflow = RtlCond =:= overflow orelse RtlCond =:= not_overflow,
-  {Cond, I2} =
+  {I1, Cond, I3} =
     case {Class, Overflow} of
-      {fpu, false} -> {conv_fpu_cond(RtlCond), []};
-      {_, false} -> {conv_ialu_cond(RtlCond), []};
+      {fpu, false} -> {[], conv_fpu_cond(RtlCond), []};
+      {au, false} when RtlAluOp =:= 'add', RtlCond =:= 'ltu' ->
+	{[], 'gteu', []}; %% unsigned overflow = carry set = gteu
+      {_, false} -> {[], conv_ialu_cond(RtlCond), []};
       {au, true} ->
 	%% Since there is no condition code that tests just the overflow flag,
 	%% we mask it from the STATUS special register instead.
@@ -224,17 +226,36 @@ conv_alub(I, Map, Data) ->
 	  hipe_epiphany:mk_movi(TmpMask, OverflowFlagMask,
 				[hipe_epiphany:mk_movfs(TmpStatus, status),
 				 MaskInstr]),
-	{case RtlCond of
-	   overflow -> ne; %% non-zero
-	   not_overflow -> eq %% zero
-	 end, ExtractOverflowFlag}
+	{[], case RtlCond of
+	       overflow -> ne; %% non-zero
+	       not_overflow -> eq %% zero
+	     end, ExtractOverflowFlag};
+      {fpu, true} when mul =:= RtlAluOp->
+	%% The hardware does not provide any way for us to check for overflow,
+	%% we'll do it ourself
+	%% XXX: We are overapproximating overflow here in order to save
+	%% instructions. This *will* cause subtle compiler bugs if any use of
+	%% alub(mul, [not_]overflow) is introduced which does not survive this!
+	Src1High = new_untagged_temp(),
+	Src2High = new_untagged_temp(),
+	Throwaway = new_untagged_temp(),
+	Shift1 = mk_alu(Src1High, Src1, 'sra', 14),
+	Shift2 = mk_alu(Src2High, Src2, 'sra', 18),
+	Comment = hipe_epiphany:mk_comment(
+		    "XXX: Overapproximation of overflow"),
+	Test = hipe_epiphany:mk_alu('orr', Throwaway, Src1High, Src2High),
+	{Shift1 ++ Shift2, case RtlCond of
+			     overflow -> ne; %% non-zero
+			     not_overflow -> eq %% zero
+			   end, [Comment, Test]}
+
     end,
-  I1 = mk_alu(Dst, Src1, RtlAluOp, Src2),
-  I3 = [hipe_epiphany:mk_pseudo_bcc(Cond,
+  I2 = mk_alu(Dst, Src1, RtlAluOp, Src2),
+  I4 = [hipe_epiphany:mk_pseudo_bcc(Cond,
 				    hipe_rtl:alub_true_label(I),
 				    hipe_rtl:alub_false_label(I),
 				    hipe_rtl:alub_pred(I))],
-  {I1 ++ I2 ++ I3, Map2, Data}.
+  {I1 ++ I2 ++ I3 ++ I4, Map2, Data}.
 
 conv_branch(I, Map, Data) ->
   %% <unused> = src1 - src2; if COND goto label
