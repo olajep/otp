@@ -216,14 +216,14 @@ BIF_RETTYPE epiphany_make_stub_module_3(BIF_ALIST_3)
     Eterm res;
 
     if (!erts_try_seize_code_write_permission(BIF_P)) {
-	ERTS_BIF_YIELD3(bif_export[BIF_code_make_stub_module_3],
+	ERTS_BIF_YIELD3(bif_export[BIF_epiphany_make_stub_module_3],
 			BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
     }
 
     erts_smp_proc_unlock(BIF_P, ERTS_PROC_LOCK_MAIN);
     erts_smp_thr_progress_block();
 
-    modp = erts_get_module(BIF_ARG_1, erts_active_code_ix());
+    modp = slave_get_module(BIF_ARG_1, erts_active_code_ix());
 
     if (modp && modp->curr.num_breakpoints > 0) {
 	ASSERT(modp->curr.code != NULL);

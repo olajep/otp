@@ -896,6 +896,10 @@ delete_process(Process* p)
 	erts_free(ERTS_ALC_T_ARG_REG, p->arg_reg);
     }
 
+#ifdef HIPE
+    hipe_delete_process(&p->hipe);
+#endif
+
     /* mbuf is cleaned up later, since it might contain reason */
 
     erts_erase_dicts(p);
@@ -1131,6 +1135,9 @@ Process *schedule(Process *p, int calls)
 	    ready_arg->exit_reason = p->fvalue;
 	    slave_state_swapout(p, &ready_arg->state);
 	    ready_arg->state.mbuf = NULL; /* We will free mbuf */
+#ifdef HIPE
+	    ready_arg->state.hipe_nstack = NULL; /* We will free nstack */
+#endif
 	    erts_master_syscall(SLAVE_SYSCALL_READY, ready_arg);
 
 	    final_proc_cleanup(esdp, p);

@@ -24,6 +24,17 @@
 #include "erl_process.h"
 #include "slave.h"
 
+#ifdef HIPE
+#define SLAVE_STATE_PROXIED_HIPE_PROC_FIELDS_DEFINER \
+    S(Eterm*, hipe_nsp, hipe.nsp)		     \
+    S(Eterm*, hipe_nstack, hipe.nstack)		     \
+    S(Eterm*, hipe_nstend, hipe.nstend)		     \
+    S(Eterm*, hipe_nstgraylim, hipe.nstgraylim)	     \
+    S(Eterm*, hipe_nstblacklim, hipe.nstblacklim)
+#else
+#define SLAVE_STATE_PROXIED_HIPE_PROC_FIELDS_DEFINER
+#endif
+
 /* This is the "X macro" pattern */
 #define SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER \
     X(ErlMessageQueue, msg)				 \
@@ -35,6 +46,7 @@
     X(Eterm*, hend)					 \
     X(Eterm*, stop)					 \
     X(Uint, heap_sz)					 \
+    SLAVE_STATE_PROXIED_HIPE_PROC_FIELDS_DEFINER	 \
     X(BeamInstr*, i)					 \
     X(ProcDict*, dictionary)				 \
     X(Uint, freason)					 \
@@ -45,9 +57,11 @@
 #define SLAVE_STATE_PSFLGS ERTS_PSFLG_TRAP_EXIT
 
 struct slave_state {
-#define X(T, N) T N;
+#define X(T, N) S(T, N, N)
+#define S(T, N, A) T N;
     SLAVE_STATE_VERBATIM_PROXIED_PROC_FIELDS_DEFINER
 #undef X
+#undef S
     /* These are boolean flags. To not screw up alignment, we use int for
      * them. */
     int msg_last_is_first, msg_save_is_first;

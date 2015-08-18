@@ -1674,7 +1674,15 @@ static void *hipe_make_stub(const LoaderTarget *target, Eterm m, Eterm f,
 	return NULL;
 #endif
     BEAMAddress = hipe_get_emu_address(target, m, f, arity, is_remote);
-    StubAddress = hipe_make_native_stub(BEAMAddress, arity);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    if (target == &loader_target_slave)
+	StubAddress = hipe_slave_make_native_stub(BEAMAddress, arity);
+    else
+#endif
+	{
+	    ASSERT(target == &loader_target_self);
+	    StubAddress = hipe_make_native_stub(BEAMAddress, arity);
+	}
 #if 0
     hipe_mfa_set_na(m, f, arity, StubAddress);
 #endif

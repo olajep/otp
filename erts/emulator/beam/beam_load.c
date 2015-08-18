@@ -6161,7 +6161,7 @@ erts_make_stub_module(Binary* loader_state, Process* p, Eterm Mod, Eterm Beam,
      * Insert the module in the module table.
      */
 
-    rval = insert_new_code(&loader_target_self, p, 0, p->group_leader, Mod,
+    rval = insert_new_code(stp->target, p, 0, p->group_leader, Mod,
 			   code, code_size);
     if (rval != NIL) {
 	goto error;

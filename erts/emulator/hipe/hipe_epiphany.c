@@ -35,6 +35,9 @@
 #  endif
 #  define GLOBAL_HIPE_FUN(Name) hipe_ ## Name
 #else
+/* Only for SLAVE_SYM_nbif_callemu; can we get rid of this? */
+#  include "slave_syms.h"
+
 #  include "hipe_slave.h"
 #  define GLOBAL_HIPE_FUN(Name) hipe_slave_ ## Name
 #  define MODE am_slave
@@ -80,7 +83,7 @@ static int check_callees(Eterm callees)
 }
 
 static int
-reachable_pcrel(void *ptr, void *from_start, Uint from_len)
+reachable_pcrel(const void *ptr, const void *from_start, Uint from_len)
 {
     const Uint farthest_distance = (1<<(23+1)) - 1;
     return from_len < farthest_distance
@@ -240,6 +243,12 @@ void *
 GLOBAL_HIPE_FUN(make_native_stub)(void *beamAddress, unsigned int beamArity)
 {
     char *ret, *code;
+#ifdef HIPE_EPIPHANY_C_SLAVE_MODE
+    const void *nbif_callemu_addr = (const void*) SLAVE_SYM_nbif_callemu;
+#else
+    const void *nbif_callemu_addr = &nbif_callemu;
+#endif
+
     ret = code = (char*)alloc_stub(3 * 4 + 2);
 
     /*
@@ -258,7 +267,7 @@ GLOBAL_HIPE_FUN(make_native_stub)(void *beamAddress, unsigned int beamArity)
      * It is not a given that we will be able to reach nbif_callemu with a
      * branch.
      */
-    if (!reachable_pcrel(&nbif_callemu, ret + 2 * 4 + 2, 0))
+    if (!reachable_pcrel(nbif_callemu_addr, ret + 2 * 4 + 2, 0))
 	abort();
 
     /* mov r8, %low(beamAddress) */
@@ -268,7 +277,7 @@ GLOBAL_HIPE_FUN(make_native_stub)(void *beamAddress, unsigned int beamArity)
     /* movt r8, %high(beamAddress) */
     EMIT32(code, 0x3002000b | uimm16((Uint)beamAddress >> 16));
     /* b nbif_callemu */
-    EMIT32(code, 0x000000e8 | simm24(((char*)&nbif_callemu - code) >> 1));
+    EMIT32(code, 0x000000e8 | simm24(((char*)nbif_callemu_addr - code) >> 1));
 
     return ret;
 }
