@@ -145,6 +145,9 @@ typedef struct ErtsAllocatorWrapper_t_ {
 ErtsAllocatorWrapper_t *erts_allctr_wrappers;
 extern int erts_allctr_wrapper_prelocked;
 extern erts_tsd_key_t erts_allctr_prelock_tsd_key;
+#if defined(DEBUG) && defined(__GNUC__)
+extern erts_tsd_key_t erts_alloc_debug_ra_tsd_key;
+#endif
 void erts_allctr_wrapper_prelock_init(ErtsAllocatorWrapper_t* wrapper);
 void erts_allctr_wrapper_pre_lock(void);
 void erts_allctr_wrapper_pre_unlock(void);
@@ -220,6 +223,9 @@ ERTS_ALC_INLINE
 void *erts_alloc(ErtsAlcType_t type, Uint size)
 {
     void *res;
+#if defined(DEBUG) && defined(__GNUC__)
+    erts_tsd_set(erts_alloc_debug_ra_tsd_key, __builtin_return_address(0));
+#endif
     res = (*erts_allctrs[ERTS_ALC_T2A(type)].alloc)(
 	ERTS_ALC_T2N(type),
 	erts_allctrs[ERTS_ALC_T2A(type)].extra,
@@ -233,6 +239,9 @@ ERTS_ALC_INLINE
 void *erts_realloc(ErtsAlcType_t type, void *ptr, Uint size)
 {
     void *res;
+#if defined(DEBUG) && defined(__GNUC__)
+    erts_tsd_set(erts_alloc_debug_ra_tsd_key, __builtin_return_address(0));
+#endif
     res = (*erts_allctrs[ERTS_ALC_T2A(type)].realloc)(
 	ERTS_ALC_T2N(type),
 	erts_allctrs[ERTS_ALC_T2A(type)].extra,
@@ -246,6 +255,9 @@ void *erts_realloc(ErtsAlcType_t type, void *ptr, Uint size)
 ERTS_ALC_INLINE
 void erts_free(ErtsAlcType_t type, void *ptr)
 {
+#if defined(DEBUG) && defined(__GNUC__)
+    erts_tsd_set(erts_alloc_debug_ra_tsd_key, __builtin_return_address(0));
+#endif
     (*erts_allctrs[ERTS_ALC_T2A(type)].free)(
 	ERTS_ALC_T2N(type),
 	erts_allctrs[ERTS_ALC_T2A(type)].extra,
@@ -256,6 +268,9 @@ void erts_free(ErtsAlcType_t type, void *ptr)
 ERTS_ALC_INLINE
 void *erts_alloc_fnf(ErtsAlcType_t type, Uint size)
 {
+#if defined(DEBUG) && defined(__GNUC__)
+    erts_tsd_set(erts_alloc_debug_ra_tsd_key, __builtin_return_address(0));
+#endif
     return (*erts_allctrs[ERTS_ALC_T2A(type)].alloc)(
 	ERTS_ALC_T2N(type),
 	erts_allctrs[ERTS_ALC_T2A(type)].extra,
@@ -266,6 +281,9 @@ void *erts_alloc_fnf(ErtsAlcType_t type, Uint size)
 ERTS_ALC_INLINE
 void *erts_realloc_fnf(ErtsAlcType_t type, void *ptr, Uint size)
 {
+#if defined(DEBUG) && defined(__GNUC__)
+    erts_tsd_set(erts_alloc_debug_ra_tsd_key, __builtin_return_address(0));
+#endif
     return (*erts_allctrs[ERTS_ALC_T2A(type)].realloc)(
 	ERTS_ALC_T2N(type),
 	erts_allctrs[ERTS_ALC_T2A(type)].extra,

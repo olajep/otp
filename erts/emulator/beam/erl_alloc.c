@@ -591,6 +591,11 @@ erts_alloc_init(int *argc, char **argv, ErtsAllocInitOpts *eaiop)
     erts_tsd_key_create(&erts_allctr_prelock_tsd_key,
 			"erts_allctr_prelock_tsd_key");
 
+#if defined(DEBUG) && defined(__GNUC__)
+    erts_tsd_key_create(&erts_alloc_debug_ra_tsd_key,
+			"erts_alloc_debug_ra_tsd_key");
+#endif
+
     erts_sys_alloc_init();
     erts_init_utils_mem();
 
@@ -3312,6 +3317,9 @@ erts_request_alloc_info(struct process *c_p,
 ErtsAllocatorWrapper_t *erts_allctr_wrappers;
 int erts_allctr_wrapper_prelocked = 0;
 erts_tsd_key_t erts_allctr_prelock_tsd_key;
+#if defined(DEBUG) && defined(__GNUC__)
+erts_tsd_key_t erts_alloc_debug_ra_tsd_key;
+#endif
 
 void erts_allctr_wrapper_prelock_init(ErtsAllocatorWrapper_t* wrapper)
 {
@@ -3584,9 +3592,9 @@ UWord erts_alc_test(UWord op, UWord a1, UWord a2, UWord a3)
 #endif
 
 #ifdef HARD_DEBUG
-#define FENCE_SZ		(4*sizeof(UWord))
+#define FENCE_SZ		(5*sizeof(UWord))
 #else
-#define FENCE_SZ		(3*sizeof(UWord))
+#define FENCE_SZ		(5*sizeof(UWord))
 #endif
 
 #if defined(ARCH_64)
@@ -3748,7 +3756,7 @@ void check_allocators(void)
 #endif
 
 static void *
-set_memory_fence(void *ptr, Uint sz, ErtsAlcType_t n)
+set_memory_fence(void *ptr, Uint sz, ErtsAlcType_t n, void *ra)
 {
     UWord *ui_ptr;
     UWord pattern;
@@ -3764,7 +3772,10 @@ set_memory_fence(void *ptr, Uint sz, ErtsAlcType_t n)
 
 #ifdef HARD_DEBUG
     mblkpp = (hdbg_mblk **) ui_ptr++;
+#else
+    *(ui_ptr++) = pattern; /* Pad to odd size */
 #endif
+    *(ui_ptr++) = (UWord)ra;
 
     *(ui_ptr++) = sz;
     *(ui_ptr++) = pattern;
@@ -3788,6 +3799,7 @@ check_memory_fence(void *ptr, Uint *size, ErtsAlcType_t n, int func)
 #ifdef HARD_DEBUG
     hdbg_mblk *mblk;
 #endif
+    void *ra;
 
     if (!ptr)
 	return NULL;
@@ -3795,8 +3807,11 @@ check_memory_fence(void *ptr, Uint *size, ErtsAlcType_t n, int func)
     ui_ptr = (UWord *) ptr;
     pre_pattern = *(--ui_ptr);
     *size = sz = *(--ui_ptr);
+    ra = (void*)*(--ui_ptr);
 #ifdef HARD_DEBUG
     mblk = (hdbg_mblk *) *(--ui_ptr);
+#else
+    --ui_ptr;
 #endif
 
     found_type = GET_TYPE_OF_PATTERN(pre_pattern);
@@ -3848,9 +3863,9 @@ check_memory_fence(void *ptr, Uint *size, ErtsAlcType_t n, int func)
 	}
 
 	erl_exit(ERTS_ABORT_EXIT,
-		 "ERROR: Memory block (p=%#x, sz=%u) allocated as type \"%s\","
-		 " but %s as type \"%s\".\n",
-		 (UWord) ptr, (UWord) sz, ftype, op_str, otype);
+		 "ERROR: Memory block (p=%#x, sz=%u) allocated as type \"%s\""
+		 " at %#x, but %s as type \"%s\".\n",
+		 (UWord) ptr, (UWord) sz, ftype, ra, op_str, otype);
     }
 
 #ifdef HARD_DEBUG
@@ -3875,6 +3890,11 @@ debug_alloc(ErtsAlcType_t n, void *extra, Uint size)
     ErtsAllocatorFunctions_t *real_af = (ErtsAllocatorFunctions_t *) extra;
     Uint dsize;
     void *res;
+    void *ra = NULL;
+#if defined(DEBUG) && defined(__GNUC__)
+    ra = erts_tsd_get(erts_alloc_debug_ra_tsd_key);
+    erts_tsd_set(erts_alloc_debug_ra_tsd_key, 0);
+#endif
 
 #ifdef HARD_DEBUG
     erts_hdbg_chk_blks();
@@ -3884,7 +3904,7 @@ debug_alloc(ErtsAlcType_t n, void *extra, Uint size)
     dsize = size + FENCE_SZ;
     res = (*real_af->alloc)(n, real_af->extra, dsize);
 
-    res = set_memory_fence(res, size, n);
+    res = set_memory_fence(res, size, n, ra);
 
 #ifdef PRINT_OPS
     fprintf(stderr, "0x%lx = alloc(%s, %lu)\r\n",
@@ -3903,6 +3923,11 @@ debug_realloc(ErtsAlcType_t n, void *extra, void *ptr, Uint size)
     Uint old_size;
     void *dptr;
     void *res;
+    void *ra = NULL;
+#if defined(DEBUG) && defined(__GNUC__)
+    ra = erts_tsd_get(erts_alloc_debug_ra_tsd_key);
+    erts_tsd_set(erts_alloc_debug_ra_tsd_key, 0);
+#endif
 
     ASSERT(ERTS_ALC_N_MIN <= n && n <= ERTS_ALC_N_MAX);
 
@@ -3920,7 +3945,7 @@ debug_realloc(ErtsAlcType_t n, void *extra, void *ptr, Uint size)
 
     res = (*real_af->realloc)(n, real_af->extra, dptr, dsize);
 
-    res = set_memory_fence(res, size, n);
+    res = set_memory_fence(res, size, n, ra);
 
 #ifdef PRINT_OPS
     fprintf(stderr, "0x%lx = realloc(%s, 0x%lx, %lu)\r\n",
@@ -3936,6 +3961,9 @@ debug_free(ErtsAlcType_t n, void *extra, void *ptr)
     ErtsAllocatorFunctions_t *real_af = (ErtsAllocatorFunctions_t *) extra;
     void *dptr;
     Uint size;
+#if defined(DEBUG) && defined(__GNUC__)
+    erts_tsd_set(erts_alloc_debug_ra_tsd_key, 0);
+#endif
 
     ASSERT(ERTS_ALC_N_MIN <= n && n <= ERTS_ALC_N_MAX);
 
