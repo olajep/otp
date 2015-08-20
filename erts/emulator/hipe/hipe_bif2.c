@@ -181,7 +181,26 @@ BIF_RETTYPE hipe_debug_bif_wrapper(BIF_ALIST_1)
 
 BIF_RETTYPE hipe_bifs_debug_native_called_2(BIF_ALIST_2)
 {
-    erts_printf("hipe_debug_native_called: %T(%T)\r\n", BIF_ARG_1, BIF_ARG_2);
+    const int MAX_LEN = 1024;
+    Eterm *mfa, *args;
+    unsigned arity, i;
+    char buf[MAX_LEN+1], *bufp = buf;
+
+    if (is_not_tuple_arity(BIF_ARG_1, 3)) BIF_RET(am_badarg);
+    mfa = tuple_val(BIF_ARG_1);
+    if (is_not_small(mfa[3])) BIF_RET(am_badarg);
+    arity = unsigned_val(mfa[3]);
+    if (is_not_tuple_arity(BIF_ARG_2, arity)) BIF_RET(am_badarg);
+    args = tuple_val(BIF_ARG_2);
+
+    bufp += erts_snprintf(bufp, MAX_LEN - (bufp - buf),
+			  "hipe_debug_native_called: %T:%T(", mfa[1], mfa[2]);
+
+    for (i = 1; i <= arity; i++)
+	bufp += erts_snprintf(bufp, MAX_LEN - (bufp - buf),
+			      (i==1?"%T":", %T"), args[i]);
+
+    erts_fprintf(stderr, "%.*s)\r\n", bufp - buf, buf);
     BIF_RET(am_ok);
 }
 

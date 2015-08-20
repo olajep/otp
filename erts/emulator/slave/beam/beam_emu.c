@@ -4196,7 +4196,13 @@ get_map_elements_fail:
 	     if (is_non_value(result)) {
 		 ClauseFail();
 	     } else {
+#undef CHECK_TERM
+#define CHECK_TERM(T) ASSERT(!is_CP(T))
 		 StoreResult(result, Arg(3));
+#if defined(HARDDEBUG)
+#  undef CHECK_TERM
+#  define CHECK_TERM(T) size_object(T)
+#endif
 	     }
 	 } else {
 	     ClauseFail();

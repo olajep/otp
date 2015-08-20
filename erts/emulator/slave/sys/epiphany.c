@@ -185,10 +185,17 @@ scan_epilogue(unsigned *__attribute__((packed)) ptr, int *framesize, int *lr_off
     unsigned frame_off = 0;
 
     while (1) {
+	void process_main(void);
+	void expand_error_value(void);
 	unsigned instr;
 	if ((unsigned)ptr > (unsigned)&end) {
 	    erts_printf("Scan reached end of text segment\n");
 	    return -1;
+	}
+	if ((void*)ptr >= (void*)(process_main)
+	    && (void*)ptr < (void*)(expand_error_value)) {
+	    HDEBUG_PRINTF("Found process_main, stopping\n");
+	    return 1;
 	}
 	if ((unsigned)ptr & 0x3) {
 	    short unsigned *hptr = (short unsigned *)ptr;

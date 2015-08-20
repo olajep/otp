@@ -1017,6 +1017,8 @@ enter_code(CodeSize, CodeBinary, CalleeMFAs, Mod, Beam, Mode) ->
   hipe_bifs:update_code_size(Mod, Beam, CodeSize),
   {CodeAddress,Trampolines}
     = hipe_bifs:enter_code(Mode, CodeBinary, CalleeMFAs),
+  ?debug_msg("Module ~p loaded in mode ~p at 0x~8.16.0B~n",
+	     [Mod, Mode, CodeAddress]),
   ?init_assert_patch(CodeAddress, byte_size(CodeBinary)),
   {CodeAddress,Trampolines}.
 

@@ -328,6 +328,9 @@ print_term(fmtfn_t fn, void* arg, Eterm obj, long *dcount,
 #else
 	wobj = (Wterm)obj;
 #endif
+	if (is_boxed(wobj) && header_is_bin_matchstate(*boxed_val(wobj))) {
+	    PRINT_STRING(res, fn, arg, "<binary matchstate>");
+	} else
 	switch (tag_val_def(wobj)) {
 	case NIL_DEF:
 	    PRINT_STRING(res, fn, arg, "[]");
