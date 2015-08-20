@@ -766,15 +766,28 @@ gen_fun_thing_skeleton(FunP, FunName={_Mod,_FunId,Arity}, NumFree,
   %%    funp->num_free = num_free;
   %%    funp->creator = p->id;
   %%    funp->native_code = fe->native_code;
+  %%    funp->(master|slave)_native_code = fe->(master|slave)_native_code;
   %%  And creates a fe (at load time).
   FeVar = hipe_rtl:mk_new_reg(),
   PidVar = hipe_rtl:mk_new_reg_gcsafe(),
   NativeVar = hipe_rtl:mk_new_reg(),
 
+  %% When support for a slave (coprocessor) runtime is enabled, there is a
+  %% second native address field in ErlFunThings
+  CopyOtherNative =
+    case ?EFE_OTHER_NATIVE_ADDRESS of
+      [] -> [];
+      _X ->
+	OtherNativeVar = hipe_rtl:mk_new_reg(),
+	[load_struct_field(OtherNativeVar, FeVar, ?EFE_OTHER_NATIVE_ADDRESS),
+	 store_struct_field(FunP, ?EFT_OTHER_NATIVE_ADDRESS, OtherNativeVar)]
+    end,
+
   [hipe_rtl:mk_load_address(FeVar, {FunName, MagicNr, Index}, closure),
    store_struct_field(FunP, ?EFT_FE, FeVar),
    load_struct_field(NativeVar, FeVar, ?EFE_NATIVE_ADDRESS),
    store_struct_field(FunP, ?EFT_NATIVE_ADDRESS, NativeVar),
+   CopyOtherNative,
 
    store_struct_field(FunP, ?EFT_ARITY, hipe_rtl:mk_imm(Arity-NumFree)),
 

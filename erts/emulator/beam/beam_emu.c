@@ -6415,6 +6415,9 @@ new_fun(Process* p, Eterm* reg, ErlFunEntry* fe, int num_free)
     funp->creator = p->common.id;
 #ifdef HIPE
     funp->native_address = fe->native_address;
+#  ifdef ERTS_SLAVE_EMU_ENABLED
+    funp->slave_native_address = fe->slave_native_address;
+#  endif
 #endif
     funp->arity = (int)fe->address[-1] - num_free;
     for (i = 0; i < num_free; i++) {

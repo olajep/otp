@@ -561,6 +561,24 @@ static const struct rts_param rts_params[] = {
     },
     { 49, "P_MSG_FIRST", 1, offsetof(struct process, msg.first) },
     { 50, "P_MSG_SAVE", 1, offsetof(struct process, msg.save) },
+
+#ifdef HIPE
+    { 51, "EFE_OTHER_NATIVE_ADDRESS",
+#ifdef ERTS_SLAVE
+      1, offsetof(struct erl_fun_entry, master_native_address)
+#elif defined(ERTS_SLAVE_EMU_ENABLED)
+      1, offsetof(struct erl_fun_entry, slave_native_address)
+#endif
+    },
+    { 52, "EFT_OTHER_NATIVE_ADDRESS",
+#ifdef ERTS_SLAVE
+      1, offsetof(struct erl_fun_thing, master_native_address),
+#elif defined(ERTS_SLAVE_EMU_ENABLED)
+      1, offsetof(struct erl_fun_thing, slave_native_address),
+#endif
+    },
+#endif
+
 };
 
 #define NR_PARAMS	ARRAY_SIZE(rts_params)

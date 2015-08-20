@@ -84,7 +84,17 @@ typedef struct erl_fun_thing {
     ErlFunEntry* fe;		/* Pointer to fun entry. */
     struct erl_off_heap_header* next;
 #ifdef HIPE
-    UWord* native_address;	/* Native code for the fun. */
+#  ifndef ERTS_SLAVE
+#    ifndef ERTS_SLAVE_EMU_ENABLED
+    UWord* native_address;	  /* Native code for the fun. */
+#    else
+    UWord* native_address;	  /* Native code for the fun. */
+    UWord* slave_native_address;  /* Slave native code for the fun */
+#    endif
+#  else
+    UWord* master_native_address; /* Master native code for the fun. */
+    UWord* native_address;	  /* Native code for the fun. */
+#  endif
 #endif
     Uint arity;			/* The arity of the fun. */
     Uint num_free;		/* Number of free variables (in env). */

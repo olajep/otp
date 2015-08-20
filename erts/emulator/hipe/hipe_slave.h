@@ -31,6 +31,9 @@ extern int hipe_slave_patch_call(void *callAddress, void *destAddress, void *tra
 
 extern void *hipe_slave_make_native_stub(void *beamAddress, unsigned int beamArity);
 
+/* Return the address of a stub switching a native closure call to BEAM. */
+extern const void *hipe_slave_closure_stub_address(unsigned int arity);
+
 /* #ifdef ERTS_SLAVE */
 #include "hipe_epiphany_slave.h"
 /* #endif */

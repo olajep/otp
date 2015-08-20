@@ -38,6 +38,7 @@
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
 #  include "slave_load.h" /* For SlaveOp */
+#  include "hipe_slave.h"
 #endif
 
 #if defined(ERTS_SLAVE_EMU_ENABLED) || defined(ERTS_SLAVE)
@@ -705,15 +706,20 @@ static void hipe_check_nstack(Process *p, unsigned nwords)
 	hipe_inc_nstack(p);
 }
 
+#ifndef ERTS_SLAVE
 void hipe_set_closure_stub(ErlFunEntry *fe, unsigned num_free)
 {
     unsigned arity;
 
     arity = fe->arity;
     fe->native_address = (Eterm*) hipe_closure_stub_address(arity);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    fe->slave_native_address = (Eterm*) hipe_slave_closure_stub_address(arity);
+#elif defined(ERTS_SLAVE)
+#  error "Can't know the closure stub address of the master"
+#endif
 }
 
-#ifndef ERTS_SLAVE
 Eterm hipe_build_stacktrace(Process *p, struct StackTrace *s)
 {
     int depth, i;

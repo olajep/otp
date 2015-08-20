@@ -3637,6 +3637,13 @@ dec_term_atom_common:
 		    hipe_set_closure_stub(funp->fe, num_free);
 		}
 		funp->native_address = funp->fe->native_address;
+#  ifdef ERTS_SLAVE_EMU_ENABLED
+		ASSERT(funp->fe->slave_native_address);
+		funp->slave_native_address = funp->fe->slave_native_address;
+#elif defined(ERTS_SLAVE)
+		ASSERT(funp->fe->master_native_address);
+		funp->master_native_address = funp->fe->master_native_address;
+#  endif
 #endif
 		hp = *hpp;
 
@@ -3710,6 +3717,11 @@ dec_term_atom_common:
 		funp->arity = funp->fe->address[-1] - num_free;
 #ifdef HIPE
 		funp->native_address = funp->fe->native_address;
+#  ifdef ERTS_SLAVE_EMU_ENABLED
+		funp->slave_native_address = funp->fe->slave_native_address;
+#  elif defined(ERTS_SLAVE)
+		funp->master_native_address = funp->fe->master_native_address;
+#  endif
 #endif
 		hp = *hpp;
 
