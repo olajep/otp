@@ -63,6 +63,17 @@ static __inline__ unsigned int max(unsigned int x, unsigned int y)
     return (x > y) ? x : y;
 }
 
+#ifdef ERTS_SLAVE
+struct sdesc_with_exnra nbif_return_sdesc = {
+    .exnra = (unsigned long)&nbif_fail,
+    .sdesc = {
+	.bucket = { .hvalue = (unsigned long)&nbif_return },
+	.summary = (1<<8),
+    },
+};
+
+static __inline__ void hipe_arch_glue_init(void) { /* nothing */ }
+#else
 static __inline__ void hipe_arch_glue_init(void)
 {
     static struct sdesc_with_exnra nbif_return_sdesc = {
@@ -74,6 +85,7 @@ static __inline__ void hipe_arch_glue_init(void)
     };
     hipe_init_sdesc_table(&nbif_return_sdesc.sdesc);
 }
+#endif
 
 static __inline__ void hipe_push_risc_nra_frame(Process *p)
 {

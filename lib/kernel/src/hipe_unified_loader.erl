@@ -561,7 +561,7 @@ patch_offset(Type, Data, Address, ConstAndZone, Addresses, Mode) ->
       Atom = Data,
       patch_atom(Address, Atom, Mode);
     sdesc ->
-      patch_sdesc(Data, Address, ConstAndZone, Addresses);
+      patch_sdesc(Data, Address, ConstAndZone, Addresses, Mode);
     x86_abs_pcrel ->
       patch_instr(Address, Data, x86_abs_pcrel, Mode)
     %% _ ->
@@ -580,7 +580,7 @@ patch_atom(Address, AtomPatch, Mode) ->
   patch_instr(Address, Word, atom, Mode).
 
 patch_sdesc(?STACK_DESC(SymExnRA, FSize, Arity, Live),
-	    Address, {_ConstMap2,CodeAddress}, _Addresses) ->
+	    Address, {_ConstMap2,CodeAddress}, _Addresses, Mode) ->
   ExnRA =
     case SymExnRA of
       [] -> 0; % No catch
@@ -588,7 +588,7 @@ patch_sdesc(?STACK_DESC(SymExnRA, FSize, Arity, Live),
     end,
   ?ASSERT(assert_local_patch(Address)),
   DBG_MFA = ?IF_DEBUG(address_to_mfa_lth(Address, _Addresses), {undefined,undefined,0}),
-  hipe_bifs:enter_sdesc({Address, ExnRA, FSize, Arity, Live, DBG_MFA}).
+  hipe_bifs:enter_sdesc(Mode, {Address, ExnRA, FSize, Arity, Live, DBG_MFA}).
 
 patch_part(all, Word) -> Word;
 patch_part(lo16, Word) -> Word band 16#ffff;

@@ -93,6 +93,7 @@ BIF_RETTYPE hipe_bifs_show_pcb_1(BIF_ALIST_1)
     proc_unlock(BIF_P, rp);
     BIF_RET(am_true);
 }
+#endif /* !ERTS_SLAVE */
 
 BIF_RETTYPE hipe_bifs_modeswitch_debug_on_0(BIF_ALIST_0)
 {
@@ -105,7 +106,6 @@ BIF_RETTYPE hipe_bifs_modeswitch_debug_off_0(BIF_ALIST_0)
     hipe_modeswitch_debug = 0;
     BIF_RET(am_true);
 }
-#endif /* !ERTS_SLAVE */
 
 BIF_RETTYPE hipe_bifs_nstack_used_size_0(BIF_ALIST_0)
 {

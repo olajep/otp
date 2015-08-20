@@ -326,6 +326,10 @@ fallback(ErtsAlcType_t n)
 	return ERTS_ALC_T_NIF_TRAP_EXPORT_FALLBACK;
     case ERTS_ALC_T2N(ERTS_ALC_T_EXPORT):
 	return ERTS_ALC_T_EXPORT_FALLBACK;
+#ifdef HIPE
+    case ERTS_ALC_T2N(ERTS_ALC_T_HIPE_DATA):
+	return ERTS_ALC_T_HIPE_DATA_FALLBACK;
+#endif
     default:
 	erl_exit(1, "Bad allocator number %d in slave_alloc", n);
     }

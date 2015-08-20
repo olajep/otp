@@ -153,6 +153,9 @@
 -define(PROC_POINTER, ?R32).
 
 reg_name(?LR) -> "lr";
+reg_name(?HEAP_POINTER) -> "HP";
+reg_name(?STACK_POINTER) -> "NSP";
+reg_name(?PROC_POINTER) -> "P";
 reg_name(R) when R =< ?LAST_PRECOLOURED -> [$r | integer_to_list(R)].
 
 first_virtual() -> ?LAST_PRECOLOURED + 1.

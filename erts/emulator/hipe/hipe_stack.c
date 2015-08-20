@@ -42,42 +42,43 @@
  */
 struct hipe_sdesc_table hipe_sdesc_table;
 
-static struct sdesc **alloc_bucket(unsigned int size)
+static struct sdesc **alloc_bucket(ErtsAlcType_t alctr, unsigned int size)
 {
     unsigned long nbytes = size * sizeof(struct sdesc*);
-    struct sdesc **bucket = erts_alloc(ERTS_ALC_T_HIPE, nbytes);
+    struct sdesc **bucket = erts_alloc(alctr, nbytes);
     sys_memzero(bucket, nbytes);
     return bucket;
 }
 
-static void hipe_grow_sdesc_table(void)
+static void hipe_grow_sdesc_table(struct hipe_sdesc_table *table)
 {
     unsigned int old_size, new_size, new_mask;
     struct sdesc **old_bucket, **new_bucket;
     unsigned int i;
 
-    old_size = 1 << hipe_sdesc_table.log2size;
-    hipe_sdesc_table.log2size += 1;
-    new_size = 1 << hipe_sdesc_table.log2size;
+    old_size = 1 << table->log2size;
+    table->log2size += 1;
+    new_size = 1 << table->log2size;
     new_mask = new_size - 1;
-    hipe_sdesc_table.mask = new_mask;
-    old_bucket = hipe_sdesc_table.bucket;
-    new_bucket = alloc_bucket(new_size);
-    hipe_sdesc_table.bucket = new_bucket;
+    table->mask = new_mask;
+    old_bucket = table->bucket;
+    new_bucket = alloc_bucket(table->alctr, new_size);
+    table->bucket = new_bucket;
     for (i = 0; i < old_size; ++i) {
 	struct sdesc *b = old_bucket[i];
 	while (b != NULL) {
 	    struct sdesc *next = b->bucket.next;
-	    unsigned int j = (b->bucket.hvalue >> HIPE_RA_LSR_COUNT) & new_mask;
+	    unsigned int j = (b->bucket.hvalue >> table->ra_lsr_count) & new_mask;
 	    b->bucket.next = new_bucket[j];
 	    new_bucket[j] = b;
 	    b = next;
 	}
     }
-    erts_free(ERTS_ALC_T_HIPE, old_bucket);
+    erts_free(table->alctr, old_bucket);
 }
 
-struct sdesc *hipe_put_sdesc(struct sdesc *sdesc)
+static struct sdesc *put_sdesc(struct hipe_sdesc_table *table,
+			       struct sdesc *sdesc)
 {
     unsigned long ra;
     unsigned int i;
@@ -85,34 +86,51 @@ struct sdesc *hipe_put_sdesc(struct sdesc *sdesc)
     unsigned int size;
 
     ra = sdesc->bucket.hvalue;
-    i = (ra >> HIPE_RA_LSR_COUNT) & hipe_sdesc_table.mask;
-    chain = hipe_sdesc_table.bucket[i];
+    i = (ra >> table->ra_lsr_count) & table->mask;
+    chain = table->bucket[i];
 
     for (; chain != NULL; chain = chain->bucket.next)
 	if (chain->bucket.hvalue == ra)
 	    return chain;	/* collision! (shouldn't happen) */
 
-    sdesc->bucket.next = hipe_sdesc_table.bucket[i];
-    hipe_sdesc_table.bucket[i] = sdesc;
-    hipe_sdesc_table.used += 1;
-    size = 1 << hipe_sdesc_table.log2size;
-    if (hipe_sdesc_table.used > (4*size)/5)	/* rehash at 80% */
-	hipe_grow_sdesc_table();
+    sdesc->bucket.next = table->bucket[i];
+    table->bucket[i] = sdesc;
+    table->used += 1;
+    size = 1 << table->log2size;
+    if (table->used > (4*size)/5)	/* rehash at 80% */
+	hipe_grow_sdesc_table(table);
     return sdesc;
+}
+
+struct sdesc *hipe_put_sdesc(struct sdesc *sdesc)
+{
+    return put_sdesc(&hipe_sdesc_table, sdesc);
+}
+
+static void init_sdesc_table(struct hipe_sdesc_table *table,
+			     struct sdesc *sdesc,
+			     ErtsAlcType_t alctr,
+			     unsigned long ra_lsr_count)
+{
+    unsigned int log2size, size;
+
+    table->alctr = alctr;
+    table->ra_lsr_count = ra_lsr_count;
+
+    log2size = 10;
+    size = 1 << log2size;
+    table->log2size = log2size;
+    table->mask = size - 1;
+    table->used = 0;
+    table->bucket = alloc_bucket(alctr, size);
+
+    put_sdesc(table, sdesc);
 }
 
 void hipe_init_sdesc_table(struct sdesc *sdesc)
 {
-    unsigned int log2size, size;
-
-    log2size = 10;
-    size = 1 << log2size;
-    hipe_sdesc_table.log2size = log2size;
-    hipe_sdesc_table.mask = size - 1;
-    hipe_sdesc_table.used = 0;
-    hipe_sdesc_table.bucket = alloc_bucket(size);
-
-    hipe_put_sdesc(sdesc);
+    init_sdesc_table(&hipe_sdesc_table, sdesc, ERTS_ALC_T_HIPE,
+		     HIPE_RA_LSR_COUNT);
 }
 
 /*
@@ -120,7 +138,7 @@ void hipe_init_sdesc_table(struct sdesc *sdesc)
  * representation. If different representations are needed in
  * the future, this code has to be made target dependent.
  */
-struct sdesc *hipe_decode_sdesc(Eterm arg)
+static struct sdesc *decode_sdesc(ErtsAlcType_t alctr, Eterm arg)
 {
     Uint ra, exnra;
     Eterm *live;
@@ -161,7 +179,7 @@ struct sdesc *hipe_decode_sdesc(Eterm arg)
 	 ? offsetof(struct sdesc_with_exnra, sdesc.livebits)
 	 : offsetof(struct sdesc, livebits))
 	+ livebitswords * sizeof(int);
-    p = erts_alloc(ERTS_ALC_T_HIPE, sdescbytes);
+    p = erts_alloc(alctr, sdescbytes);
     /* If we have an exception handler use the
        special sdesc_with_exnra structure. */
     if (exnra) {
@@ -188,8 +206,49 @@ struct sdesc *hipe_decode_sdesc(Eterm arg)
 	Eterm mfa_tpl = tuple_val(arg)[6];	
 	sdesc->dbg_M = tuple_val(mfa_tpl)[1];
 	sdesc->dbg_F = tuple_val(mfa_tpl)[2];
-	sdesc->dbg_A = tuple_val(mfa_tpl)[3];
+	sdesc->dbg_A = unsigned_val(tuple_val(mfa_tpl)[3]);
     }
 #endif
     return sdesc;
 }
+
+struct sdesc *hipe_decode_sdesc(Eterm arg)
+{
+    return decode_sdesc(ERTS_ALC_T_HIPE, arg);
+}
+
+/*
+ * Table in the slave runtime, maintained from the master, read from the
+ * slave.
+ */
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "hipe_slave.h"
+#  include "slave_syms.h"
+struct hipe_sdesc_table *const hipe_slave_sdesc_table =
+    (void*)SLAVE_SYM_hipe_sdesc_table;
+#ifdef DEBUG
+static int slave_initialised = 0;
+#endif
+
+struct sdesc *hipe_slave_put_sdesc(struct sdesc *sdesc)
+{
+    ASSERT(slave_initialised);
+    return put_sdesc(hipe_slave_sdesc_table, sdesc);
+}
+
+void hipe_slave_init_sdesc_table(struct sdesc *sdesc)
+{
+    init_sdesc_table(hipe_slave_sdesc_table, sdesc, ERTS_ALC_T_HIPE_SLAVE,
+		     HIPE_SLAVE_RA_LSR_COUNT);
+#ifdef DEBUG
+    slave_initialised = 1;
+#endif
+}
+
+/* This isn't very nice */
+struct sdesc *hipe_slave_decode_sdesc(Eterm arg)
+{
+    return decode_sdesc(ERTS_ALC_T_HIPE_SLAVE, arg);
+}
+
+#endif

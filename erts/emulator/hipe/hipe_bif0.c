@@ -589,7 +589,7 @@ static void *const_term_alloc(void *tmpl)
     alloc_size = size + (offsetof(struct const_term, mem)/sizeof(Eterm));
     hipe_constants_size += alloc_size;
 
-    p = (struct const_term*)erts_alloc(ERTS_ALC_T_HIPE, alloc_size * sizeof(Eterm));
+    p = (struct const_term*)erts_alloc(ERTS_ALC_T_HIPE_DATA, alloc_size * sizeof(Eterm));
 
     /* I have absolutely no idea if having a private 'off_heap'
        works or not. _Some_ off_heap object is required for
@@ -608,7 +608,7 @@ static void init_const_term_table(void)
     f.cmp = (HCMP_FUN) const_term_cmp;
     f.alloc = (HALLOC_FUN) const_term_alloc;
     f.free = (HFREE_FUN) NULL;
-    hash_init(ERTS_ALC_T_HIPE, &const_term_table, "const_term_table", 97, f);
+    hash_init(ERTS_ALC_T_HIPE_DATA, &const_term_table, "const_term_table", 97, f);
 }
 
 BIF_RETTYPE hipe_bifs_merge_term_1(BIF_ALIST_1)
@@ -820,16 +820,28 @@ BIF_RETTYPE hipe_bifs_address_to_fun_1(BIF_ALIST_1)
 }
 #endif
 
-BIF_RETTYPE hipe_bifs_enter_sdesc_1(BIF_ALIST_1)
+BIF_RETTYPE hipe_bifs_enter_sdesc_2(BIF_ALIST_2)
 {
     struct sdesc *sdesc;
+    struct sdesc *(*put)(struct sdesc*);
 
-    sdesc = hipe_decode_sdesc(BIF_ARG_1);
+    if (BIF_ARG_1 == am_master) {
+	put = hipe_put_sdesc;
+	sdesc = hipe_decode_sdesc(BIF_ARG_2);
+    }
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    else if (BIF_ARG_1 == am_slave) {
+	put = hipe_slave_put_sdesc;
+	sdesc = hipe_slave_decode_sdesc(BIF_ARG_2);
+    }
+#endif
+    else BIF_ERROR(BIF_P, BADARG);
+
     if (!sdesc) {
 	fprintf(stderr, "%s: bad sdesc!\r\n", __FUNCTION__);
 	BIF_ERROR(BIF_P, BADARG);
     }
-    if (hipe_put_sdesc(sdesc) != sdesc) {
+    if (put(sdesc) != sdesc) {
 	fprintf(stderr, "%s: duplicate entry!\r\n", __FUNCTION__);
 	BIF_ERROR(BIF_P, BADARG);
     }

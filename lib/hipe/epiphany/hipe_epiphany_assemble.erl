@@ -121,6 +121,7 @@ translate_insn(I, MFA, ConstMap) ->
     #bcc{} -> do_bcc(I);
     #bl{} -> do_bl(I);
     #comment{} -> [];
+    #jalr{} -> do_jalr(I);
     #label{} -> do_label(I);
     #mov{src={lo16, _}} -> do_mov(I, MFA, ConstMap);
     #movt{src={hi16, _}} -> do_movt(I, MFA, ConstMap);
@@ -140,6 +141,10 @@ do_bl(I=#bl{funv=FunV,sdesc=SDesc,linkage=Linkage}) ->
   %% Force long (32-bit) form with special value 'simm24'
   [{'.reloc', {b_fun,FunV,Linkage}, #comment{term='fun'}},
    {encoded, encode_insn(#bcc{'cond'='link',label=simm24}), I},
+   {'.reloc', {sdesc,SDesc}, #comment{term=sdesc}}].
+
+do_jalr(I=#jalr{sdesc=SDesc}) ->
+  [{encoded, encode_insn(I), I},
    {'.reloc', {sdesc,SDesc}, #comment{term=sdesc}}].
 
 do_mov(I=#mov{src=Reloc={lo16, _}}, MFA, ConstMap) ->

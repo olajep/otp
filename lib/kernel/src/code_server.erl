@@ -367,13 +367,16 @@ handle_call({ensure_loaded_epiphany,Mod0}, Caller, St0) ->
 		      true ->
 			  {reply,{module,M},St};
 		      false when St#state.mode =:= interactive ->
-			  case ets:lookup(St#state.slavedb, M) of
-			      [{M, Bin}] ->
+			  %% We need to test that the module hasn't been
+			  %% unloaded
+			  case {ets:lookup(St#state.slavedb, M),
+				erlang:module_loaded(M)}
+			  of  {[{M, Bin}], true} ->
 				  [{M, File}] = ets:lookup(St#state.moddb, M),
 				  epiphany_load_binary(M, File, Bin, Caller, St);
-			      [] ->
+			      {_, LoadedMaster} ->
 				  ets:insert(St#state.slavedb, {M, want}),
-				  case erlang:module_loaded(M) of
+				  case LoadedMaster of
 				      %% The module should not be loaded, but we
 				      %% must handle the case that something
 				      %% else than init or code_server has

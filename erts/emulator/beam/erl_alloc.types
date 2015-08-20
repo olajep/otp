@@ -335,7 +335,11 @@ type	SL_MPATHS	SHORT_LIVED	SYSTEM		sl_migration_paths
 type	HIPE		SYSTEM		SYSTEM		hipe_data
 
 +if slave
-type	HIPE_SLAVE	SLAVE		SYSTEM		hipe_slave_data
+type	HIPE_SLAVE		SLAVE		SYSTEM	hipe_slave_data
+type	HIPE_DATA		SLAVE		SYSTEM	hipe_const_data
+type	HIPE_DATA_FALLBACK	SYSTEM		SYSTEM	hipe_const_data_fallback
++else
+type	HIPE_DATA		SYSTEM		SYSTEM	hipe_const_data
 +endif
 
 +endif

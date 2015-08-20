@@ -23,14 +23,18 @@
 
 #include "hipe_arch.h"
 
+#if defined(ERTS_SLAVE_EMU_ENABLED) || defined(ERTS_SLAVE)
+#  include "slave.h"
+#endif
+
 /*
  * Stack descriptors.
  */
 
 #include <stddef.h>	/* offsetof() */
 
-struct sdesc {
-    struct {
+struct SLAVE_SHARED_DATA sdesc {
+    struct SLAVE_SHARED_DATA {
 	unsigned long hvalue;	/* return address */
 	struct sdesc *next;	/* hash collision chain */
     } bucket;
@@ -42,7 +46,7 @@ struct sdesc {
     unsigned int livebits[1]; /* size depends on arch & data in summary field */
 };
 
-struct sdesc_with_exnra {
+struct SLAVE_SHARED_DATA sdesc_with_exnra {
     unsigned long exnra;
     struct sdesc sdesc;
 };
@@ -67,17 +71,28 @@ static __inline__ unsigned long sdesc_exnra(const struct sdesc *sdesc)
     return 0;
 }
 
-struct hipe_sdesc_table {
+struct SLAVE_SHARED_DATA hipe_sdesc_table {
     unsigned int log2size;
     unsigned int mask;		/* INV: mask == (1 << log2size)-1 */
     unsigned int used;
+    ErtsAlcType_t alctr;
+    unsigned long ra_lsr_count;
     struct sdesc **bucket;
 };
 extern struct hipe_sdesc_table hipe_sdesc_table;
 
+#ifndef ERTS_SLAVE
 extern struct sdesc *hipe_put_sdesc(struct sdesc*);
 extern void hipe_init_sdesc_table(struct sdesc*);
 extern struct sdesc *hipe_decode_sdesc(Eterm);
+#endif
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+extern struct hipe_sdesc_table *const hipe_slave_sdesc_table;
+extern struct sdesc *hipe_slave_put_sdesc(struct sdesc*);
+extern void hipe_slave_init_sdesc_table(struct sdesc*);
+extern struct sdesc *hipe_slave_decode_sdesc(Eterm);
+#endif
 
 #if !defined(__GNUC__) || (__GNUC__ < 2) || (__GNUC__ == 2 && __GNUC_MINOR__ < 96)
 #define __builtin_expect(x, expected_value) (x)
@@ -85,14 +100,35 @@ extern struct sdesc *hipe_decode_sdesc(Eterm);
 #define likely(x)	__builtin_expect((x),1)
 #define unlikely(x)	__builtin_expect((x),0)
 
-static __inline__ const struct sdesc *hipe_find_sdesc(unsigned long ra)
+#ifdef ERTS_SLAVE_EMU_ENABLED
+static __inline__ const struct sdesc *hipe_slave_find_sdesc(unsigned long ra)
 {
-    unsigned int i = (ra >> HIPE_RA_LSR_COUNT) & hipe_sdesc_table.mask;
-    const struct sdesc *sdesc = hipe_sdesc_table.bucket[i];
+    struct hipe_sdesc_table *const table = hipe_slave_sdesc_table;
+    unsigned int i = (ra >> table->ra_lsr_count) & table->mask;
+    const struct sdesc *sdesc = table->bucket[i];
+    ASSERT(table->mask);
+    ASSERT(sdesc);
     if (likely(sdesc->bucket.hvalue == ra))
 	return sdesc;
     do {
 	sdesc = sdesc->bucket.next;
+	ASSERT(sdesc);
+    } while (sdesc->bucket.hvalue != ra);
+    return sdesc;
+}
+#endif
+
+static __inline__ const struct sdesc *hipe_find_sdesc(unsigned long ra)
+{
+    unsigned int i = (ra >> HIPE_RA_LSR_COUNT) & hipe_sdesc_table.mask;
+    const struct sdesc *sdesc = hipe_sdesc_table.bucket[i];
+    ASSERT(hipe_sdesc_table.mask);
+    ASSERT(sdesc);
+    if (likely(sdesc->bucket.hvalue == ra))
+	return sdesc;
+    do {
+	sdesc = sdesc->bucket.next;
+	ASSERT(sdesc);
     } while (sdesc->bucket.hvalue != ra);
     return sdesc;
 }
