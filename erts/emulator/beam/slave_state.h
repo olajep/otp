@@ -25,12 +25,15 @@
 #include "slave.h"
 
 #ifdef HIPE
-#define SLAVE_STATE_PROXIED_HIPE_PROC_FIELDS_DEFINER \
-    S(Eterm*, hipe_nsp, hipe.nsp)		     \
-    S(Eterm*, hipe_nstack, hipe.nstack)		     \
-    S(Eterm*, hipe_nstend, hipe.nstend)		     \
-    S(Eterm*, hipe_nstgraylim, hipe.nstgraylim)	     \
-    S(Eterm*, hipe_nstblacklim, hipe.nstblacklim)
+#define SLAVE_STATE_PROXIED_HIPE_PROC_FIELDS_DEFINER	\
+    S(Eterm*,   hipe_nsp,         hipe.nsp)		\
+    S(Eterm*,   hipe_nstack,      hipe.nstack)		\
+    S(Eterm*,   hipe_nstend,      hipe.nstend)		\
+    S(Eterm*,   hipe_nstgraylim,  hipe.nstgraylim)	\
+    S(Eterm*,   hipe_nstblacklim, hipe.nstblacklim)	\
+    S(void*,    hipe_ngra,        hipe.ngra)		\
+    S(void*,    hipe_nra,         hipe.nra)		\
+    S(unsigned, hipe_narity,      hipe.narity)
 #else
 #define SLAVE_STATE_PROXIED_HIPE_PROC_FIELDS_DEFINER
 #endif

@@ -151,12 +151,20 @@ erts_slave_serve_gc(struct slave *slave, struct slave_syscall_gc *arg)
 {
     Process *p = slave->c_p;
 
+    slave_state_swapin(p, &arg->state);
 #if HARDDEBUG
-    erts_printf("Garbage collecting %T (heap size %d, %d additional roots)\n",
-		p->common.id, p->hend - p->heap, arg->nobj);
+    erts_printf("Garbage collecting %T (heap size %d"
+#ifdef HIPE
+		", nstack size %d"
+#endif
+		", %d additional roots)\n",
+		p->common.id, p->hend - p->heap
+#ifdef HIPE
+		, p->hipe.nstend - p->hipe.nstack
+#endif
+		, arg->nobj);
 #endif
 
-    slave_state_swapin(p, &arg->state);
     arg->ret = erts_garbage_collect(p, arg->need, arg->objv, arg->nobj);
     slave_state_swapout(p, &arg->state);
 

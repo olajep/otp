@@ -89,6 +89,7 @@ extern struct sdesc *hipe_decode_sdesc(Eterm);
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
 extern struct hipe_sdesc_table *const hipe_slave_sdesc_table;
+extern void *const slave_nbif_stack_trap_ra;
 extern struct sdesc *hipe_slave_put_sdesc(struct sdesc*);
 extern void hipe_slave_init_sdesc_table(struct sdesc*);
 extern struct sdesc *hipe_slave_decode_sdesc(Eterm);
@@ -155,5 +156,9 @@ extern int hipe_fill_stacktrace(Process*, int, Eterm**);
  */
 extern Eterm *fullsweep_nstack(Process *p, Eterm *n_htop);
 extern void gensweep_nstack(Process *p, Eterm **ptr_old_htop, Eterm **ptr_n_htop);
+
+#ifdef ERTS_SLAVE_EMU_ENABLED
+extern void hipe_slave_update_stack_trap(Process*, const struct sdesc*);
+#endif
 
 #endif /* HIPE_STACK_H */

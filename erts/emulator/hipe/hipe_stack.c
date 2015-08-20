@@ -226,6 +226,8 @@ struct sdesc *hipe_decode_sdesc(Eterm arg)
 #  include "slave_syms.h"
 struct hipe_sdesc_table *const hipe_slave_sdesc_table =
     (void*)SLAVE_SYM_hipe_sdesc_table;
+void *const slave_nbif_stack_trap_ra =
+    (void*)SLAVE_SYM_nbif_stack_trap_ra;
 #ifdef DEBUG
 static int slave_initialised = 0;
 #endif

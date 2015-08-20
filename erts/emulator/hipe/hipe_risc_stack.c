@@ -207,6 +207,39 @@ void hipe_update_stack_trap(Process *p, const struct sdesc *sdesc)
     nsp[0] = (unsigned long)&nbif_stack_trap_ra;
 }
 
+#ifdef ERTS_SLAVE_EMU_ENABLED
+void hipe_slave_update_stack_trap(Process *p, const struct sdesc *sdesc)
+{
+    Eterm *nsp;
+    Eterm *nsp_end;
+    unsigned long ra;
+    int n;
+
+    nsp = p->hipe.nsp;
+    nsp_end = p->hipe.nstend - 1;
+    if ((unsigned long)((char*)nsp_end - (char*)nsp) < MINSTACK*sizeof(Eterm*)) {
+	p->hipe.nstgraylim = NULL;
+	return;
+    }
+    n = NSKIPFRAMES;
+    for (;;) {
+	nsp += sdesc_fsize(sdesc);
+	if (nsp >= nsp_end) {
+	    p->hipe.nstgraylim = NULL;
+	    return;
+	}
+	ra = nsp[0];
+	if (--n <= 0)
+	    break;
+	nsp += 1 + sdesc_arity(sdesc);
+	sdesc = hipe_slave_find_sdesc(ra);
+    }
+    p->hipe.nstgraylim = nsp + 1 + sdesc_arity(sdesc);
+    p->hipe.ngra = (void(*)(void))ra;
+    nsp[0] = (unsigned long)slave_nbif_stack_trap_ra;
+}
+#endif
+
 /*
  * hipe_handle_stack_trap() is called when the mutator returns to
  * nbif_stack_trap_ra, which marks the gray/white stack boundary frame.
