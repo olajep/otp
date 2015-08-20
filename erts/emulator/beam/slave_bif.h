@@ -28,7 +28,7 @@
 
 struct slave_syscall_bif {
     /* To master */
-    Uint bif_no;
+    int bif_no;
     Eterm args[3];
     /* Bidirectional */
     struct slave_state state;
@@ -41,6 +41,24 @@ struct slave_syscall_bif {
 Eterm slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity);
 #else
 int erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg);
+#endif
+
+#ifdef HIPE
+/* This is the "X macro" pattern */
+#define SLAVE_PROXIED_PRIMOPS_DEFINER				       \
+    /* We'd prefer if race-free table access was available natively */ \
+    X(hipe_find_na_or_make_stub, 3)				       \
+    X(hipe_nonclosure_address, 2)
+
+enum slave_primop {
+    SLAVE_PRIMOP_INVALID, /* 0 cannot be used */
+#define X(Name, Arity) SLAVE_PRIMOP_ ## Name,
+    SLAVE_PROXIED_PRIMOPS_DEFINER
+#undef X
+    SLAVE_PRIMOP_BOUND,
+};
+#define SLAVE_PRIMOP_SIZE (SLAVE_PRIMOP_BOUND-1)
+
 #endif
 
 #endif /* SLAVE_BIF_H__ */

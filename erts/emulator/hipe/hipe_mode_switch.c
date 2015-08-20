@@ -37,7 +37,11 @@
 #include "hipe_bif0.h"	/* hipe_mfa_info_table_init() */
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
-#include "slave_load.h" /* For SlaveOp */
+#  include "slave_load.h" /* For SlaveOp */
+#endif
+
+#if defined(ERTS_SLAVE_EMU_ENABLED) || defined(ERTS_SLAVE)
+#  include "slave_command.h"
 #endif
 
 #if defined(ERTS_ENABLE_LOCK_CHECK) && defined(ERTS_SMP)
@@ -179,21 +183,6 @@ Uint * const hipe_slave_beam_pc_throw  = (Uint * const)SLAVE_SYM_hipe_beam_pc_th
 Uint * const hipe_slave_beam_pc_resume = (Uint * const)SLAVE_SYM_hipe_beam_pc_resume;
 static Eterm * const hipe_slave_beam_catch_throw
     = (Eterm * const)SLAVE_SYM_hipe_beam_catch_throw;
-#endif
-
-/* ETODO: I'm just temporary */
-#ifdef ERTS_SLAVE
-void *hipe_get_remote_na(Eterm m, Eterm f, unsigned int a)
-{
-    EPIPHANY_STUB_BT();
-    return NULL;
-}
-
-int hipe_find_mfa_from_ra(const void *ra, Eterm *m, Eterm *f, unsigned int *a)
-{
-    EPIPHANY_STUB_BT();
-    return 0;
-}
 #endif
 
 void hipe_mode_switch_init(void)
@@ -621,7 +610,7 @@ Process *hipe_mode_switch(Process *p, unsigned cmd, Eterm reg[])
 	      goto do_apply_fail;
 
 	  /* find a native code entry point for {M,F,A} for a remote call */
-	  address = hipe_get_remote_na(mfa[0], mfa[1], arity);
+	  address = hipe_get_remote_na(p, mfa[0], mfa[1], arity);
 	  if (!address)
 		  goto do_apply_fail;
 	  p->hipe.ncallee = (void(*)(void)) address;
@@ -724,6 +713,7 @@ void hipe_set_closure_stub(ErlFunEntry *fe, unsigned num_free)
     fe->native_address = (Eterm*) hipe_closure_stub_address(arity);
 }
 
+#ifndef ERTS_SLAVE
 Eterm hipe_build_stacktrace(Process *p, struct StackTrace *s)
 {
     int depth, i;
@@ -745,7 +735,7 @@ Eterm hipe_build_stacktrace(Process *p, struct StackTrace *s)
 
     for (i = 0; i < depth; ++i) {
 	ra = (const void*)s->trace[i];
-	if (!hipe_find_mfa_from_ra(ra, &m, &f, &a))
+	if (!hipe_find_mfa_from_ra(p, ra, &m, &f, &a))
 	    continue;
 	mfa = TUPLE4(hp, m, f, make_small(a), NIL);
 	hp += 5;
@@ -757,19 +747,65 @@ Eterm hipe_build_stacktrace(Process *p, struct StackTrace *s)
     HRelease(p, hp_end, hp);
     return head;
 }
+#else
+Eterm hipe_build_stacktrace(Process *p, struct StackTrace *s)
+{
+    Eterm head;
+    struct slave_syscall_hipe_bt *cmd = erts_alloc(ERTS_ALC_T_TMP, sizeof(*cmd));
+    ASSERT(p == erts_get_current_process());
+
+    cmd->s = s;
+    slave_state_swapout(p, &cmd->state);
+
+    erts_master_syscall(SLAVE_SYSCALL_HIPE_BT, cmd);
+
+    slave_state_swapin(p, &cmd->state);
+    head = cmd->head;
+    erts_free(ERTS_ALC_T_TMP, cmd);
+    return head;
+}
+
+void *hipe_get_remote_na(Process *p, Eterm m, Eterm f, unsigned int a)
+{
+    void *na;
+    struct slave_syscall_get_na *cmd = erts_alloc(ERTS_ALC_T_TMP, sizeof(*cmd));
+    ASSERT(p == erts_get_current_process());
+
+    cmd->m = m;
+    cmd->f = f;
+    cmd->a = a;
+
+    erts_master_syscall(SLAVE_SYSCALL_GET_NA, cmd);
+
+    na = cmd->na;
+    erts_free(ERTS_ALC_T_TMP, cmd);
+    return na;
+}
+#endif
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
+void erts_slave_serve_hipe_bt(struct slave *slave,
+			      struct slave_syscall_hipe_bt *arg)
+{
+    Process *const p = slave->c_p;
+
+    slave_state_swapin(p, &arg->state);
+    arg->head = hipe_build_stacktrace(p, arg->s);
+    slave_state_swapout(p, &arg->state);
+}
+
+void erts_slave_serve_get_na(struct slave *slave,
+			     struct slave_syscall_get_na *arg)
+{
+    Process *const p = slave->c_p;
+
+    arg->na = hipe_get_remote_na(p, arg->m, arg->f, arg->a);
+}
+
 void hipe_mode_switch_slave_init(void)
 {
-    // hipe_slave_arch_glue_init();
-
     *hipe_slave_beam_catch_throw =
 	make_catch(slave_catches_cons(hipe_slave_beam_pc_throw, BEAM_CATCHES_NIL));
-
-    /* ETODO */
-    // hipe_mfa_info_table_init();
-
-    erts_fprintf(stderr, "Not initialising slave mode switch!\n");
 }
 
 #endif

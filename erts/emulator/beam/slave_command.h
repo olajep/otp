@@ -36,6 +36,10 @@ enum slave_syscall {
     SLAVE_SYSCALL_BIF,
     SLAVE_SYSCALL_GC,
     SLAVE_SYSCALL_BIN,
+#ifdef HIPE
+    SLAVE_SYSCALL_HIPE_BT,
+    SLAVE_SYSCALL_GET_NA,
+#endif
 };
 
 struct slave_syscall_ready {
@@ -72,6 +76,25 @@ struct slave_syscall_bin {
     };
     /* To slave */
 } SLAVE_SHARED_DATA;
+
+#ifdef HIPE
+struct slave_syscall_hipe_bt {
+    /* To master */
+    struct StackTrace *s;
+    /* Bidirectional */
+    struct slave_state state;
+    /* To slave */
+    Eterm head;
+} SLAVE_SHARED_DATA;
+
+struct slave_syscall_get_na {
+    /* To master */
+    Eterm m, f;
+    unsigned int a;
+    /* To slave */
+    void *na;
+} SLAVE_SHARED_DATA;
+#endif
 
 /*
  * We use the shared-memory fifos for command buffers.

@@ -30,12 +30,18 @@
 #  include "epiphany.h"
 #endif
 
+#ifdef __epiphany__
+#  define SHORTCALL __attribute__((short_call))
+#else
+#  define SHORTCALL
+#endif
+
 #define HARDDEBUG 0
 
 extern BeamInstr beam_exit[];
 
-Eterm
-slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
+static Eterm SHORTCALL
+internal_syscall_bif(Process *p, Eterm args[], int bif_no, Uint arity)
 {
     struct slave_syscall_bif *cmd
 	= erts_alloc(ERTS_ALC_T_TMP, sizeof(struct slave_syscall_bif));
@@ -43,12 +49,16 @@ slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     int i;
 
 #if HARDDEBUG
-    BifEntry *bif = bif_table + bif_no;
+    if (bif_no >= 0) {
+	BifEntry *bif = bif_table + bif_no;
+	erts_printf("Proxying BIF %T:%T", bif->module, bif->name);
+    } else
+	erts_printf("Proxying primop %d", -bif_no);
     switch (arity) {
-    case 0: erts_printf("Proxying BIF %T:%T()...\n", bif->module, bif->name); break;
-    case 1: erts_printf("Proxying BIF %T:%T(%T)...\n", bif->module, bif->name, args[0]); break;
-    case 2: erts_printf("Proxying BIF %T:%T(%T,%T)...\n", bif->module, bif->name, args[0], args[1]); break;
-    case 3: erts_printf("Proxying BIF %T:%T(%T,%T,%T)...\n", bif->module, bif->name, args[0], args[1], args[2]); break;
+    case 0: erts_printf("()...\n"); break;
+    case 1: erts_printf("(%T)...\n", args[0]); break;
+    case 2: erts_printf("(%T,%T)...\n", args[0], args[1]); break;
+    case 3: erts_printf("(%T,%T,%T)...\n", args[0], args[1], args[2]); break;
     }
 #endif
 
@@ -89,6 +99,12 @@ slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
 #endif
     erts_free(ERTS_ALC_T_TMP, cmd);
     return result;
+}
+
+Eterm
+slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
+{
+    return internal_syscall_bif(p, args, bif_no, arity);
 }
 
 /* This is the "X macro" pattern */
@@ -152,7 +168,8 @@ slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     Eterm								\
     NAME##_##ARITY(Process *p, Eterm *args)				\
     {									\
-	return slave_syscall_bif(BIF_##NAME##_##ARITY, p, args, ARITY);	\
+	return internal_syscall_bif(p, args, BIF_##NAME##_##ARITY,	\
+				    ARITY);				\
     }
 SLAVE_PROXIED_BIFS_DEFINER
 #undef X
@@ -161,17 +178,16 @@ SLAVE_PROXIED_BIFS_DEFINER
 HIPE_WRAPPER_BIF_DISABLE_GC(binary_list_to_bin, 1)
 
 #ifdef HIPE
-/* We'd prefer if race-free table access was available natively */
-Eterm
-hipe_find_na_or_make_stub(Process *p, Eterm *args)
-{
-    EPIPHANY_STUB_BT();
-    return THE_NON_VALUE;
-}
-Eterm
-hipe_nonclosure_address(Process *p, Eterm *args)
-{
-    EPIPHANY_STUB_BT();
-    return THE_NON_VALUE;
-}
+
+#define X(NAME, ARITY)							\
+    Eterm NAME(Process *p, Eterm *args);				\
+    Eterm								\
+    NAME(Process *p, Eterm *args)					\
+    {									\
+	return internal_syscall_bif(p, args, -SLAVE_PRIMOP_##NAME,	\
+				    ARITY);				\
+    }
+SLAVE_PROXIED_PRIMOPS_DEFINER
+#undef X
+
 #endif

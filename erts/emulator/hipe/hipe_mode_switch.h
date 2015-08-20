@@ -67,10 +67,14 @@ extern Uint hipe_beam_pc_throw[];
 extern Uint hipe_beam_pc_resume[];
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "slave_command.h"
 void hipe_mode_switch_slave_init(void);
 extern Uint * const hipe_slave_beam_pc_return;
 extern Uint * const hipe_slave_beam_pc_throw;
 extern Uint * const hipe_slave_beam_pc_resume;
+
+void erts_slave_serve_hipe_bt(struct slave*, struct slave_syscall_hipe_bt*);
+void erts_slave_serve_get_na(struct slave*, struct slave_syscall_get_na*);
 #endif
 
 #endif	/* ASM */

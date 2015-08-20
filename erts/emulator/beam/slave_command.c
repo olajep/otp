@@ -42,6 +42,10 @@
 #include "slave_bif.h"
 #include "slave_process.h"
 
+#ifdef HIPE
+#  include "hipe_mode_switch.h"
+#endif
+
 static int num_slaves = 0;
 static struct slave *slaves;
 #define SLAVE_COMMAND_BUFFER_SIZE 512
@@ -391,6 +395,16 @@ serve_syscalls(int i)
 	erts_slave_serve_bin(slaves + i, arg);
 	served = 1;
 	break;
+#ifdef HIPE
+    case SLAVE_SYSCALL_HIPE_BT:
+	erts_slave_serve_hipe_bt(slaves + i, arg);
+	served = 1;
+	break;
+    case SLAVE_SYSCALL_GET_NA:
+	erts_slave_serve_get_na(slaves + i, arg);
+	served = 1;
+	break;
+#endif
     default:
 	erl_exit(1, "Cannot serve unrecognized syscall %d from slave %d\n",
 		 (int)no, i);

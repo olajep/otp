@@ -32,27 +32,49 @@
 static const erts_aint32_t ignored_psflgs = ERTS_PSFLG_PENDING_EXIT
     | SLAVE_STATE_PSFLGS;
 
+#ifdef HIPE
+#include "hipe_native_bif.h"
+#include "hipe_bif0.h"
+
+struct {
+    Eterm (*f)(Process *, Eterm[]);
+} primop_table[] = {
+#define X(Name, Arity) \
+    [SLAVE_PRIMOP_##Name] = { Name },
+    SLAVE_PROXIED_PRIMOPS_DEFINER
+#undef X
+};
+#endif
+
 int
 erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 {
     Process *p = slave->c_p;
     erts_aint32_t old_state, new_state;
     BeamInstr *old_i;
-    BifEntry *bif = bif_table + arg->bif_no;
     Eterm (*f)(Process*, Eterm*);
     Eterm *args;
     int trapping, trapping_to_beam;
     ASSERT(p);
     ASSERT(arg->bif_no < BIF_SIZE);
+#ifdef HIPE
+    ASSERT(-arg->bif_no < SLAVE_PRIMOP_BOUND);
+#else
+    ASSERT(arg->bif_no >= 0);
+#endif
     old_state = erts_smp_atomic32_read_acqb(&p->state) & ~ignored_psflgs;
 
 #if HARDDEBUG
-    switch (bif->arity) {
-    case 0: erts_printf("Proxying (for slave %d) bif %T:%T()\n", slave->no, bif->module, bif->name); break;
-    case 1: erts_printf("Proxying (for slave %d) bif %T:%T(%T)\n", slave->no, bif->module, bif->name, arg->args[0]); break;
-    case 2: erts_printf("Proxying (for slave %d) bif %T:%T(%T,%T)\n", slave->no, bif->module, bif->name, arg->args[0], arg->args[1]); break;
-    case 3: erts_printf("Proxying (for slave %d) bif %T:%T(%T,%T,%T)\n", slave->no, bif->module, bif->name, arg->args[0], arg->args[1], arg->args[2]); break;
-    }
+    if (arg->bif_no >= 0) {
+	BifEntry *bif = bif_table + arg->bif_no;
+	switch (bif->arity) {
+	case 0: erts_printf("Proxying (for slave %d) bif %T:%T()\n", slave->no, bif->module, bif->name); break;
+	case 1: erts_printf("Proxying (for slave %d) bif %T:%T(%T)\n", slave->no, bif->module, bif->name, arg->args[0]); break;
+	case 2: erts_printf("Proxying (for slave %d) bif %T:%T(%T,%T)\n", slave->no, bif->module, bif->name, arg->args[0], arg->args[1]); break;
+	case 3: erts_printf("Proxying (for slave %d) bif %T:%T(%T,%T,%T)\n", slave->no, bif->module, bif->name, arg->args[0], arg->args[1], arg->args[2]); break;
+	}
+    } else
+	erts_printf("Proxying (for slave %d) primop %d\n", -arg->bif_no);
 #endif
 
     slave_state_swapin(p, &arg->state);
@@ -68,7 +90,12 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 	f = (Eterm (*)(Process*, Eterm*))p->i[1];
 	args = ERTS_PROC_GET_SCHDATA(p)->x_reg_array;
     } else {
-	f = bif->f;
+#ifdef HIPE
+	if (arg->bif_no < 0)
+	    f = primop_table[-arg->bif_no].f;
+	else
+#endif
+	    f = bif_table[arg->bif_no].f;
 	args = arg->args;
     }
     arg->result = f(p, args);
@@ -95,12 +122,12 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
     if (new_state == (old_state | ERTS_PSFLG_EXITING)) {
 	arg->state_flags |= ERTS_PSFLG_EXITING;
     } else if (new_state != old_state) {
-	erl_exit(1, "Process state changed by bif %T:%T/%d!\nWas: %#x, Now: %#x\n",
-		 bif->module, bif->name, bif->arity, old_state, new_state);
+	erl_exit(1, "Process state changed by bif %d!\nWas: %#x, Now: %#x\n",
+		 arg->bif_no, old_state, new_state);
     }
     if (!trapping && p->i != old_i) {
-	erl_exit(1, "IP changed by bif %T:%T/%d!\nWas: %#x, Now: %#x\n",
-		 bif->module, bif->name, bif->arity, old_i, p->i);
+	erl_exit(1, "IP changed by bif %d!\nWas: %#x, Now: %#x\n",
+		 arg->bif_no, old_i, p->i);
     }
 
     slave_state_swapout(p, &arg->state);
@@ -108,7 +135,9 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 #if HARDDEBUG
     if (!trapping) {
 	if (arg->result != THE_NON_VALUE)
-	    erts_printf("Replying with result %T\n", arg->result);
+	    if (arg->bif_no >= 0)
+		 erts_printf("Replying with result %T\n", arg->result);
+	    else erts_printf("Replying with result %#x\n", arg->result);
 	else erts_printf("Replying with error %d\n", p->freason);
     } else erts_printf("Trapping %s %T:%T/%d\n",
 		       trapping_to_beam ? "to beam" : "into",

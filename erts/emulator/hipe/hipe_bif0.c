@@ -1741,11 +1741,11 @@ static void *hipe_get_na_nofail(enum mfa_info_table_ix ix, Eterm m, Eterm f,
 }
 
 /* used for apply/3 in hipe_mode_switch */
-void *hipe_get_remote_na(Eterm m, Eterm f, unsigned int a)
+void *hipe_get_remote_na(Process *p, Eterm m, Eterm f, unsigned int a)
 {
     if (is_not_atom(m) || is_not_atom(f) || a > 255)
 	return NULL;
-    return hipe_get_na_nofail(MFA_INFO_TABLE_MASTER, m, f, a, 1);
+    return hipe_get_na_nofail(MFA_INFO_TABLE_FOR_PROC(p), m, f, a, 1);
 }
 
 /* primop, but called like a BIF for error handling purposes */
@@ -1811,13 +1811,14 @@ BIF_RETTYPE hipe_nonclosure_address(BIF_ALIST_2)
     BIF_ERROR(BIF_P, EXC_BADFUN);
 }
 
-int hipe_find_mfa_from_ra(const void *ra, Eterm *m, Eterm *f, unsigned int *a)
+int hipe_find_mfa_from_ra(Process *p, const void *ra, Eterm *m, Eterm *f,
+			  unsigned int *a)
 {
     struct hipe_mfa_info *mfa;
     long mfa_offset, ra_offset;
     struct hipe_mfa_info **bucket;
     unsigned int i, nrbuckets;
-    enum mfa_info_table_ix ix = MFA_INFO_TABLE_MASTER;
+    enum mfa_info_table_ix ix = MFA_INFO_TABLE_FOR_PROC(p);
 
     /* Note about locking: the table is only updated from the
        loader, which runs with the rest of the system suspended. */
