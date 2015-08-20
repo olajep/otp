@@ -41,6 +41,9 @@
 #include "hipe_bif0.h"
 #include "hipe_mode_switch.h"
 #include "hipe_arch.h"
+#ifdef ERTS_SLAVE_EMU_ENABLED
+#  include "hipe_slave.h"
+#endif
 #endif
 
 /* This is not nice! */
@@ -544,8 +547,8 @@ static Eterm functions_in_module(Process* p, Eterm mod);
 static Eterm attributes_for_module(Process* p, Eterm mod);
 static Eterm compilation_info_for_module(Process* p, Eterm mod);
 static Eterm native_addresses(Process* p, Eterm mod);
-int patch_funentries(Eterm Patchlist);
-int patch(Eterm Addresses, Uint fe);
+static int patch_funentries(const LoaderTarget *target, Eterm Patchlist);
+static int patch(const LoaderTarget *target, Eterm Addresses, Uint fe);
 static int safe_mul(UWord a, UWord b, UWord* resp);
 
 static int must_swap_floats;
@@ -558,7 +561,10 @@ LoaderTarget loader_target_self = {
     offsetof(Export, addressv),
     offsetof(Export, code),
     erts_put_module,
+#ifdef HIPE
     erts_get_module,
+    offsetof(ErlFunEntry, native_address),
+#endif
     beam_catches_cons,
     beam_make_current_old,
     erts_update_ranges,
@@ -578,6 +584,9 @@ LoaderTarget loader_target_self = {
 #define CODE(Export) CODE2(Export, stp->target)
 #define CODE2(Export, Target)							\
     ((BeamInstr*)(((void*)Export)+(Target)->export_code_off))
+
+#define NATIVE_ADDRESS(FunEntry, Target) \
+    (*(UWord**)(((void*)FunEntry)+(Target)->fe_native_addr_off))
 
 /**********************************************************************/
 
@@ -5814,15 +5823,18 @@ stub_final_touch(LoaderState* stp, BeamInstr* fp)
    [{Adr, Patchtyppe} | Addresses]
    and the address of a fun_entry.
 */
-int 
-patch(Eterm Addresses, Uint fe) 
+static int
+patch(const LoaderTarget *target, Eterm Addresses, Uint fe)
  {
 #ifdef HIPE
   Eterm* listp;
   Eterm tuple;
   Eterm* tp;
+  Eterm  part;
   Eterm  patchtype;
   Uint AddressToPatch;
+  Eterm AM_hi16 = am_atom_put("hi16", 4);
+  Eterm AM_lo16 = am_atom_put("lo16", 4);
 
   while (!is_nil(Addresses)) {
     listp = list_val(Addresses);
@@ -5833,24 +5845,33 @@ patch(Eterm Addresses, Uint fe)
     }
 
     tp = tuple_val(tuple);
-    if (tp[0] != make_arityval(2)) {
+    if (tp[0] != make_arityval(3)) {
       return 0; /* Signal error */
     }
     
-    if(term_to_Uint(tp[1], &AddressToPatch) == 0) {
+    if(term_to_Uint(tp[2], &AddressToPatch) == 0) {
       return 0; /* Signal error */
     }
 
-    patchtype = tp[2];    
+    patchtype = tp[3];
     if (is_not_atom(patchtype)) {
       return 0; /* Signal error */
     }
-    
-    hipe_patch_address((Uint *)AddressToPatch, patchtype, fe);
+
+    part = tp[1];
+    if (part == am_all) {
+	/* ok */
+    } else if (part == AM_hi16) {
+	fe = fe >> 16;
+    } else if (part == AM_lo16) {
+	fe = fe & 0xffff;
+    } else {
+      return 0; /* Signal error */
+    }
+
+    hipe_patch_address(target, (Uint *)AddressToPatch, patchtype, fe);
 
     Addresses = CDR(listp);
-
-
   }
 
 #endif
@@ -5858,8 +5879,8 @@ patch(Eterm Addresses, Uint fe)
 }
 
 
-int
-patch_funentries(Eterm Patchlist) 
+static int
+patch_funentries(const LoaderTarget *target, Eterm Patchlist)
  {
 #ifdef HIPE   
   while (!is_nil(Patchlist)) {
@@ -5933,7 +5954,7 @@ patch_funentries(Eterm Patchlist)
   
 
     fe = erts_get_fun_entry(Mod, uniq, index);
-    fe->native_address = (Uint *)native_address;
+    NATIVE_ADDRESS(fe, target) = (Uint *)native_address;
 
     /* Deliberate MEMORY LEAK of native fun entries!!!
      *
@@ -5946,7 +5967,7 @@ patch_funentries(Eterm Patchlist)
      * erts_refc_dec(&fe->refc, 1);
      */
 
-    if (!patch(Addresses, (Uint) fe))
+    if (!patch(target, Addresses, (Uint) fe))
       return 0;
 
   }
@@ -6177,7 +6198,7 @@ erts_make_stub_module(Binary* loader_state, Process* p, Eterm Mod, Eterm Beam,
 	fp += WORDS_PER_FUNCTION;
     }
 
-    if (patch_funentries(Patchlist)) {
+    if (patch_funentries(stp->target, Patchlist)) {
 	erts_free_aligned_binary_bytes(temp_alloc);
 	return Mod;
     }

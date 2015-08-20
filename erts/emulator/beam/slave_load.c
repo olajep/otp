@@ -31,6 +31,10 @@
 #include "slave_ix.h"
 #include "slave_module.h"
 
+#ifdef HIPE
+#  include "hipe_stack.h"
+#endif
+
 #include "slave_syms.h"
 
 LoaderTarget loader_target_slave = {
@@ -40,7 +44,10 @@ LoaderTarget loader_target_slave = {
     offsetof(Export, slave_addressv),
     offsetof(Export, slave_code),
     slave_put_module,
+#ifdef HIPE
     slave_get_module,
+    offsetof(ErlFunEntry, slave_native_address),
+#endif
     slave_catches_cons,
     slave_make_current_old,
     slave_update_ranges,

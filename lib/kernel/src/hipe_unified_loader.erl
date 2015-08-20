@@ -392,12 +392,12 @@ mod({M,_F,_A}) -> M.
 calculate_addresses(PatchOffsets, Base, Addresses, Mode) ->
   RemoteOrLocal = local, % closure code refs are local
   [{Data,
-    offsets_to_addresses(Offsets, Base),
+    offsets_to_addresses(Part, Offsets, Base),
     get_native_address(DestMFA, Addresses, RemoteOrLocal, Mode)} ||
-    {{DestMFA,_,_}=Data,Offsets} <- PatchOffsets].
+    {Part,{DestMFA,_,_}=Data,Offsets} <- PatchOffsets].
 
-offsets_to_addresses(Os, Base) ->
-  [{O+Base,load_fe} || O <- Os].
+offsets_to_addresses(Part, Os, Base) ->
+  [{Part, O+Base, load_fe} || O <- Os].
 
 %%------------------------------------------------------------------------
 
@@ -413,9 +413,9 @@ find_closure_patches([]) -> [].
 find_closure_refs([{Dest,Offsets} | Rest], Refs) ->
   case Dest of
     {Part, {closure,Data}} when is_atom(Part) ->
-      [{Data,Offsets}|find_closure_refs(Rest,Refs)];
+      [{Part,Data,Offsets}|find_closure_refs(Rest,Refs)];
     {closure,Data} ->
-      [{Data,Offsets}|find_closure_refs(Rest,Refs)];
+      [{all,Data,Offsets}|find_closure_refs(Rest,Refs)];
     _ ->
       find_closure_refs(Rest,Refs)
   end;

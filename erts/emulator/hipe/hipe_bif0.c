@@ -2179,11 +2179,20 @@ BIF_RETTYPE hipe_bifs_get_rts_param_2(BIF_ALIST_2)
     BIF_RET(Uint_to_term(value, BIF_P));
 }
 
-void hipe_patch_address(Uint *address, Eterm patchtype, Uint value)
+void hipe_patch_address(const LoaderTarget *target, Uint *address,
+			Eterm patchtype, Uint value)
 {
     switch (patchtype) {
       case am_load_fe:
-	hipe_patch_load_fe(address, value);
+#ifdef ERTS_SLAVE_EMU_ENABLED
+	  if (target == &loader_target_slave)
+	      hipe_slave_patch_load_fe(address, value);
+	  else
+#endif
+	      {
+		  ASSERT(target == &loader_target_self);
+		  hipe_patch_load_fe(address, value);
+	      }
 	return;
       default:
 	fprintf(stderr, "%s: unknown patchtype %#lx\r\n",

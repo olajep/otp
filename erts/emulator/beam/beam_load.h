@@ -58,8 +58,10 @@ typedef struct {
     size_t export_addressv_off;
     size_t export_code_off;
     Module* (*put_module)(Eterm mod);
-     /* Only needed by HiPE */
+#ifdef HIPE
     Module* (*get_module)(Eterm mod, ErtsCodeIndex code_ix);
+    size_t fe_native_addr_off;
+#endif
     unsigned (*catches_cons)(BeamInstr* cp, unsigned cdr);
     Eterm (*make_current_old)(Process *c_p, ErtsProcLocks c_p_locks,
 			      Eterm module);

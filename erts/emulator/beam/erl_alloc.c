@@ -3818,7 +3818,7 @@ check_memory_fence(void *ptr, Uint *size, ErtsAlcType_t n, int func)
     if (pre_pattern != MK_PATTERN(n)) {
 	if ((FIXED_FENCE_PATTERN_MASK & pre_pattern) != FIXED_FENCE_PATTERN)
 	    erl_exit(ERTS_ABORT_EXIT,
-		     "ERROR: Fence at beginning of memory block (p=0x%u) "
+		     "ERROR: Fence at beginning of memory block (p=%#x) "
 		     "clobbered.\n",
 		     (UWord) ptr);
     }
@@ -3835,12 +3835,12 @@ check_memory_fence(void *ptr, Uint *size, ErtsAlcType_t n, int func)
 
 	if ((FIXED_FENCE_PATTERN_MASK & post_pattern) != FIXED_FENCE_PATTERN)
 	    erl_exit(ERTS_ABORT_EXIT,
-		     "ERROR: Fence at end of memory block (p=0x%u, sz=%u) "
+		     "ERROR: Fence at end of memory block (p=%#x, sz=%u) "
 		     "clobbered.\n",
 		     (UWord) ptr, (UWord) sz);
 	if (found_type != GET_TYPE_OF_PATTERN(post_pattern))
 	    erl_exit(ERTS_ABORT_EXIT,
-		     "ERROR: Fence around memory block (p=0x%u, sz=%u) "
+		     "ERROR: Fence around memory block (p=%#x, sz=%u) "
 		     "clobbered.\n",
 		     (UWord) ptr, (UWord) sz);
 

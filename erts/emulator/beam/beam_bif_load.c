@@ -1037,19 +1037,19 @@ BIF_RETTYPE purge_module_1(BIF_ALIST_1)
 		/*
 		 * Remove the old code.
 		 */
-		/* ASSERT(erts_total_code_size >= modp->old.code_length); */
-		/* erts_total_code_size -= modp->old.code_length; */
-		code = modp->old.code;
-		end = (BeamInstr *)((char *)code + modp->old.code_length);
+		/* ASSERT(erts_total_code_size >= slavep->old.code_length); */
+		/* erts_total_code_size -= slavep->old.code_length; */
+		code = slavep->old.code;
+		end = (BeamInstr *)((char *)code + slavep->old.code_length);
 		/* ETODO: Cleanup funs and ranges */
 		/* slave_cleanup_funs_on_purge(code, end); */
-		slave_catches_delmod(modp->old.catches, code, modp->old.code_length,
+		slave_catches_delmod(slavep->old.catches, code, slavep->old.code_length,
 				     code_ix);
 		decrement_refc(code);
 		erts_free(ERTS_ALC_T_SLAVE_CODE, (void *) code);
-		modp->old.code = NULL;
-		modp->old.code_length = 0;
-		modp->old.catches = BEAM_CATCHES_NIL;
+		slavep->old.code = NULL;
+		slavep->old.code_length = 0;
+		slavep->old.catches = BEAM_CATCHES_NIL;
 		/* slave_remove_from_ranges(code); */
 	    }
 #endif
