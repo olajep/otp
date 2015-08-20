@@ -509,19 +509,29 @@ gen_op_general_case(Res, Op, Args, Cont, Fail, GenCaseLabel) ->
 %%
 
 gen_mul_2(Dst, Args, Cont, Fail) ->
-  [Arg1,Arg2] = Args,
-  GenCaseLabel = hipe_rtl:mk_new_label(),
-  {Res1,I2} =
-    case Dst of
-      [] ->
-	{hipe_rtl:mk_new_var(), []};
-      [Res0] ->
-	{Res0, hipe_tagscheme:fixnum_mul(Arg1, Arg2, Res0, GenCaseLabel)}
-    end,
-  [hipe_tagscheme:test_two_fixnums(Arg1, Arg2, hipe_rtl:label_name(GenCaseLabel)),
-   I2,
-   %% BIF call: am_Times -> nbif_mul_2 -> erts_mixed_times
-   gen_op_general_case(Res1, '*', Args, Cont, Fail, GenCaseLabel)].
+  case hipe_rtl_arch:has_mul_overflow() of
+    false ->
+      Res = case Dst of
+	      [] -> hipe_rtl:mk_new_var();
+	      [Res0] -> Res0
+	    end,
+      hipe_rtl:mk_call([Res], '*', Args, Cont, Fail, not_remote);
+    true ->
+      [Arg1,Arg2] = Args,
+      GenCaseLabel = hipe_rtl:mk_new_label(),
+      {Res1,I2} =
+	case Dst of
+	  [] ->
+	    {hipe_rtl:mk_new_var(), []};
+	  [Res0] ->
+	    {Res0, hipe_tagscheme:fixnum_mul(Arg1, Arg2, Res0, GenCaseLabel)}
+	end,
+      [hipe_tagscheme:test_two_fixnums(Arg1, Arg2,
+				       hipe_rtl:label_name(GenCaseLabel)),
+       I2,
+       %% BIF call: am_Times -> nbif_mul_2 -> erts_mixed_times
+       gen_op_general_case(Res1, '*', Args, Cont, Fail, GenCaseLabel)]
+  end.
 
 %% gen_unsafe_mul_2([Res], Args, Cont, Fail, Op) ->
 %%    [Arg1, Arg2] = Args,

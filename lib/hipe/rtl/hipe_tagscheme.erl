@@ -521,6 +521,7 @@ fixnum_addsub(AluOp, Arg1, Arg2, Res, OtherLab) ->
 
 %%% ((16X+tag) div 16) * ((16Y+tag)-tag) + tag = X*16Y+tag = 16(XY)+tag
 fixnum_mul(Arg1, Arg2, Res, OtherLab) ->
+  true = hipe_rtl_arch:has_mul_overflow(),
   Tmp = hipe_rtl:mk_new_reg_gcsafe(),
   U1 = hipe_rtl:mk_new_reg_gcsafe(),
   U2 = hipe_rtl:mk_new_reg_gcsafe(),

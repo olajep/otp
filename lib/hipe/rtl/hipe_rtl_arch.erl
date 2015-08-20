@@ -45,6 +45,7 @@
 	 return_used/0,
 	 live_at_return/0,
 	 endianess/0,
+	 has_mul_overflow/0,
 	 load_big_2/4,
 	 load_little_2/4,
 	 load_big_4/4,
@@ -337,6 +338,17 @@ endianess() ->
     x86        -> little;
     amd64      -> little;
     arm        -> ?ARM_ENDIANESS
+  end.
+
+%% @spec has_mul_overflow() -> boolean()
+%%
+%% @doc Returns wether the target has an integer multiply instruction with an
+%%      overflow flag.
+%%
+has_mul_overflow() ->
+  case get(hipe_target_arch) of
+    epiphany -> false;
+    _        -> true
   end.
 
 %%%------------------------------------------------------------------------
