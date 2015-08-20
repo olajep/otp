@@ -513,7 +513,7 @@ queue_message(Process *c_p,
 	if (locked_msgq)
 	    erts_smp_proc_unlock(receiver, ERTS_PROC_LOCK_MSGQ);
 	if (bp)
-	    free_message_buffer_alctr(HEAP_FRAG_ALC(c_p), bp);
+	    free_message_buffer_alctr(HEAP_FRAG_ALC(receiver), bp);
 	message_free(mp);
 	return 0;
     }
