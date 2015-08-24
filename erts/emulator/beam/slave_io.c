@@ -82,15 +82,24 @@ int erts_slave_io_pump(void) {
     return written;
 }
 
-static int memfd = 0;
+struct desired_map {
+    void *virt_addr;
+    unsigned phy_addr;
+    unsigned size;
+};
 
-/*
- * Maps the memory area shared with the epiphany chip to the same address as the
- * chip sees it at.
- * Returns 0 on success and -1 on failure.
- */
-static int map_shm(void) {
-    void *ret;
+e_epiphany_t slave_workgroup;
+#define ROWS 4
+#define COLS 4
+#define O_ROW 040
+#define O_COL 010
+
+static int get_desired_maps(struct desired_map **mapsp) {
+    int count = ROWS * COLS + 1;
+    unsigned row, col;
+    struct desired_map *maps = *mapsp
+	= erts_alloc(ERTS_ALC_T_TMP, count * sizeof(*maps));
+
     /* ETODO: parse the HDF ourselves (we can't use the e_platform symbol since
      * the library is dynamically linked) */
     unsigned phy_base  = 0x3e000000;
@@ -102,6 +111,37 @@ static int map_shm(void) {
     ASSERT(slave_data_end < slave_heap_start);
     ASSERT(slave_heap_start < (void*)(ephy_base + size));
 
+    maps->virt_addr = (void*)ephy_base;
+    maps->phy_addr = phy_base;
+    maps->size = size;
+    maps++;
+
+    for (row = 0; row < ROWS; row++) {
+	for (col = 0; col < COLS; col++) {
+	    e_coreid_t coreid = ((col + O_COL) | ((row + O_ROW) << 6));
+	    maps->virt_addr = (void*)((coreid << 20) | 0x0);
+	    maps->phy_addr  =         (coreid << 20) | 0x0;
+	    maps->size      = 0x8000;
+	    maps++;
+	 }
+    }
+
+    ASSERT(maps == *mapsp + count);
+    return count;
+}
+
+static int memfd = 0;
+
+/*
+ * Maps the memory area shared with the epiphany chip to the same address as the
+ * chip sees it at.
+ * Returns 0 on success and -1 on failure.
+ */
+static int map_shm(void) {
+    void *ret;
+    int i, count;
+    struct desired_map *maps;
+
     memfd = open("/dev/epiphany", O_RDWR | O_SYNC);
     if (memfd == -1) {
 	/* The old way, for devices without the Epiphany kernel driver */
@@ -109,45 +149,76 @@ static int map_shm(void) {
     }
     if (memfd == -1) return -1;
 
-    // We avoid using MAP_FIXED because we'd rather know if there is another
-    // mapping in the way than overwrite it.
-    ret = mmap((void*)ephy_base, size,
-	       PROT_READ|PROT_WRITE, MAP_SHARED,
-	       memfd, phy_base);
-    if (ret == MAP_FAILED) {
-	perror("mmap");
-	return -1;
+    count = get_desired_maps(&maps);
+
+    for (i = 0; i < count; i++) {
+	/* We avoid using MAP_FIXED because we'd rather know if there is another
+	 * mapping in the way than overwrite it. */
+	ret = mmap(maps[i].virt_addr, maps[i].size,
+		   PROT_READ|PROT_WRITE, MAP_SHARED,
+		   memfd, maps[i].phy_addr);
+	if (ret == MAP_FAILED) {
+	    perror("mmap");
+	    fprintf(stderr, "Tried to map %p to %#x, size %#x\n",
+		    maps[i].virt_addr, maps[i].phy_addr, maps[i].size);
+	    goto cleanup_exit;
+	}
+	if (ret != maps[i].virt_addr) {
+	    fprintf(stderr, "mmap: wanted %p, got %p\n",
+		    maps[i].virt_addr, ret);
+	    /* So this mmap is cleaned up too */
+	    maps[i++].virt_addr = ret;
+	    goto cleanup_exit;
+	}
     }
-    if (ret != (void*)ephy_base) {
-	fprintf(stderr, "mmap: wanted 0x%x, got 0x%x\n",
-		(unsigned)ephy_base, (unsigned)ret);
-	return -1;
-    }
-    erl_slave_alloc_submit(slave_data_end, slave_heap_start - slave_data_end);
+
+    erts_free(ERTS_ALC_T_TMP, maps);
     return 0;
+
+ cleanup_exit:
+    for (i--; i >= 0; i--) {
+	munmap(maps[i].virt_addr, maps[i].size);
+    }
+    erts_free(ERTS_ALC_T_TMP, maps);
+    return -1;
 }
 
-// We reserve the shared memory segment when we're not actually using the slave
-// emulator so issues with the mmap will be more apparent.
+static void submit_smem_to_slave_alloc(void) {
+    void *slave_data_end = (void*)SLAVE_SYM_end;
+    void *slave_heap_start = (void*)SLAVE_SYM___heap_start;
+    erl_slave_alloc_submit(slave_data_end, slave_heap_start - slave_data_end);
+}
+
+/*
+ * We reserve the shared memory segment when we're not actually using the slave
+ * emulator so issues with the mmap will be more apparent.
+ */
 static int spoof_mmap(void) {
     void *ret;
-    unsigned size      = 0x02000000;
-    unsigned ephy_base = 0x8e000000;
+    int i, count, result = 0;
+    struct desired_map *maps;
 
-    ret = mmap((void*)ephy_base, size,
-	       PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS,
-	       0, 0);
-    if (ret == MAP_FAILED) {
-	perror("mmap");
-	return -1;
+    count = get_desired_maps(&maps);
+
+    for (i = 0; i < count; i++) {
+	ret = mmap(maps[i].virt_addr, maps[i].size,
+		   PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS,
+		   0, 0);
+	if (ret == MAP_FAILED) {
+	    perror("mmap");
+	    result = -1;
+	    /* No reason not to just barrel on, since we're only doing this to guard
+	     * against mistakes. */
+	    continue;
+	}
+	if (ret != maps[i].virt_addr) {
+	    fprintf(stderr, "mmap: wanted %p, got %p\n",
+		    maps[i].virt_addr, ret);
+	    result = -1;
+	}
     }
-    if (ret != (void*)ephy_base) {
-	fprintf(stderr, "mmap: wanted 0x%x, got 0x%x\n",
-		(unsigned)ephy_base, (unsigned)ret);
-	return -1;
-    }
-    erl_slave_alloc_fallback();
-    return 0;
+    erts_free(ERTS_ALC_T_TMP, maps);
+    return result;
 }
 
 static erts_tid_t pump_thread_tid;
@@ -169,10 +240,7 @@ static int start_pump_thread(void) {
 
 int erts_slave_online = 0;
 static int ehal_initialised = 0;
-e_epiphany_t slave_workgroup;
 
-#define ROWS 4
-#define COLS 4
 static void *
 pump_thread_loop(void __attribute__((unused)) *arg)
 {
@@ -268,9 +336,11 @@ void erts_init_slave_io(void) {
     // We make things easy for ourselves by mapping in the shared memory area at
     // *the same* address as it is observed by the Epiphany chip.
     if (getenv("SLAVE_BINARY") == NULL || map_shm()) {
+	erl_slave_alloc_fallback();
 	spoof_mmap();
 	return;
     }
+    submit_smem_to_slave_alloc();
 
     erts_slave_online = 1;
     if (start_pump_thread()) {
