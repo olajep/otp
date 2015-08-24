@@ -143,6 +143,7 @@ atom bs_get_utf16
 atom bs_validate_unicode
 atom bs_validate_unicode_retract
 atom emulate_fpe
+atom bs_normalise_pb
 
 # atoms used by several bifs to select loading target
 atom master

@@ -332,7 +332,11 @@ char *hipe_bs_allocate(int len)
     Binary *bptr;
 
     bptr = erts_bin_nrml_alloc(len);
+#ifdef ERTS_SLAVE
+    bptr->flags = BIN_FLAG_SLAVE;
+#else
     bptr->flags = 0;
+#endif
     bptr->orig_size = len;
     erts_refc_init(&bptr->refc, 1);
     return bptr->orig_bytes;

@@ -704,7 +704,19 @@ get_base(Orig,Base) ->
    hipe_rtl:mk_alu(Base, Orig, 'add', hipe_rtl:mk_imm(?HEAP_BIN_DATA-2)),
    hipe_rtl:mk_goto(hipe_rtl:label_name(EndLbl)),
    REFCLbl,
-   hipe_rtl:mk_load(Base, Orig, hipe_rtl:mk_imm(?PROC_BIN_BYTES-2)),
+   case get(hipe_target_rts) of
+     master ->
+       [hipe_rtl:mk_load(Base, Orig, hipe_rtl:mk_imm(?PROC_BIN_BYTES-2))];
+     slave ->
+       [NextLbl] = create_lbls(1),
+       OrigUntagged = hipe_rtl:mk_new_reg_gcsafe(),
+       [hipe_rtl:mk_alu(OrigUntagged, Orig, 'sub', hipe_rtl:mk_imm(2)),
+	hipe_rtl:mk_call([OrigUntagged], bs_normalise_pb, [OrigUntagged],
+			 hipe_rtl:label_name(NextLbl), [], not_remote),
+	NextLbl,
+	hipe_rtl:mk_load(Base, OrigUntagged, hipe_rtl:mk_imm(?PROC_BIN_BYTES)),
+	hipe_rtl:mk_alu(Orig, OrigUntagged, 'add', hipe_rtl:mk_imm(2))]
+   end,
    EndLbl].
 
 extract_matchstate_var(binsize, Ms) ->

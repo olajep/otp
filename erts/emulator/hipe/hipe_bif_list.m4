@@ -230,6 +230,10 @@ noproc_primop_interface_1(nbif_bs_utf16_size, hipe_bs_utf16_size)
 noproc_primop_interface_2(nbif_bs_get_utf16, erts_bs_get_utf16)
 noproc_primop_interface_2(nbif_bs_validate_unicode_retract, hipe_bs_validate_unicode_retract)
 
+#ifdef ERTS_SLAVE
+noproc_primop_interface_1(nbif_bs_normalise_pb, erts_normalise_proc_bin)
+#endif
+
 /*
  * Bit-syntax primops. The ERTS_SMP runtime system requires P,
  * hence the use of nocons_nofail_primop_interface_N().

@@ -73,6 +73,11 @@ PRIMOP_LIST(am_nonclosure_address, nbif_nonclosure_address)
 PRIMOP_LIST(am_conv_big_to_float, nbif_conv_big_to_float)
 PRIMOP_LIST(am_fclearerror_error, nbif_fclearerror_error)
 
+#if (!defined(HIPE_PRIMOPS_H_SLAVE) && defined(ERTS_SLAVE)) || \
+    (defined(HIPE_PRIMOPS_H_SLAVE) && defined(ERTS_SLAVE_EMU_ENABLED))
+PRIMOP_LIST(am_bs_normalise_pb, nbif_bs_normalise_pb)
+#endif
+
 #ifdef NO_FPE_SIGNALS
 PRIMOP_LIST(am_emulate_fpe, nbif_emulate_fpe)
 #endif
