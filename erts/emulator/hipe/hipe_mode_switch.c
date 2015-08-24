@@ -669,6 +669,35 @@ void hipe_inc_nstack(Process *p)
 
 #if defined(HIPE_NSTACK_GROWS_DOWN)
 #define hipe_nstack_avail(p)	((unsigned)((p)->hipe.nsp - (p)->hipe.nstack))
+
+#if defined(__epiphany__)
+#include <e-lib.h>
+#include "epiphany.h"
+
+/* Leave half of the space for heap */
+#define NSTACK_SIZE  512
+
+Eterm EPIPHANY_SRAM_HEAP nstack_storage[NSTACK_SIZE];
+
+void hipe_inc_nstack(Process *p)
+{
+    unsigned old_size = p->hipe.nstend - p->hipe.nstack;
+    unsigned new_size = NSTACK_SIZE;
+    Eterm *new_nstack =
+	e_get_global_address(E_SELF, E_SELF, nstack_storage);
+    unsigned used_size = p->hipe.nstend - p->hipe.nsp;
+    if (old_size != 0 || used_size != 0) erl_exit(1, "Out of native stack!\n");
+
+    sys_memcpy(new_nstack+new_size-used_size, p->hipe.nsp, used_size*sizeof(Eterm));
+    if (p->hipe.nstgraylim)
+	p->hipe.nstgraylim = new_nstack + new_size - (p->hipe.nstend - p->hipe.nstgraylim);
+    if (p->hipe.nstblacklim)
+	p->hipe.nstblacklim = new_nstack + new_size - (p->hipe.nstend - p->hipe.nstblacklim);
+    p->hipe.nstack = new_nstack;
+    p->hipe.nstend = new_nstack + new_size;
+    p->hipe.nsp = new_nstack + new_size - used_size;
+}
+#else
 void hipe_inc_nstack(Process *p)
 {
     unsigned old_size = p->hipe.nstend - p->hipe.nstack;
@@ -687,6 +716,7 @@ void hipe_inc_nstack(Process *p)
     p->hipe.nstend = new_nstack + new_size;
     p->hipe.nsp = new_nstack + new_size - used_size;
 }
+#endif
 #endif
 
 void hipe_empty_nstack(Process *p)

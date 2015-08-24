@@ -54,6 +54,7 @@ internal_malloc(size_t size)
 void
 internal_free(void *ptr)
 {
+    ASSERT(sys_in_slave_heap(ptr));
     lock();
     free(ptr);
     unlock();

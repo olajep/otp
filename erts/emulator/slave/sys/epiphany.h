@@ -22,6 +22,7 @@
 
 #define EPIPHANY_SRAM_DATA __attribute__((section(".data_bank0")))
 #define EPIPHANY_SRAM_FUNC __attribute__((section(".data_bank1")))
+#define EPIPHANY_SRAM_HEAP __attribute__((section(".data_bank2")))
 
 int epiphany_in_emulator(void);
 int epiphany_coreno(void);
