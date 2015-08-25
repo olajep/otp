@@ -249,7 +249,15 @@ endif
 ifeq ($(GCC),yes)
 # Since things misbehave if the shared memory section is larger than 1MiB, we
 # apply some gentle optimisations even during debug builds
-DEBUG_CFLAGS+= -Og -fno-omit-frame-pointer -fno-web
+
+# We'd like to use Og, but it triggers a bug in the Epiphany backend
+# (https://github.com/adapteva/epiphany-sdk/issues/53). Instead, we use O1 and
+# explicitly disable the optimisers that are in O1 but not Og.
+
+# The difference between Og and O1 on e-gcc 4.8.2 2015.1 is
+# -finline-functions-called-once and -ftree-sra
+DEBUG_CFLAGS+= -O1 -fno-omit-frame-pointer -fno-web \
+	-fno-inline-functions-called-once -fno-tree-sra
 
 # -fgcse-las can sometimes save us from the fact that the 2015.01 FPGA binary is
 # buggy and does not actually provide guarantee 2 from "4.2 Memory Order Model"
