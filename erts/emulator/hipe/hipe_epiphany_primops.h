@@ -18,3 +18,4 @@
  */
 
 PRIMOP_LIST(am_inc_stack_0, hipe_epiphany_inc_stack)
+PRIMOP_LIST(am_heap_flush,  epiphany_dram_fence)

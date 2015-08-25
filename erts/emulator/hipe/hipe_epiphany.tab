@@ -21,3 +21,4 @@
 
 atom epiphany
 atom inc_stack_0
+atom heap_flush

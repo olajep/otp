@@ -244,6 +244,7 @@ gen_rtl({bs_restore, Slot}, [NewMs], [Ms], TrueLblName, _FalseLblName) ->
   update_ms(NewMs, Ms) ++
     [get_field_from_term({matchstate, {saveoffset, Slot}}, Ms, Tmp1),
      set_field_from_term({matchstate, {matchbuffer, offset}}, Ms, Tmp1),
+     hipe_rtl_arch:heap_flush(),
      hipe_rtl:mk_goto(TrueLblName)];
 %% ----- bs_save -----
 gen_rtl({bs_save, Slot}, [NewMs], [Ms], TrueLblName, _FalseLblName) ->
@@ -251,6 +252,7 @@ gen_rtl({bs_save, Slot}, [NewMs], [Ms], TrueLblName, _FalseLblName) ->
   update_ms(NewMs, Ms) ++
     [Instr,
      set_field_from_term({matchstate, {saveoffset, Slot}}, Ms, Offset),
+     hipe_rtl_arch:heap_flush(),
      hipe_rtl:mk_goto(TrueLblName)];
 %% ----- bs_match_string -----
 gen_rtl({bs_match_string, String, ByteSize}, Dst, [Ms],
@@ -542,6 +544,7 @@ reinit_matchstate(Ms, TrueLblName) ->
   Tmp = hipe_rtl:mk_new_reg_gcsafe(),
   [get_field_from_term({matchstate, {matchbuffer, offset}}, Ms, Tmp),
    set_field_from_term({matchstate, {saveoffset, 0}}, Ms, Tmp),
+   hipe_rtl_arch:heap_flush(),
    hipe_rtl:mk_goto(TrueLblName)].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% Binary Code %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -789,7 +792,8 @@ unsafe(Flags) ->
   end.
 
 update_offset(NewOffset, Ms) ->
-  set_field_from_term({matchstate, {matchbuffer, offset}}, Ms, NewOffset).
+  [set_field_from_term({matchstate, {matchbuffer, offset}}, Ms, NewOffset),
+   hipe_rtl_arch:heap_flush()].
 
 opt_update_ms([NewMs], OldMs) ->
   [hipe_rtl:mk_move(NewMs, OldMs)];

@@ -39,4 +39,6 @@ int epiphany_in_dram(void *);
 int epiphany_sane_address(void *);
 #endif
 
+void epiphany_dram_fence(void);
+
 #endif /* defined(_SYS_EPIPHANY_H) */

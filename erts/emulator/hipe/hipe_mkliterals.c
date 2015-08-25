@@ -297,9 +297,6 @@ static const struct literal {
     /* freason codes */
     { "FREASON_TRAP", TRAP },
 
-    /* special Erlang constants */
-    { "THE_NON_VALUE", (int)THE_NON_VALUE },
-
     /* funs */
     { "EFT_THING", offsetof(struct erl_fun_thing, thing_word) },
 
@@ -578,6 +575,9 @@ static const struct rts_param rts_params[] = {
 #endif
     },
 #endif
+
+    /* special Erlang constants */
+    { 60, "THE_NON_VALUE", 1, (int)THE_NON_VALUE },
 
 };
 

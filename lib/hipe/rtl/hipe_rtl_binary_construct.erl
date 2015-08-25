@@ -309,6 +309,7 @@ gen_rtl(BsOP, Dst, Args, TrueLblName, FalseLblName, SystemLimitLblName, ConstTab
 	     calculate_sizes(Bin, SizeReg, Offset, EndSubSize, EndSubBitSize),
 	     set_field_from_term(SubBinSize, Bin, EndSubSize),
 	     set_field_from_term({sub_binary, bitsize}, Bin, EndSubBitSize),
+	     hipe_rtl_arch:heap_flush(),
 	     hipe_rtl:mk_move(DstVar, Bin),
 	     hipe_rtl:mk_goto(TrueLblName)]; 
 
@@ -441,7 +442,8 @@ realloc_binary(SizeReg, ProcBin, Base) ->
    set_field_from_term(ProcBinValTag, ProcBin, BinPointer),
    hipe_tagscheme:extract_binary_bytes(BinPointer, Base),
    set_field_from_term(ProcBinBytesTag, ProcBin, Base),
-   ContLbl].
+   ContLbl,
+   hipe_rtl_arch:heap_flush()].
 
 calculate_sizes(Bin, SizeReg, Offset, EndSubSize, EndSubBitSize) ->
   [SubSize, SubBitSize, EndSize] = create_regs(3),

@@ -302,3 +302,33 @@ epiphany_backtrace(void)
     erts_printf("Backtrace:%s %#x\n", links, (unsigned)link - 4);
 #endif
 }
+
+volatile unsigned epiphany_dram_fence_vector[16];
+
+static unsigned __attribute__((pure))
+epiphany_coreid(void)
+{
+    unsigned coreid;
+    asm("movfs %0,coreid" : "=r"(coreid));
+    return coreid;
+}
+
+static unsigned __attribute__((pure))
+epiphany_short_coreid(void)
+{
+    unsigned coreid = epiphany_coreid();
+    ASSERT((coreid & 0b111100) == 010);
+    ASSERT(((coreid>>6) & 0b111100) == 040);
+    return (coreid & 0b11) | ((coreid>>4)&0b1100);
+}
+
+void
+epiphany_dram_fence(void)
+{
+    unsigned new, i = epiphany_short_coreid();
+    new = epiphany_dram_fence_vector[i] + 1;
+    epiphany_dram_fence_vector[i] = new;
+    /* erts_printf("Waiting for %d back from %p[%d]\n", */
+    /* 		new, epiphany_dram_fence_vector, i); */
+    while (epiphany_dram_fence_vector[i] != new);
+}

@@ -57,6 +57,7 @@
 	 eval_cond_bits/5,
 	 fwait/0,
 	 handle_fp_exception/0,
+	 heap_flush/0,
 	 pcb_load/2,
 	 pcb_load/3,
 	 pcb_store/2,
@@ -103,7 +104,7 @@ first_virtual_reg() ->
 heap_pointer() ->	% {GetHPInsn, HPReg, PutHPInsn}
   case get(hipe_target_arch) of
     epiphany ->
-      heap_pointer_from_reg(hipe_epiphany_registers:heap_pointer());
+      heap_pointer_from_reg_with_flush(hipe_epiphany_registers:heap_pointer());
     ultrasparc ->
       heap_pointer_from_reg(hipe_sparc_registers:heap_pointer());
     powerpc ->
@@ -122,6 +123,12 @@ heap_pointer_from_reg(Reg) ->
   {hipe_rtl:mk_comment('get_heap_pointer'),
    hipe_rtl:mk_reg(Reg),
    hipe_rtl:mk_comment('put_heap_pointer')}.
+
+heap_pointer_from_reg_with_flush(Reg) ->
+  {hipe_rtl:mk_comment('get_heap_pointer'),
+   hipe_rtl:mk_reg(Reg),
+   [hipe_rtl:mk_comment('put_heap_pointer'),
+    heap_flush()]}.
 
 -ifdef(AMD64_HP_IN_REGISTER).
 amd64_heap_pointer() ->
@@ -636,6 +643,18 @@ handle_real_fp_exception() ->
       [];
     ultrasparc ->
       []
+  end.
+
+heap_flush() ->
+  case get(hipe_target_arch) of
+    epiphany ->
+      NextLbl = hipe_rtl:mk_new_label(),
+      %% Epihany-III shared memory is really broken. We make sure later loads
+      %% won't return stale data(sic) with a fence primop.
+      [hipe_rtl:mk_call([], heap_flush, [],
+			hipe_rtl:label_name(NextLbl), [], not_remote),
+       NextLbl];
+    _ -> []
   end.
 
 %%
