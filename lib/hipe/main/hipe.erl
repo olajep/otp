@@ -878,8 +878,12 @@ maybe_load(Mod, Bin, WholeModule, Opts) ->
 
 do_load(Mod, Bin, BeamBinOrPath) when is_binary(BeamBinOrPath);
 				      is_list(BeamBinOrPath) ->
-  HostArch = get(hipe_host_arch),
   TargetArch = get(hipe_target_arch),
+  {HostArch, LoadNativeSticky} =
+    case get(hipe_target_rts) of
+      master -> {get(hipe_host_arch),  load_native_sticky};
+      slave ->  {get(hipe_slave_arch), load_native_sticky_epiphany}
+    end,
   %% Make sure we can do the load.
   if HostArch =/= TargetArch ->
     ?EXIT({host_and_target_arch_differ, HostArch, TargetArch});
@@ -892,14 +896,15 @@ do_load(Mod, Bin, BeamBinOrPath) when is_binary(BeamBinOrPath);
       {ok, _, Chunks} = beam_lib:all_chunks(BeamBinOrPath),
       {ok, Beam} = beam_lib:build_module(Chunks),
       %% Don't purge or register sticky mods; just load native.
-      code:load_native_sticky(Mod, Bin, Beam);
+      code:LoadNativeSticky(Mod, Bin, Beam);
     false ->
       %% Normal loading of a whole module
-      Architecture = erlang:system_info(hipe_architecture),
-      ChunkName = hipe_unified_loader:chunk_name(Architecture),
+      ChunkName = hipe_unified_loader:chunk_name(HostArch),
       {ok, _, Chunks0} = beam_lib:all_chunks(BeamBinOrPath),
       Chunks = [{ChunkName, Bin}|lists:keydelete(ChunkName, 1, Chunks0)],
       {ok, BeamPlusNative} = beam_lib:build_module(Chunks),
+      %% We don't have to force the loading into the slave here; the beam will
+      %% be cached and loaded on demand.
       code:load_binary(Mod, code:which(Mod), BeamPlusNative)
   end.
 

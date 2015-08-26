@@ -346,6 +346,16 @@ handle_call({load_native_sticky,Mod,Bin,WholeModule}, {_From,_Tag}, S) ->
     Status = hipe_result_to_status(Result),
     {reply,Status,S};
 
+handle_call({load_native_sticky_epiphany,Mod,Bin,WholeModule}, {_From,_Tag}, S) ->
+    Result = (catch hipe_unified_loader:load_module(Mod, Bin, WholeModule, slave)),
+    case Result of
+	{module,Mod} ->
+	    ets:insert(S#state.slavedb, {Mod, want});
+	_ -> ok
+    end,
+    Status = hipe_result_to_status(Result),
+    {reply,Status,S};
+
 handle_call({ensure_loaded,Mod0}, Caller, St0) ->
     Fun = fun (M, St) ->
 		  case erlang:module_loaded(M) of

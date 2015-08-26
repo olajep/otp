@@ -33,6 +33,7 @@
 	 load_binary/3,
 	 load_native_partial/2,
 	 load_native_sticky/3,
+	 load_native_sticky_epiphany/3,
 	 delete/1,
 	 purge/1,
 	 soft_purge/1,
@@ -175,6 +176,14 @@ load_native_sticky(Mod, Bin, WholeModule)
   when is_atom(Mod), is_binary(Bin),
        (is_binary(WholeModule) orelse WholeModule =:= false) ->
     call({load_native_sticky,Mod,Bin,WholeModule}).
+
+-spec load_native_sticky_epiphany(
+	Module :: module(), Binary :: binary(),
+	WholeModule :: 'false' | binary()) -> load_ret().
+load_native_sticky_epiphany(Mod, Bin, WholeModule)
+  when is_atom(Mod), is_binary(Bin),
+       (is_binary(WholeModule) orelse WholeModule =:= false) ->
+    call({load_native_sticky_epiphany,Mod,Bin,WholeModule}).
 
 -spec delete(Module) -> boolean() when
       Module :: module().
