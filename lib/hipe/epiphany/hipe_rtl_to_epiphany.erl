@@ -450,7 +450,7 @@ conv_load(I, Map, Data) ->
   Extend =
     case {LoadSize,LoadSign} of
       {byte,signed} ->
-	[hipe_epiphany:mk_alu('lsr', Dst, Dst, hipe_epiphany:mk_uimm5(24)),
+	[hipe_epiphany:mk_alu('lsl', Dst, Dst, hipe_epiphany:mk_uimm5(24)),
 	 hipe_epiphany:mk_alu('asr', Dst, Dst, hipe_epiphany:mk_uimm5(24))];
       _ -> []
     end,
