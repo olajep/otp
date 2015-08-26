@@ -218,10 +218,10 @@ ERTS_ENABLE_KERNEL_POLL=@ERTS_ENABLE_KERNEL_POLL@
 
 BUILD_SLAVE=
 ifdef SLAVE_ENABLED
+include slave/info.mk
 # We only include slave support in the smp build
 ifeq ($(FLAVOR),smp)
 # This script requires $(TF_MARKER), so we include it down here
-include slave/info.mk
 
 BUILD_SLAVE=yes
 ENABLE_ALLOC_TYPE_VARS += slave
@@ -582,6 +582,10 @@ HIPE_ARCH_TAB=$(HIPE_$(ARCH)_TAB)
 BIFS += hipe/hipe_bif0.tab hipe/hipe_bif1.tab hipe/hipe_bif2.tab $(HIPE_ARCH_TAB)
 ifdef USE_PERFCTR
 BIFS += hipe/hipe_perfctr.tab
+endif
+ifdef SLAVE_ENABLED
+HIPE_SLAVE_ARCH_TAB=$(HIPE_$(SLAVE_ARCH)_TAB)
+BIFS += $(HIPE_SLAVE_ARCH_TAB)
 endif
 endif
 
@@ -960,9 +964,7 @@ HIPE_ARCH_OBJS=$(HIPE_$(ARCH)_OBJS)
 ifdef BUILD_SLAVE
 HIPE_SLAVE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany_slave.o
 HIPE_SLAVE_ARCH_OBJS=$(HIPE_SLAVE_$(SLAVE_ARCH)_OBJS)
-HIPE_SLAVE_ARCH_TAB=$(HIPE_$(SLAVE_ARCH)_TAB)
 HIPE_ARCH_OBJS += $(HIPE_SLAVE_ARCH_OBJS)
-BIFS += $(HIPE_SLAVE_ARCH_TAB)
 endif
 
 HIPE_OBJS= \
@@ -1099,9 +1101,11 @@ $(OBJDIR)/hipe_arm_bifs.o:	$(TTF_DIR)/hipe_arm_bifs.S \
 $(OBJDIR)/hipe_arm.o:           hipe/hipe_arm.c
 	$(V_CC) $(subst O2,O3, $(CFLAGS)) -fomit-frame-pointer $(INCLUDES) -c $< -o $@
 
-$(OBJDIR)/hipe_epiphany_glue.o:	hipe/hipe_epiphany_glue.S $(TTF_DIR)/hipe_epiphany_asm.h \
-	hipe/hipe_mode_switch.h $(TTF_DIR)/hipe_literals.h
-$(TTF_DIR)/hipe_epiphany_bifs.S:	hipe/hipe_epiphany_bifs.m4 hipe/hipe_epiphany_asm.m4 \
+$(OBJDIR)/hipe_epiphany_glue.o:	hipe/hipe_epiphany_glue.S \
+	$(TTF_DIR)/hipe_epiphany_asm.h hipe/hipe_mode_switch.h \
+	$(TTF_DIR)/hipe_literals.h
+$(TTF_DIR)/hipe_epiphany_bifs.S:	hipe/hipe_epiphany_bifs.m4 \
+	hipe/hipe_epiphany_asm.m4 $(TTF_DIR)/hipe_literals.h \
 	hipe/hipe_bif_list.m4 $(TARGET)/erl_bif_list.h hipe/hipe_gbif_list.h
 $(OBJDIR)/hipe_epiphany_bifs.o:	$(TTF_DIR)/hipe_epiphany_bifs.S \
 	$(TTF_DIR)/hipe_literals.h
@@ -1114,10 +1118,9 @@ ifdef BUILD_SLAVE
 $(SLAVE_EXECUTABLE): FORCE
 	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) )
 
-# We're recursing twice even though building $(SLAVE_EXECUTABL) will also
-# freshen up this target, but what can we do?
-$(SLAVE_MKLITERALS)$(TF_MARKER): FORCE
-	$(V_at)( cd slave && $(MAKE) FLAVOR=$(FLAVOR) $@ )
+# We're don't need the entire executable, but we can't recurse twice because
+# that could cause races with parallell compilation.
+$(SLAVE_MKLITERALS)$(TF_MARKER): $(SLAVE_EXECUTABLE)
 
 # FORCE is an empty phony target used to unconditionally execute certain rules
 .PHONY: FORCE

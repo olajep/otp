@@ -637,8 +637,9 @@ $(BINDIR)/hipe_mkliterals$(TF_MARKER):	$(OBJDIR)/hipe_mkliterals.o
 	$(ld_verbose)$(CC) $(CFLAGS) $(INCLUDES) -o $@ $<
 
 # XXX: This is quite the horrid way of doing it
-$(OBJDIR)/hipe_mkliterals.o: ../hipe/hipe_mkliterals.c $(HIPE_ASM) $(TTF_DIR)/erl_alloc_types.h \
-	$(TTF_DIR)/OPCODES-GENERATED $(TARGET)/TABLES-GENERATED
+$(OBJDIR)/hipe_mkliterals.o: ../hipe/hipe_mkliterals.c $(HIPE_ASM) \
+	$(TTF_DIR)/erl_alloc_types.h $(TTF_DIR)/OPCODES-GENERATED \
+	$(TARGET)/TABLES-GENERATED
 	$(V_CC) $(CFLAGS) -DEPIPHANY_NO_WRITE_REDIRECT \
 		-DEPIPHANY_NO_ALLOC_REDIRECT -DE_RUN_ARGV_GRAB \
 		$(INCLUDES) -c ../hipe/hipe_mkliterals.c -o $@
@@ -646,6 +647,62 @@ $(OBJDIR)/hipe_mkliterals.o: ../hipe/hipe_mkliterals.c $(HIPE_ASM) $(TTF_DIR)/er
 $(TTF_DIR)/hipe_literals.h:	$(BINDIR)/hipe_mkliterals$(TF_MARKER)
 	$(gen_verbose)e-run $(BINDIR)/hipe_mkliterals$(TF_MARKER) -c > $@ && \
 		[ -s $@ ] || (ret=$$?; rm -f $@ && exit $$ret)
+
+
+$(OBJDIR)/hipe_x86_glue.o:	../hipe/hipe_x86_glue.S \
+	$(TTF_DIR)/hipe_x86_asm.h $(TTF_DIR)/hipe_literals.h \
+	../hipe/hipe_mode_switch.h
+$(TTF_DIR)/hipe_x86_bifs.S:	../hipe/hipe_x86_bifs.m4 \
+	../hipe/hipe_x86_asm.m4 ../hipe/hipe_bif_list.m4 \
+	$(TARGET)/erl_bif_list.h ../hipe/hipe_gbif_list.h
+$(OBJDIR)/hipe_x86_bifs.o:	$(TTF_DIR)/hipe_x86_bifs.S \
+	$(TTF_DIR)/hipe_literals.h
+
+$(OBJDIR)/hipe_amd64_glue.o:	../hipe/hipe_amd64_glue.S \
+	$(TTF_DIR)/hipe_amd64_asm.h $(TTF_DIR)/hipe_literals.h \
+	../hipe/hipe_mode_switch.h
+$(TTF_DIR)/hipe_amd64_bifs.S:	../hipe/hipe_amd64_bifs.m4 \
+	../hipe/hipe_amd64_asm.m4 ../hipe/hipe_bif_list.m4 \
+	$(TARGET)/erl_bif_list.h ../hipe/hipe_gbif_list.h
+$(OBJDIR)/hipe_amd64_bifs.o:	$(TTF_DIR)/hipe_amd64_bifs.S \
+	$(TTF_DIR)/hipe_literals.h
+
+$(OBJDIR)/hipe_sparc_glue.o:	../hipe/hipe_sparc_glue.S \
+	$(TTF_DIR)/hipe_sparc_asm.h ../hipe/hipe_mode_switch.h \
+	$(TTF_DIR)/hipe_literals.h
+$(TTF_DIR)/hipe_sparc_bifs.S:	../hipe/hipe_sparc_bifs.m4 \
+	../hipe/hipe_sparc_asm.m4 ../hipe/hipe_bif_list.m4 \
+	$(TARGET)/erl_bif_list.h ../hipe/hipe_gbif_list.h
+$(OBJDIR)/hipe_sparc_bifs.o:	$(TTF_DIR)/hipe_sparc_bifs.S \
+	$(TTF_DIR)/hipe_literals.h
+
+$(OBJDIR)/hipe_ppc_glue.o:	../hipe/hipe_ppc_glue.S \
+	$(TTF_DIR)/hipe_ppc_asm.h ../hipe/hipe_mode_switch.h \
+	$(TTF_DIR)/hipe_literals.h
+$(TTF_DIR)/hipe_ppc_bifs.S:	../hipe/hipe_ppc_bifs.m4 \
+	../hipe/hipe_ppc_asm.m4 ../hipe/hipe_bif_list.m4 \
+	$(TARGET)/erl_bif_list.h ../hipe/hipe_gbif_list.h
+$(OBJDIR)/hipe_ppc_bifs.o:	$(TTF_DIR)/hipe_ppc_bifs.S \
+	$(TTF_DIR)/hipe_literals.h
+
+$(OBJDIR)/hipe_arm_glue.o:	../hipe/hipe_arm_glue.S \
+	$(TTF_DIR)/hipe_arm_asm.h ../hipe/hipe_mode_switch.h \
+	$(TTF_DIR)/hipe_literals.h
+$(TTF_DIR)/hipe_arm_bifs.S:	../hipe/hipe_arm_bifs.m4 \
+	../hipe/hipe_arm_asm.m4 ../hipe/hipe_bif_list.m4 \
+	$(TARGET)/erl_bif_list.h ../hipe/hipe_gbif_list.h
+$(OBJDIR)/hipe_arm_bifs.o:	$(TTF_DIR)/hipe_arm_bifs.S \
+	$(TTF_DIR)/hipe_literals.h
+
+$(OBJDIR)/hipe_epiphany_glue.o:	../hipe/hipe_epiphany_glue.S \
+	$(TTF_DIR)/hipe_epiphany_asm.h ../hipe/hipe_mode_switch.h \
+	$(TTF_DIR)/hipe_literals.h
+$(TTF_DIR)/hipe_epiphany_bifs.S: ../hipe/hipe_epiphany_bifs.m4 \
+	../hipe/hipe_epiphany_asm.m4 $(TTF_DIR)/hipe_literals.h \
+	../hipe/hipe_bif_list.m4 $(TARGET)/erl_bif_list.h \
+	../hipe/hipe_gbif_list.h
+$(OBJDIR)/hipe_epiphany_bifs.o:	$(TTF_DIR)/hipe_epiphany_bifs.S \
+	$(TTF_DIR)/hipe_literals.h
 
 # end of HiPE section
 ########################################
