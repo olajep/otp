@@ -1,20 +1,33 @@
 #! /bin/sh
 ROOT=`readlink -f ..`
-BINDIR="$ROOT/bin/armv7l-unknown-linux-gnueabihf/"
-SLAVE_BINDIR="$ROOT/bin/epiphany-unknown-elf/"
-
+if [ x$TARGET != x -a -d "$ROOT/bin/$TARGET/" ]; then
+    BINDIR="$ROOT/bin/$TARGET/"
+else
+    BINDIR="$ROOT/bin/arm-unknown-linux-gnueabihf/"
+fi
+if [ x$SLAVE_TARGET != x -a -d "$ROOT/bin/$SLAVE_TARGET/" ]; then
+    SLAVE_BINDIR="$ROOT/bin/$SLAVE_TARGET/"
+else
+    SLAVE_BINDIR="$ROOT/bin/epiphany-unknown-elf/"
+fi
 SLAVE_BIN="$SLAVE_BINDIR/slave.debug.smp.srec"
 FAST_SLAVE_BIN="$SLAVE_BINDIR/slave.smp.srec"
 
-TEST_ERL="sudo -E LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
-TEST_ERL="$TEST_ERL SLAVE_BINARY=$SLAVE_BIN BINDIR=$BINDIR"
+if [ -c /dev/epiphany ]; then
+    PREFIX="env"
+else
+    PREFIX="sudo -E LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+fi
+
+TEST_ERL="$PREFIX SLAVE_BINARY=$SLAVE_BIN BINDIR=$BINDIR"
 TEST_ERL="$TEST_ERL $BINDIR/beam.debug.smp -- -root $ROOT -- -noshell"
+REGS_ERL="$TEST_ERL -pa beam" # We don't trust the regressions to reproduce with HiPE
+TEST_ERL="$TEST_ERL -pa debug"
 
-FAST_ERL="sudo -E LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
-FAST_ERL="$FAST_ERL SLAVE_BINARY=$FAST_SLAVE_BIN BINDIR=$BINDIR"
-FAST_ERL="$FAST_ERL $BINDIR/beam.smp -- -root $ROOT -- -noshell"
+FAST_ERL="$PREFIX SLAVE_BINARY=$FAST_SLAVE_BIN BINDIR=$BINDIR"
+FAST_ERL="$FAST_ERL $BINDIR/beam.smp -- -root $ROOT -- -pa opt -noshell"
 
-ERL="env BINDIR=$BINDIR $BINDIR/beam.smp -- -root $ROOT -- -noshell"
+ERL="env BINDIR=$BINDIR $BINDIR/beam.smp -- -root $ROOT -- -noshell -pa debug"
 
 NOREGS=0
 NOUNIT=0
@@ -22,6 +35,7 @@ while echo $1 | grep -E '^-' >/dev/null; do
     if [ $1 == --fast ]; then
         NOREGS=1
         TEST_ERL=$FAST_ERL
+        ERL="$ERL -pa opt"
     elif [ $1 == --nounit ]; then
         NOUNIT=1
     elif [ $1 == --noregs ]; then
@@ -48,7 +62,7 @@ if [ x$NOREGS = x0 ]; then
         sleep 1 # We do what we can to prevent bus lockups, even voodoo like
                 # this
         echo -e "     \e[1m-->\e[0m Running regressions:$t()"
-        $TEST_ERL -s regressions run $t || {
+        $REGS_ERL -s regressions run $t || {
             echo "FAILURE"
             exit 1
         }

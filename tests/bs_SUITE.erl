@@ -39,7 +39,14 @@ test(Config, TestCase) ->
     Dir = ?config(data_dir, Config),
     F = filename:join(Dir, atom_to_list(TestCase) ++ ".erl"),
     {ok, TestCase} = compile:file(F),
-    ok = try TestCase:prepare_for_test() catch _:_ -> ok end,
+    code:ensure_loaded_epiphany(TestCase),
+    case erlang:function_exported(TestCase, prepare_for_test, 0) of
+	true -> ok = TestCase:prepare_for_test();
+	false -> ok
+    end,
+    ok = TestCase:test(),
+    HiPEOpts = try TestCase:hipe_options() catch error:undef -> [] end,
+    {ok, TestCase} = hipe:c(TestCase, [{target, epiphany}|HiPEOpts]),
     ok = TestCase:test().
 
 bs_add(Config) ->
