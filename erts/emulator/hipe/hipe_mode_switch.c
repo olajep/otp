@@ -675,7 +675,7 @@ void hipe_inc_nstack(Process *p)
 #include "epiphany.h"
 
 /* Leave half of the space for heap */
-#define NSTACK_SIZE  512
+#define NSTACK_SIZE  1024
 
 Eterm EPIPHANY_SRAM_HEAP nstack_storage[NSTACK_SIZE];
 
