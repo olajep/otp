@@ -155,7 +155,7 @@ gc_bif_interface_2(nbif_erts_internal_check_process_code_2, hipe_erts_internal_c
 gc_bif_interface_1(nbif_erase_1, erase_1)
 gc_bif_interface_0(nbif_garbage_collect_0, garbage_collect_0)
 gc_nofail_primop_interface_1(nbif_gc_1, hipe_gc)
-gc_bif_interface_2(nbif_put_2, put_2)
+gc_bif_interface_2(nbif_put_2, hipe_put_2)
 
 /*
  * Debug BIFs that need read access to the full state.

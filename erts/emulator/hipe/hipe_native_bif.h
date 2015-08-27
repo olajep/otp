@@ -92,6 +92,7 @@ BIF_RETTYPE hipe_bs_put_utf16le(BIF_ALIST_3);
 BIF_RETTYPE hipe_bs_validate_unicode(BIF_ALIST_1);
 struct erl_bin_match_buffer;
 int hipe_bs_validate_unicode_retract(struct erl_bin_match_buffer*, Eterm);
+BIF_RETTYPE hipe_put_2(BIF_ALIST_2);
 
 #ifdef NO_FPE_SIGNALS
 AEXTERN(void,nbif_emulate_fpe,(Process*));

@@ -626,6 +626,19 @@ BIF_RETTYPE hipe_conv_big_to_float(BIF_ALIST_1)
     BIF_RET(res);
 }
 
+/*
+ * put_2 is special because it might directly call erts_garbage_collect; it
+ * needs a wrapper to set narity
+ */
+BIF_RETTYPE hipe_put_2(BIF_ALIST_2)
+{
+    BIF_RETTYPE ret;
+    hipe_set_narity(BIF_P, 2);
+    ret = put_2(BIF_P, BIF__ARGS);
+    hipe_set_narity(BIF_P, 0);
+    return ret;
+}
+
 #ifdef NO_FPE_SIGNALS
 
 /*
