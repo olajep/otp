@@ -62,7 +62,8 @@
 -record(epiphany_uimm8,  {value :: ?UNSIGNED_RANGE(8)}). %% Expands to uimm16
 -endif.
 
--type temp() :: #epiphany_temp{allocatable::true}.
+-type temp() :: #epiphany_temp{}.
+-define(EPIPHANY_TEMP, #epiphany_temp{}).
 -type pseudo_temp() :: #epiphany_temp{}.
 -type link_time_immediate() :: atom() | {label, {non_neg_integer(), constant}}.
 
@@ -145,7 +146,7 @@
 	#pseudo_switch{jtab::temp(), index::temp(), labels::[non_neg_integer()]}.
 -type pseudo_tailcall() ::
 	#pseudo_tailcall{funv :: #epiphany_mfa{} | #epiphany_prim{} | temp(),
-			 arity::arity(), stkargs::[temp()],
+			 arity::arity(), stkargs::[temp() | integer()],
 			 linkage::linkage()}.
 -type pseudo_tailcall_prepare() :: #pseudo_tailcall_prepare{}.
 -type pseudo_bcc() :: #pseudo_bcc{'cond' :: 'cond'(),

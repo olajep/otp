@@ -157,7 +157,7 @@ mk_sdesc(ExnLab, FSize, Arity, Live)
 
 -spec mk_alu(aluop(), temp(), temp(),
 	     temp() | #epiphany_simm11{} | #epiphany_uimm5{}) -> alu().
-mk_alu(AluOp, Dst, Src1, Src2) ->
+mk_alu(AluOp, Dst=?EPIPHANY_TEMP, Src1=?EPIPHANY_TEMP, Src2) ->
   #alu{aluop=AluOp, dst=Dst, src1=Src1, src2=Src2}.
 
 -spec mk_b(#epiphany_mfa{} | #epiphany_prim{}, linkage()) -> b().
@@ -178,11 +178,11 @@ mk_bl(FunLit, SDesc,Linkage) ->
   #bl{funv=FunLit, sdesc=SDesc, linkage=Linkage}.
 
 -spec mk_jalr(temp(), #epiphany_sdesc{}) -> jalr().
-mk_jalr(FunV, SDesc) ->
+mk_jalr(FunV=?EPIPHANY_TEMP, SDesc) ->
   #jalr{funv=FunV, sdesc=SDesc}.
 
 -spec mk_jr(temp()) -> jr().
-mk_jr(FunV) ->
+mk_jr(FunV=?EPIPHANY_TEMP) ->
   #jr{funv=FunV}.
 
 -spec mk_label(non_neg_integer()) -> label().
@@ -191,34 +191,34 @@ is_label(I) -> case I of #label{} -> true; _ -> false end.
 label_label(#label{label=Label}) -> Label.
 
 -spec mk_movcc('cond'(), temp(), temp()) -> movcc().
-mk_movcc(Cond, Dst, Src) ->
+mk_movcc(Cond, Dst=?EPIPHANY_TEMP, Src=?EPIPHANY_TEMP) ->
   #movcc{'cond'=Cond, dst=Dst, src=Src}.
 
 -spec mk_mov(temp(), #epiphany_uimm16{} | {lo16, link_time_immediate()})
 	    -> mov().
-mk_mov(Dst=#epiphany_temp{allocatable=true}, Imm=#epiphany_uimm16{}) ->
+mk_mov(Dst=?EPIPHANY_TEMP, Imm=#epiphany_uimm16{}) ->
   #mov{dst=Dst, src=Imm};
-mk_mov(Dst=#epiphany_temp{allocatable=true}, Imm={lo16, _}) ->
+mk_mov(Dst=?EPIPHANY_TEMP, Imm={lo16, _}) ->
   #mov{dst=Dst, src=Imm}.
 
 -spec mk_movt(temp(), #epiphany_uimm16{} | {hi16, link_time_immediate()})
 	     -> movt().
-mk_movt(Dst=#epiphany_temp{allocatable=true}, Src=#epiphany_uimm16{}) ->
+mk_movt(Dst=?EPIPHANY_TEMP, Src=#epiphany_uimm16{}) ->
   #movt{dst=Dst, src=Src};
-mk_movt(Dst=#epiphany_temp{allocatable=true}, Src={hi16, _}) ->
+mk_movt(Dst=?EPIPHANY_TEMP, Src={hi16, _}) ->
   #movt{dst=Dst, src=Src}.
 
 -spec mk_ldr(mem_size(), temp(), temp(), addr_sign(),
 	     temp() | #epiphany_uimm11{}) -> ldr().
-mk_ldr(Size, Dst, Base, Sign, Offset) ->
+mk_ldr(Size, Dst=?EPIPHANY_TEMP, Base=?EPIPHANY_TEMP, Sign, Offset) ->
   #ldr{size=Size, dst=Dst, base=Base, sign=Sign, offset=Offset}.
 
 -spec mk_movi(temp(), integer() | link_time_immediate()) -> [mov() | movt()].
-mk_movi(Dst, Value) -> mk_movi(Dst, Value, []).
+mk_movi(Dst=?EPIPHANY_TEMP, Value) -> mk_movi(Dst, Value, []).
 
 -spec mk_movi(temp(), integer() | link_time_immediate(), [T])
 	     -> [mov() | movt() | T].
-mk_movi(Dst, Value, Tail) when is_integer(Value) ->
+mk_movi(Dst=?EPIPHANY_TEMP, Value, Tail) when is_integer(Value) ->
   if 0 =< Value, Value < 16#10000 ->
       [mk_mov(Dst, mk_uimm16(Value)) | Tail];
      true ->
@@ -238,7 +238,7 @@ mk_movi(Dst, Value, Tail) ->
    Tail].
 
 -spec mk_movfs(temp(), spec_reg()) -> movfs().
-mk_movfs(Dst, Src) ->
+mk_movfs(Dst=?EPIPHANY_TEMP, Src) ->
   #movfs{dst=Dst, src=Src}.
 
 -spec mk_rts(non_neg_integer()) -> rts().
@@ -246,10 +246,9 @@ mk_rts(NrRets) when is_integer(NrRets) -> #rts{nr_rets=NrRets}.
 
 -spec mk_str(mem_size(), temp(), temp(), addr_sign(),
 	     temp() | #epiphany_uimm11{}) -> str().
-mk_str(Size, Src=#epiphany_temp{allocatable=true},
-       Base=#epiphany_temp{allocatable=true}, Sign, Offset) ->
+mk_str(Size, Src=?EPIPHANY_TEMP, Base=?EPIPHANY_TEMP, Sign, Offset) ->
   case Offset of
-    #epiphany_temp{allocatable=true} -> ok;
+    ?EPIPHANY_TEMP -> ok;
     #epiphany_uimm11{} -> ok
   end,
   #str{size=Size, src=Src, base=Base, sign=Sign, offset=Offset}.
@@ -309,7 +308,7 @@ pseudo_move_src(#pseudo_move{src=Src}) -> Src.
 
 -spec mk_pseudo_switch(temp(), temp(), [non_neg_integer()])
 		      -> pseudo_switch().
-mk_pseudo_switch(JTab, Index, Labels) ->
+mk_pseudo_switch(JTab=?EPIPHANY_TEMP, Index=?EPIPHANY_TEMP, Labels) ->
   #pseudo_switch{jtab=JTab, index=Index, labels=Labels}.
 
 -spec mk_pseudo_tailcall(#epiphany_mfa{} | #epiphany_prim{} | temp(),

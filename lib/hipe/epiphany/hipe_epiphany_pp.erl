@@ -145,7 +145,9 @@ operand(Temp=#epiphany_temp{reg=Reg, type=Type}) ->
 	  untagged -> "u"
 	end,
       io_lib:format("~s~w", [Tag, Reg])
-  end.
+  end;
+operand(Int) when is_integer(Int) ->
+  to_hex(Int).
 
 pp_ltimm({label, Label}) ->
   io_lib:format("~w", [Label]);
