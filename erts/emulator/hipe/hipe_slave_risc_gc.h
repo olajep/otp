@@ -53,7 +53,7 @@ slave_nstack_walk_init_sdesc(const Process *p, struct slave_nstack_walk_state *s
 static inline void slave_nstack_walk_update_trap(Process *p, const struct sdesc *sdesc0)
 {
     Eterm *nsp = p->hipe.nsp;
-    p->hipe.nsp = nstack_walk_nsp_begin(p);
+    p->hipe.nsp = slave_nstack_walk_nsp_begin(p);
     hipe_slave_update_stack_trap(p, sdesc0);
     p->hipe.nsp = nsp;
 }
