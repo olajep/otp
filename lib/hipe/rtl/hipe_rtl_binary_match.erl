@@ -1092,23 +1092,49 @@ create_gcsafe_regs(0) ->
   [].
 
 first_part(Var, Register, FalseLblName) ->
-  [SuccessLbl1, SuccessLbl2] = create_lbls(2),
-  [hipe_tagscheme:test_fixnum(Var, hipe_rtl:label_name(SuccessLbl1),
-			      FalseLblName, 0.99),
-  SuccessLbl1,
-  hipe_tagscheme:fixnum_ge(Var, hipe_rtl:mk_imm(hipe_tagscheme:mk_fixnum(0)), 
-			   hipe_rtl:label_name(SuccessLbl2), FalseLblName, 0.99),
-  SuccessLbl2,
-  hipe_tagscheme:untag_fixnum(Register, Var)].
+  [EndLbl] = create_lbls(1),
+  EndName = hipe_rtl:label_name(EndLbl),
+  first_part(Var, Register, FalseLblName, EndName, EndName, [EndLbl]).
+
+first_part(Var, Register, FalseLblName, TrueLblName, BigLblName, Tail) ->
+  [FixnumLbl, NotFixnumLbl, BignumLbl, SuccessLbl] = create_lbls(4),
+  [hipe_tagscheme:test_fixnum(Var, hipe_rtl:label_name(FixnumLbl),
+			      hipe_rtl:label_name(NotFixnumLbl), 0.99),
+   FixnumLbl,
+   hipe_tagscheme:fixnum_ge(Var, hipe_rtl:mk_imm(hipe_tagscheme:mk_fixnum(0)),
+			    hipe_rtl:label_name(SuccessLbl), FalseLblName,
+			    0.99),
+   SuccessLbl,
+   hipe_tagscheme:untag_fixnum(Register, Var),
+   hipe_rtl:mk_goto(TrueLblName),
+   NotFixnumLbl,
+   %% Since binaries are not allowed to be larger than 2^wordsize bits, and
+   %% since bignum digits are words, we know that a bignum with an arity larger
+   %% than one can't match.
+   hipe_tagscheme:test_pos_bignum_arity(Var, 1, hipe_rtl:label_name(BignumLbl),
+					FalseLblName, 0.99),
+   BignumLbl,
+   hipe_tagscheme:unsafe_get_one_word_pos_bignum(Register, Var),
+   hipe_rtl:mk_goto(BigLblName) |
+   Tail].
 
 make_size(1, BitsVar, FalseLblName) ->
   [DstReg] = create_regs(1),
   {first_part(BitsVar, DstReg, FalseLblName), DstReg};
 make_size(?BYTE_SIZE, BitsVar, FalseLblName) ->
   [DstReg] = create_regs(1),
-  Code = 
-    first_part(BitsVar, DstReg, FalseLblName) ++
-    [hipe_rtl:mk_alu(DstReg, DstReg, sll, hipe_rtl:mk_imm(?BYTE_SHIFT))],
+  [FixnumLbl, BignumLbl] = create_lbls(2),
+  WordBits = hipe_rtl_arch:word_size() * 8,
+  Code =
+    first_part(
+      BitsVar, DstReg, FalseLblName, hipe_rtl:label_name(FixnumLbl),
+      hipe_rtl:label_name(BignumLbl),
+      [BignumLbl,
+       hipe_rtl:mk_branch(DstReg, 'ltu',
+			  hipe_rtl:mk_imm(1 bsl (WordBits - ?BYTE_SHIFT)),
+			  hipe_rtl:label_name(FixnumLbl), FalseLblName, 0.99),
+       FixnumLbl,
+       hipe_rtl:mk_alu(DstReg, DstReg, sll, hipe_rtl:mk_imm(?BYTE_SHIFT))]),
   {Code, DstReg};
 make_size(UnitImm, BitsVar, FalseLblName) ->
   [DstReg] = create_regs(1),
@@ -1157,12 +1183,14 @@ floorlog2(X) ->
   round(math:log(X)/math:log(2)-0.5). 
 
 set_high(X) ->
-  set_high(X, 0).
+  WordBits = hipe_rtl_arch:word_size() * 8,
+  set_high(min(X, WordBits), 0).
 
 set_high(0, Y) ->
   Y;
 set_high(X, Y) ->
-  set_high(X-1, Y+(1 bsl (27-X))).
+  WordBits = hipe_rtl_arch:word_size() * 8,
+  set_high(X-1, Y+(1 bsl (WordBits-X))).
 
 is_illegal_const(Const) ->
   Const >=  1 bsl (hipe_rtl_arch:word_size() * ?BYTE_SIZE) orelse Const < 0.
