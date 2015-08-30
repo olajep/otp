@@ -229,14 +229,24 @@ gen_rtl({bs_skip_bits_all, Unit, _Flags}, Dst, [Ms],
     skip_bits_all(Unit, Ms, TrueLblName, FalseLblName);
 %% ----- bs_skip_bits -----
 gen_rtl({bs_skip_bits, Bits}, Dst, [Ms|Args], TrueLblName, FalseLblName) ->
+  %% Overflowing the bit offset counts as a non-match
+  MaxBits = (1 bsl (hipe_rtl_arch:word_size() * 8)),
   opt_update_ms(Dst, Ms) ++
-    case Args of
-      [] ->
-	skip_bits2(Ms, hipe_rtl:mk_imm(Bits), TrueLblName, FalseLblName);
-      [Arg] ->
-	{SizeCode, SizeReg} = make_size(Bits, Arg, FalseLblName),
-	InCode = skip_bits2(Ms, SizeReg, TrueLblName, FalseLblName),
-	SizeCode ++ InCode
+    if Bits >= MaxBits ->
+	case Args of
+	  []    -> [hipe_rtl:mk_goto(FalseLblName)];
+	  [Arg] -> [hipe_rtl:mk_branch(Arg, 'eq', hipe_tagscheme:mk_fixnum(0),
+				       TrueLblName, FalseLblName, 0.5)]
+	end;
+       Bits < MaxBits ->
+	case Args of
+	  [] ->
+	    skip_bits2(Ms, hipe_rtl:mk_imm(Bits), TrueLblName, FalseLblName);
+	  [Arg] ->
+	    {SizeCode, SizeReg} = make_size(Bits, Arg, FalseLblName),
+	    InCode = skip_bits2(Ms, SizeReg, TrueLblName, FalseLblName),
+	    SizeCode ++ InCode
+	end
     end;
 %% ----- bs_restore -----
 gen_rtl({bs_restore, Slot}, [NewMs], [Ms], TrueLblName, _FalseLblName) ->
