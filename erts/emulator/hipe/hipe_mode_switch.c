@@ -683,8 +683,11 @@ void hipe_inc_nstack(Process *p)
 #include <e-lib.h>
 #include "epiphany.h"
 
-/* Leave half of the space for heap */
-#define NSTACK_SIZE  1024
+/*
+ * Some test cases need all 4096 words, unfortunately, until we get the
+ * segmented stack
+ */
+#define NSTACK_SIZE  4096
 
 Eterm EPIPHANY_SRAM_HEAP nstack_storage[NSTACK_SIZE];
 

@@ -48,9 +48,8 @@ MEMORY
 
 	/* user program, per bank usage */
 	BANK0_SRAM (WXAI)        : ORIGIN = LENGTH(IVT_RAM) + LENGTH(WORKGROUP_RAM), LENGTH = 8K  - LENGTH(IVT_RAM) - LENGTH(WORKGROUP_RAM)
-	BANK1_SRAM (WXAI)        : ORIGIN = 0x2000, LENGTH = 8K
-	BANK2_SRAM (WXAI)        : ORIGIN = 0x4000, LENGTH = 8K
-	BANK3_SRAM (WXAI)        : ORIGIN = 0x6000, LENGTH = 8K
+	/* Merge BANK2, BANK3 and BANK4 */
+	SRAM_HEAP  (WXAI)        : ORIGIN = 0x2000, LENGTH = 24K
 
 	/* system registers */
 	MMR (WAI) : ORIGIN = 0xF0000, LENGTH = 32K
@@ -98,14 +97,7 @@ SECTIONS
 	. = ADDR(.data_bank0) + SIZEOF(.data_bank0);
 	.text_bank0 . : {*.o(.text_bank0)} > BANK0_SRAM
 	
-	.data_bank1   : {*.o(.data_bank1)} > BANK1_SRAM
-	.text_bank1   : {*.o(.text_bank1)} > BANK1_SRAM
-
-	.data_bank2   : {*.o(.data_bank2)} > BANK2_SRAM
-	.text_bank2   : {*.o(.text_bank2)} > BANK2_SRAM
-
-	.data_bank3   : {*.o(.data_bank3)} > BANK3_SRAM
-	.text_bank3   : {*.o(.text_bank3)} > BANK3_SRAM
+	.local_heap   : {*.o(.local_heap)} > SRAM_HEAP
 
 	.code_dram    : {*.o(code_dram)   *.o(.code_dram)  } > EXTERNAL_DRAM_0
 	.shared_dram  : {*.o(shared_dram) *.o(.shared_dram)} > EXTERNAL_DRAM_1
