@@ -41,6 +41,14 @@
 
 -include_lib("test_server/include/test_server.hrl").
 
+-ifdef(notdef).
+-define(TRACE_FMT(F,A), io:format(F, A)).
+-define(TRACE_PUT(C), io:put_chars(C)).
+-else.
+-define(TRACE_FMT(F,A), ok).
+-define(TRACE_PUT(C), ok).
+-endif.
+
 -export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1, 
 	 init_per_group/2,end_per_group/2, 
 	 init_per_testcase/2, end_per_testcase/2,
@@ -137,7 +145,7 @@ copy_server(Parent) ->
 %% Tests list_to_binary/1, binary_to_list/1 and size/1,
 %% using flat lists.
 
--define(ppline(A), io:fwrite(" -> ~s~n", [??A]), ?line A).
+-define(ppline(A), ?TRACE_FMT(" -> ~s~n", [??A]), ?line A).
 
 conversions(suite) -> [];
 conversions(Config) when is_list(Config) ->
@@ -445,22 +453,22 @@ terms(Config) when is_list(Config) ->
     TestFun = fun(Term) ->
 		      try
 			  S = io_lib:format("~p", [Term]),
-			  io:put_chars(S)
+			  ?TRACE_PUT(S)
 		      catch
 			  error:badarg ->
-			      io:put_chars("bit sized binary")
+			      ?TRACE_PUT("bit sized binary")
 		      end,
 		      Bin = term_to_binary(Term),
-		      io:fwrite(", size=~p", [size(Bin)]),
+		      ?TRACE_FMT(", size=~p", [size(Bin)]),
 		      case erlang:external_size(Bin) of
 			  Sz when is_integer(Sz), size(Bin) =< Sz ->
-			      io:fwrite(", esize=~p", [Sz])
+			      ?TRACE_FMT(", esize=~p", [Sz])
 		      end,
 		      Bin1 = term_to_binary(Term, [{minor_version, 1}]),
-		      io:fwrite(", msize=~p", [size(Bin1)]),
+		      ?TRACE_FMT(", msize=~p", [size(Bin1)]),
 		      case erlang:external_size(Bin1, [{minor_version, 1}]) of
 			  Sz1 when is_integer(Sz1), size(Bin1) =< Sz1 ->
-			      io:fwrite(", mesize=~p~n", [Sz1])
+			      ?TRACE_FMT(", mesize=~p~n", [Sz1])
 		      end,
 		      Term = binary_to_term_stress(Bin),
 		      Term = binary_to_term_stress(Bin, [safe]),
@@ -469,7 +477,7 @@ terms(Config) when is_list(Config) ->
 		      Term = binary_to_term_stress(Unaligned, []),
 		      Term = binary_to_term_stress(Bin, [safe]),
 		      BinC = erlang:term_to_binary(Term, [compressed]),
-		      io:fwrite("csize=~p~n", [size(BinC)]),
+		      ?TRACE_FMT("csize=~p~n", [size(BinC)]),
 		      Term = binary_to_term_stress(BinC),
 		      true = size(BinC) =< size(Bin),
 		      Bin = term_to_binary(Term, [{compressed,0}]),
@@ -548,7 +556,7 @@ t_iolist_size(Config) when is_list(Config) ->
     io:format("~p sizes:", [length(Sizes)]),
     io:format("~p\n", [Sizes]),
     ?line [begin
-	       io:fwrite("Testing ~p~n", [Sz]),
+	       ?TRACE_FMT("Testing ~p~n", [Sz]),
 	       Sz = iolist_size(build_iolist(Sz, Base))
 	   end || Sz <- Sizes],
     ok.
@@ -670,7 +678,7 @@ corrupter(Term) when is_function(Term);
 	    case NativeChunk of
 		{ok,{_,[{_,Bin}]}} when is_binary(Bin) ->
 		    S = io_lib:format("Skipping corruption of: ~P", [Term,12]),
-		    io:put_chars(S);
+		    ?TRACE_PUT(S);
 		{error, beam_lib, _} ->
 		    corrupter0(Term)
 	    end
@@ -680,7 +688,7 @@ corrupter(Term) when is_pid(Term) ->
     %% Pids may turn into external pids, which do not work yet in the slave
     case epiphany:host() of
 	master -> corrupter0(Term);
-	slave -> io:fwrite("Skipping corruption of: ~P", [Term,12])
+	slave -> ?TRACE_FMT("Skipping corruption of: ~P", [Term,12])
     end;
 corrupter(Term) ->
     corrupter0(Term).
@@ -689,17 +697,17 @@ corrupter0(Term) ->
     random:seed(Seed = now()),
     ?line try
 	      S = io_lib:format("About to corrupt: ~P (seed=~p", [Term,12, Seed]),
-	      io:put_chars(S)
+	      ?TRACE_PUT(S)
 	  catch
 	      error:badarg ->
 		  io:format("About to corrupt: <<bit-level-binary:~p (seed=~p",
 			    [bit_size(Term), Seed])
 	  end,
     ?line Bin = term_to_binary(Term),
-    io:fwrite(", size = ~p)~n", [size(Bin)]),
+    ?TRACE_FMT(", size = ~p)~n", [size(Bin)]),
     ?line corrupter_prime(Bin, size(Bin)),
     ?line CompressedBin = term_to_binary(Term, [compressed]),
-    io:fwrite("-\"- for compressed (csize = ~p)~n", [size(CompressedBin)]),
+    ?TRACE_FMT("-\"- for compressed (csize = ~p)~n", [size(CompressedBin)]),
     ?line corrupter_prime(CompressedBin, size(CompressedBin)).
 
 

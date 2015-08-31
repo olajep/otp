@@ -4,27 +4,57 @@
 
 -define(TIMEOUT, 10*60*1000).
 -define(EXIT_TIMEOUT, 5*1000).
+-define(MAX_CONC, 8).
+
+-define(MAX_TERM_PRINT_DEPTH, 10000).
 
 run([]) ->
     init:stop();
+run(['mods_conc'|Mods]) ->
+    put(concurrent, true),
+    run_mods_con(Mods);
+run(['conc'|Mods]) ->
+    put(concurrent, true),
+    run(Mods);
 run([Mod|Mods]) ->
-    Datadir = atom_to_list(Mod) ++ "_data",
     setup(Mod),
-    Opts = case filelib:is_dir(Datadir) of
-	       true  -> [{data_dir, Datadir}];
-	       false -> []
-	   end
-	++ [{priv_dir, priv_dir(Mod)}],
+    Opts = opts(Mod),
     try
-	ok = run_mod(Mod, Mod:all(), Opts),
+	ok = run_tests([{Mod, Fun, Opts} || Fun <- Mod:all()]),
 	cleanup(Mod)
     catch T:E ->
-	    io:fwrite("~p:~p~n", [T,E]),
-	    io:fwrite("At ~p~n", [erlang:get_stacktrace()]),
+	    erlang:display({T, E}),
+	    io:fwrite("~P:~P~n", [T,?MAX_TERM_PRINT_DEPTH,E,?MAX_TERM_PRINT_DEPTH]),
+	    io:fwrite("At ~P~n", [erlang:get_stacktrace(),?MAX_TERM_PRINT_DEPTH]),
 	    cleanup(Mod),
 	    halt(1)
     end,
     run(Mods).
+
+run_mods_con(Mods) ->
+    lists:foreach(fun setup/1, Mods),
+    Tests = lists:concat([begin
+			      Opts = opts(Mod),
+			      [{Mod, Fun, Opts} || Fun <- Mod:all()]
+			  end || Mod <- Mods]),
+    try
+	ok = run_tests(Tests),
+	lists:foreach(fun cleanup/1, Mods)
+    catch T:E ->
+	    erlang:display({T, E}),
+	    io:fwrite("~P:~P~n", [T,?MAX_TERM_PRINT_DEPTH,E,?MAX_TERM_PRINT_DEPTH]),
+	    io:fwrite("At ~P~n", [erlang:get_stacktrace(),?MAX_TERM_PRINT_DEPTH]),
+	    lists:foreach(fun cleanup/1, Mods),
+	    halt(1)
+    end.
+
+opts(Mod) ->
+    Datadir = atom_to_list(Mod) ++ "_data",
+    case filelib:is_dir(Datadir) of
+	true  -> [{data_dir, Datadir}];
+	false -> []
+    end
+	++ [{priv_dir, priv_dir(Mod)}].
 
 setup(Mod) ->
     file:make_dir(priv_dir(Mod)).
@@ -38,13 +68,49 @@ cleanup(Mod) ->
     "" = Out,
     ok.
 
-priv_dir(_Mod) -> "priv".
+priv_dir(Mod) -> atom_to_list(Mod) ++ "_priv".
 
-run_mod(_Mod, [], _Opts) -> ok;
-run_mod(Mod, [Test|Tests], Opts) ->
+run_tests(Tests) ->
+    case get(concurrent) of
+	true -> run_con(Tests);
+	_    -> run_seq(Tests)
+    end.
+
+run_con(Tests) ->
+    run_con(Tests, []).
+
+run_con([], []) -> ok;
+run_con([Test|Tests], Running) when length(Running) < ?MAX_CONC ->
+    New = spawn_opt(fun() -> run_single(Test) end, [link,monitor]),
+    run_con(Tests, [New|Running]);
+run_con(Tests, Running) ->
+    receive {'DOWN', Ref, process, Pid, Reason} ->
+	    normal = Reason,
+	    run_con(Tests, lists:delete({Pid,Ref},Running))
+    end.
+
+run_single(Test = {Mod, Fun, _Opts}) ->
+    try
+	run_seq([Test]),
+	io:fwrite("   \e[1m-->\e[0m ~p:~p OK!~n", [Mod, Fun])
+    catch T:E ->
+	    io:fwrite("   \e[1m-->\e[0m ~p:~p FAIL!~n", [Mod, Test]),
+	    io:fwrite("~P:~P~n", [T,?MAX_TERM_PRINT_DEPTH,E,?MAX_TERM_PRINT_DEPTH]),
+	    io:fwrite("At ~P~n", [erlang:get_stacktrace(),?MAX_TERM_PRINT_DEPTH]),
+	    case T of
+		throw -> throw(E);
+		error -> error(E);
+		exit -> exit(E)
+	    end
+    end.
+
+run_seq([]) -> ok;
+run_seq([{Mod, Test, Opts}|Tests]) ->
     io:fwrite("   \e[1m-->\e[0m Running ~p:~p(~p)~n", [Mod, Test, Opts]),
     Self = self(),
-    {Pid, Ref} = epiphany:spawn_monitor(fun() -> Self ! {ok, Mod:Test(Opts)} end),
+    {Pid, Ref} = epiphany:spawn_monitor(fun() ->
+						Self ! {ok, Mod:Test(Opts)}
+					end),
     %% Some tests do not return 'ok', like map_SUITE:t_pdict/1
     {ok, _} = receive Res -> Res
 	      after ?TIMEOUT ->
@@ -58,4 +124,4 @@ run_mod(Mod, [Test|Tests], Opts) ->
 	      end,
     {'DOWN', Ref, process, Pid, normal}
 	= receive Mon -> Mon after ?EXIT_TIMEOUT -> {error, mon_timeout} end,
-    run_mod(Mod, Tests, Opts).
+    run_seq(Tests).

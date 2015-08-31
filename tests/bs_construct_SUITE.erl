@@ -34,6 +34,14 @@
 
 -define(CLR_LINE,"\e[0G\e[K").
 
+-ifdef(line_trace).
+-define(TRACE_FMT(F, A), io:format(F, A)).
+-define(TRACE_FMT(F), io:format(F)).
+-else.
+-define(TRACE_FMT(F, A), ok).
+-define(TRACE_FMT(F), ok).
+-endif.
+
 suite() -> [{ct_hooks,[ts_install_cth]}].
 
 all() -> 
@@ -184,7 +192,7 @@ eval_list([{C_bin, Str, Bytes} | Rest], Vars) ->
     end.
 
 one_test({C_bin, E_bin, Str, Bytes}) when is_list(Bytes) ->
-    io:format(?CLR_LINE "  ~s, ~p ", [Str, Bytes]),
+    ?TRACE_FMT(?CLR_LINE "  ~s, ~p ", [Str, Bytes]),
     Bin = list_to_binary(Bytes),
     if
 	C_bin == Bin ->
@@ -203,7 +211,7 @@ one_test({C_bin, E_bin, Str, Bytes}) when is_list(Bytes) ->
 	    test_server:fail(comp)
     end;
 one_test({C_bin, E_bin, Str, Result}) ->
-    io:format(?CLR_LINE "  ~s ~p ", [Str, C_bin]),
+    ?TRACE_FMT(?CLR_LINE "  ~s ~p ", [Str, C_bin]),
     if
 	C_bin == E_bin ->
 	    ok;
@@ -273,7 +281,7 @@ test1(Config) when is_list(Config) ->
     ?line Vars = [{'I_13', I_13},
 		  {'I_big1', I_big1}],
     ?line lists:foreach(fun one_test/1, eval_list(l(I_13, I_big1), Vars)),
-    io:format(?CLR_LINE).
+    ?TRACE_FMT(?CLR_LINE).
 
 %%% Misc
 
@@ -303,10 +311,10 @@ test2(I, End, A) ->
 test2(S, A) ->
     N = 8,
     Vars = [{'A',A}, {'N',N}, {'S',S}],
-    io:format("Vars: ~p ", [Vars]),
+    ?TRACE_FMT("Vars: ~p ", [Vars]),
     lists:foreach(fun one_test/1, eval_list(gen(N, S, A), Vars)),
     lists:foreach(fun one_test/1, eval_list(gen_l(N, S, A), Vars)),
-    io:format(?CLR_LINE).
+    ?TRACE_FMT(?CLR_LINE).
 
 %%% Tests without facit
 
@@ -322,7 +330,7 @@ test3(suite) -> [];
 test3(Config) when is_list(Config) ->
     ?line Vars = [],
     ?line lists:foreach(fun one_test/1, eval_list(t3(), Vars)),
-    io:format(?CLR_LINE).
+    ?TRACE_FMT(?CLR_LINE).
 
 gen_u(N, S, A) ->
     [?N(<<A:S, A:(N-S)>>)].
@@ -346,7 +354,7 @@ test4(S, A) ->
     Vars = [{'A', A}, {'N', 16}, {'S', S}],
     lists:foreach(fun one_test/1, eval_list(gen_u(N, S, A), Vars)),
     lists:foreach(fun one_test/1, eval_list(gen_u_l(N, S, A), Vars)),
-    io:format(?CLR_LINE).
+    ?TRACE_FMT(?CLR_LINE).
 
 gen_b(N, S, A) ->
     [?T(<<A:S/binary-unit:1, A:(N-S)/binary-unit:1>>,
@@ -368,7 +376,7 @@ test5(S, A) ->
     N = 8,
     Vars = [{'A', A}, {'N', 8}, {'S', S}],
     lists:foreach(fun one_test/1, eval_list(gen_b(N, S, A), Vars)),
-    io:format(?CLR_LINE).
+    ?TRACE_FMT(?CLR_LINE).
 
 %%% Failure cases
 testf(suite) -> [];
@@ -468,9 +476,9 @@ mem_leak(Config) when is_list(Config) ->
     ?line mem_leak(64, B),
     ok.
 
-mem_leak(0, _) -> io:fwrite(?CLR_LINE);
+mem_leak(0, _) -> ?TRACE_FMT(?CLR_LINE);
 mem_leak(N, B) ->
-    io:fwrite(?CLR_LINE "~p ", [N]),
+    ?TRACE_FMT(?CLR_LINE "~p ", [N]),
     ?line big_bin(B, <<23>>),
     ?line {'EXIT',{badarg,_}} = (catch big_bin(B, bad)),
     mem_leak(N-1, B).
@@ -687,9 +695,9 @@ dynamic_2(Bef, Data, Count0) ->
     Count = dynamic_3(Bef, 32-Bef, Data, Count0),
     dynamic_2(Bef+1, Data, Count).
 
-dynamic_3(_, -1, _, Count) -> io:format(?CLR_LINE), Count;
+dynamic_3(_, -1, _, Count) -> ?TRACE_FMT(?CLR_LINE), Count;
 dynamic_3(Bef, N, {Int0,Lpad,Rpad,Dynamic}=Data, Count) ->
-    io:format(?CLR_LINE "~p,~p ", [Bef, N]),
+    ?TRACE_FMT(?CLR_LINE "~p,~p ", [Bef, N]),
     Int1 = Int0 band ((1 bsl (N+3))-1),
     Dynamic(Bef, N, Int1, Lpad, Rpad),
     Dynamic(Bef, N, -Int1, Lpad, Rpad),

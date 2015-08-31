@@ -46,12 +46,12 @@ main([Arg]) ->
     Jobs = lists:seq(0, N-1),
     Self = self(),
     Row = fun(Y)-> Self ! {Y, row(N-1, 0, ?SI+Y*2/N, N, 0, [], 7)} end,
-    spawn(fun() -> workserver_entry(Row, Jobs) end),
+    spawn_link(fun() -> workserver_entry(Row, Jobs) end),
     ["P4\n", Arg, " ", Arg, "\n"] ++ [receive {Job, C} -> C end || Job <- Jobs].
 
 workserver_entry(Fun, Jobs) ->
     Self = self(),
-    Workers = [epiphany:spawn(fun()-> worker(Fun, Self) end)
+    Workers = [epiphany:spawn_link(fun()-> worker(Fun, Self) end)
 	       || _ <- lists:seq(1,16)],
     workserver(Workers, Jobs).
 

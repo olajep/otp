@@ -23,10 +23,18 @@
 	 integer/1,signed_integer/1,dynamic/1,more_dynamic/1,mml/1,
 	 bignum/1,unaligned_32_bit/1]).
 
--define(line_trace,1).
+%% -define(line_trace,1).
 -include_lib("test_server/include/test_server.hrl").
 
 -define(CLR_LINE,"\e[0G\e[K").
+
+-ifdef(line_trace).
+-define(TRACE_FMT(F, A), io:format(F, A)).
+-define(TRACE_PUT(C), io:put_chars(C)).
+-else.
+-define(TRACE_FMT(F, A), ok).
+-define(TRACE_PUT(C), ok).
+-endif.
 
 -import(lists, [seq/2]).
 
@@ -124,13 +132,13 @@ dynamic(Bin, S1) when S1 >= 0 ->
     S2 = size(Bin) * 8 - S1,
     dynamic(Bin, S1, S2, (1 bsl S1) - 1, (1 bsl S2) - 1),
     dynamic(Bin, S1-1);
-dynamic(_, _) -> io:format(?CLR_LINE).
+dynamic(_, _) -> ?TRACE_PUT(?CLR_LINE).
 
 dynamic(Bin, S1, S2, A, B) ->
-%    io:format("~p ~p ~p ~p\n", [S1,S2,A,B]),
+%    ?TRACE_FMT("~p ~p ~p ~p\n", [S1,S2,A,B]),
     case Bin of
 	<<A:S1,B:S2>> ->
-	    io:format(?CLR_LINE "~p ~p ~p ~p ", [S1,S2,A,B]),
+	    ?TRACE_FMT(?CLR_LINE "~p ~p ~p ~p ", [S1,S2,A,B]),
 	    ok;
 	_Other -> erlang:error(badmatch, [Bin,S1,S2,A,B])
     end.
@@ -142,7 +150,7 @@ more_dynamic(Config) when is_list(Config) ->
     Unsigned  = fun(Bin, List, SkipBef, N) ->
     			SkipAft = 8*size(Bin) - N - SkipBef,
     			<<_:SkipBef,Int:N,_:SkipAft>> = Bin,
-    			Int = make_int(List, N, 0)
+			Int = make_int(List, N, 0)
     		end,
     ?line more_dynamic1(Unsigned, funny_binary(42)),
 
@@ -153,9 +161,9 @@ more_dynamic(Config) when is_list(Config) ->
     		      case make_signed_int(List, N) of
     			  Int -> ok;
     			  Other ->
-    			      io:format("Bin = ~p,", [Bin]),
-    			      io:format("SkipBef = ~p, N = ~p", [SkipBef,N]),
-    			      io:format("Expected ~p, got ~p", [Int,Other]),
+			      ?TRACE_FMT("Bin = ~p,", [Bin]),
+			      ?TRACE_FMT("SkipBef = ~p, N = ~p", [SkipBef,N]),
+			      ?TRACE_FMT("Expected ~p, got ~p", [Int,Other]),
     			      ?t:fail()
     		      end
     	      end,
@@ -192,10 +200,10 @@ more_dynamic1(Action, Bin) ->
     more_dynamic2(Action, Bin, lists:nthtail(Skip, BitList), Skip).
 
 more_dynamic2(Action, Bin, [_|T]=List, Bef) ->
-    io:format(?CLR_LINE "~p/~p ", [Bef, size(Bin)*8]),
+    ?TRACE_FMT(?CLR_LINE "~p/~p ", [Bef, size(Bin)*8]),
     more_dynamic3(Action, Bin, List, Bef, size(Bin)*8),
     more_dynamic2(Action, Bin, T, Bef+1);
-more_dynamic2(_, _, [], _) -> io:format(?CLR_LINE).
+more_dynamic2(_, _, [], _) -> ?TRACE_PUT(?CLR_LINE).
 
 more_dynamic3(Action, Bin, List, Bef, Aft) when Bef =< Aft ->
     Action(Bin, List, Bef, Aft-Bef),

@@ -10,14 +10,17 @@ if [ x$SLAVE_TARGET != x -a -d "$ROOT/bin/$SLAVE_TARGET/" ]; then
 else
     SLAVE_BINDIR="$ROOT/bin/epiphany-unknown-elf/"
 fi
-SLAVE_BIN="$SLAVE_BINDIR/slave.debug.smp.srec"
-FAST_SLAVE_BIN="$SLAVE_BINDIR/slave.smp.srec"
-
 if [ -c /dev/epiphany ]; then
     PREFIX="env"
+    # Loading ELF is significantly faster than loading SREC
+    EXT=""
 else
     PREFIX="sudo -E LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+    EXT=".srec"
 fi
+
+SLAVE_BIN="$SLAVE_BINDIR/slave.debug.smp$EXT"
+FAST_SLAVE_BIN="$SLAVE_BINDIR/slave.smp$EXT"
 
 TEST_ERL="$PREFIX SLAVE_BINARY=$SLAVE_BIN BINDIR=$BINDIR"
 TEST_ERL="$TEST_ERL $BINDIR/beam.debug.smp -- -root $ROOT -- -noshell"
@@ -31,6 +34,7 @@ ERL="env BINDIR=$BINDIR $BINDIR/beam.smp -- -root $ROOT -- -noshell -pa debug"
 
 NOREGS=0
 NOUNIT=0
+CONCURRENT=0
 while echo $1 | grep -E '^-' >/dev/null; do
     if [ $1 == --fast ]; then
         NOREGS=1
@@ -40,6 +44,13 @@ while echo $1 | grep -E '^-' >/dev/null; do
         NOUNIT=1
     elif [ $1 == --noregs ]; then
         NOREGS=1
+    elif [ $1 == --conc ]; then
+        CONCURRENT="conc"
+    elif [ $1 == --mods-conc ]; then
+        CONCURRENT="mods_conc"
+    elif [ $1 == --beam ]; then
+        TEST_ERL="$TEST_ERL -pa beam"
+        ERL="$ERL -pa beam"
     else
         echo "Unrecognized flag $1"
         exit 1
@@ -69,13 +80,23 @@ if [ x$NOREGS = x0 ]; then
     done
 fi
 
-for m in $TS_MODS; do
+if [ x$CONCURRENT = x0 ]; then
+    for m in $TS_MODS; do
+        sleep 1 # We do what we can to prevent bus lockups, even voodoo like this
+        echo -e "     \e[1m==>\e[0m Running ts_epi:run([$m])"
+        $TEST_ERL -s ts_epi run $m || {
+            echo "FAILURE"
+            exit 1
+        }
+    done
+else
     sleep 1 # We do what we can to prevent bus lockups, even voodoo like this
-    echo -e "     \e[1m==>\e[0m Running ts_epi:run([$m])"
-    $TEST_ERL -s ts_epi run $m || {
+    echo -ne "     \e[1m==>\e[0m Running ts_epi:run([$CONCURRENT,"
+    echo `echo $TS_MODS | sed 's/ /,/g'`"])"
+    $TEST_ERL -s ts_epi run $CONCURRENT $TS_MODS || {
         echo "FAILURE"
         exit 1
     }
-done
+fi
 
 echo "OK"

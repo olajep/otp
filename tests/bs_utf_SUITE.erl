@@ -27,10 +27,18 @@
 	 utf32_illegal_sequences/1,
 	 bad_construction/1]).
 
--define(line_trace,1).
+%% -define(line_trace,1).
 -include_lib("test_server/include/test_server.hrl").
 
 -define(CLR_LINE,"\e[0G\e[K").
+
+-ifdef(line_trace).
+-define(TRACE_FMT(F,A), io:format(F, A)).
+-define(TRACE_PUT(C), io:put_chars(C)).
+-else.
+-define(TRACE_FMT(F,A), ok).
+-define(TRACE_PUT(C), ok).
+-endif.
 
 -define(FAIL(Expr), ?line fail_check(catch Expr, ??Expr, [])).
 
@@ -73,7 +81,7 @@ utf8_roundtrip(Config) when is_list(Config) ->
     ok.
 
 utf8_roundtrip(First, Last) when First =< Last ->
-    io:format(?CLR_LINE "u8r ~p/~p ", [First, Last]),
+    ?TRACE_FMT(?CLR_LINE "u8r ~p/~p ", [First, Last]),
     Bin = int_to_utf8(First),
     Bin = id(<<First/utf8>>),
     Bin = id(<<(id(<<>>))/binary,First/utf8>>),
@@ -82,7 +90,7 @@ utf8_roundtrip(First, Last) when First =< Last ->
     <<First/utf8>> = Bin,
     <<First/utf8>> = make_unaligned(Bin),
     utf8_roundtrip(min(First+random:uniform(5000),max(First+1, Last)), Last);
-utf8_roundtrip(_, _) -> io:put_chars(?CLR_LINE).
+utf8_roundtrip(_, _) -> ?TRACE_PUT(?CLR_LINE).
 
 utf16_roundtrip(Config) when is_list(Config) ->
     Big = fun utf16_big_roundtrip/1,
@@ -99,10 +107,10 @@ do_utf16_roundtrip(Fun) ->
     do_utf16_roundtrip(16#E000, 16#10FFFF, Fun).
 
 do_utf16_roundtrip(First, Last, Fun) when First =< Last ->
-    io:format(?CLR_LINE "u16r ~p/~p ", [First, Last]),
+    ?TRACE_FMT(?CLR_LINE "u16r ~p/~p ", [First, Last]),
     Fun(First),
     do_utf16_roundtrip(min(First+random:uniform(5000),max(First+1, Last)), Last, Fun);
-do_utf16_roundtrip(_, _, _) -> io:put_chars(?CLR_LINE).
+do_utf16_roundtrip(_, _, _) -> ?TRACE_PUT(?CLR_LINE).
 
 utf16_big_roundtrip(Char) ->
     Bin = id(<<Char/utf16>>),
@@ -137,10 +145,10 @@ do_utf32_roundtrip(Fun) ->
     do_utf32_roundtrip(16#E000, 16#10FFFF, Fun).
 
 do_utf32_roundtrip(First, Last, Fun) when First =< Last ->
-    io:format(?CLR_LINE "u32r ~p/~p ", [First, Last]),
+    ?TRACE_FMT(?CLR_LINE "u32r ~p/~p ", [First, Last]),
     Fun(First),
     do_utf32_roundtrip(min(First+random:uniform(5000),max(First+1, Last)), Last, Fun);
-do_utf32_roundtrip(_, _, _) -> io:put_chars(?CLR_LINE).
+do_utf32_roundtrip(_, _, _) -> ?TRACE_PUT(?CLR_LINE).
 
 utf32_big_roundtrip(Char) ->
     Bin = id(<<Char/utf32>>),
@@ -178,12 +186,12 @@ utf8_illegal_sequences(Config) when is_list(Config) ->
     ok.
 
 fail_range(Char, End) when Char =< End ->
-    io:format(?CLR_LINE "fr ~p/~p ", [Char, End]),
+    ?TRACE_FMT(?CLR_LINE "fr ~p/~p ", [Char, End]),
     {'EXIT',_} = (catch <<Char/utf8>>),
     Bin = int_to_utf8(Char),
     fail(Bin),
     fail_range(min(Char+random:uniform(100),max(Char+1, End)), End);
-fail_range(_, _) -> io:put_chars(?CLR_LINE).
+fail_range(_, _) -> ?TRACE_PUT(?CLR_LINE).
 
 short_sequences(Char, End) ->
     Step = (End - Char) div erlang:system_info(schedulers) + 1,
@@ -195,18 +203,18 @@ short_sequences(Char, End) ->
 short_sequences_1(Char, Step, End) when Char =< End ->
     CharEnd = lists:min([Char+Step-1,End]),
     [epiphany:spawn_monitor(fun() ->
-			   io:format("~p - ~p\n", [Char,CharEnd]),
+			   ?TRACE_FMT("~p - ~p\n", [Char,CharEnd]),
 			   do_short_sequences(Char, CharEnd)
 		   end)|short_sequences_1(Char+Step, Step, End)];
 short_sequences_1(_, _, _) -> [].
 
 do_short_sequences(Char, End) when Char =< End ->
-    io:format(?CLR_LINE "dss ~p/~p ", [Char, End]),
+    ?TRACE_FMT(?CLR_LINE "dss ~p/~p ", [Char, End]),
     short_sequence(Char),
     do_short_sequences(Char+random:uniform(1000), End);
 do_short_sequences(_, End) ->
     short_sequence(End),
-    io:put_chars(?CLR_LINE).
+    ?TRACE_PUT(?CLR_LINE).
 
 short_sequence(I) ->
     case int_to_utf8(I) of
@@ -233,9 +241,9 @@ short_sequence(I) ->
 
 overlong(Char, Last, NumBytes) when Char =< Last ->
     overlong(Char, NumBytes),
-    io:format(?CLR_LINE "ol ~p/~p ", [Char, Last]),
+    ?TRACE_FMT(?CLR_LINE "ol ~p/~p ", [Char, Last]),
     overlong(min(Char+random:uniform(100),max(Char+1, Last)), Last, NumBytes);
-overlong(_, _, _) -> io:put_chars(?CLR_LINE).
+overlong(_, _, _) -> ?TRACE_PUT(?CLR_LINE).
 
 overlong(Char, NumBytes) when NumBytes < 5 ->
     case int_to_utf8(Char, NumBytes) of
@@ -288,9 +296,9 @@ lonely_hi_surrogate(_, _) -> ok.
 
 leading_lo_surrogate(Char, End) when Char =< End ->
     leading_lo_surrogate(Char, 16#D800, 16#DFFF),
-    io:format(?CLR_LINE "lls ~p/~p ", [Char, End]),
+    ?TRACE_FMT(?CLR_LINE "lls ~p/~p ", [Char, End]),
     leading_lo_surrogate(min(Char+random:uniform(10),max(Char+1, End)), End);
-leading_lo_surrogate(_, _) -> io:put_chars(?CLR_LINE).
+leading_lo_surrogate(_, _) -> ?TRACE_PUT(?CLR_LINE).
 
 leading_lo_surrogate(HiSurr, LoSurr, End) when LoSurr =< End ->
     BinBig = <<HiSurr:16/big,LoSurr:16/big>>,
@@ -401,14 +409,14 @@ make_unaligned(Bin0) when is_binary(Bin0) ->
 fail_check({'EXIT',{badarg,_}}, Str, Vars) ->
     try	evaluate(Str, Vars) of
 	Res ->
-	    io:format("Interpreted result: ~p", [Res]),
+	    ?TRACE_FMT("Interpreted result: ~p", [Res]),
 	    ?t:fail(did_not_fail_in_intepreted_code)
     catch
 	error:badarg ->
 	    ok
     end;
 fail_check(Res, _, _) ->
-    io:format("Compiled result: ~p", [Res]),
+    ?TRACE_FMT("Compiled result: ~p", [Res]),
     ?t:fail(did_not_fail_in_compiled_code).
 
 evaluate(Str, Vars) ->

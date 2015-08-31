@@ -29,10 +29,15 @@ end_per_suite(_Config) ->
 
 all() ->
     [
+     %% Exposes a known, nondeterministic, bug in HiPE. Skip for now.
+     %% bs_remove3,
+
+     bs_shell_native, %% Slow, start first
+
      bs_add,bs_bincomp,bs_bits,bs_bitsize,bs_bugs_R08,bs_bugs_R09,bs_bugs_R12,
      bs_build,bs_catch_bug,bs_checksum,bs_construct,bs_decode,bs_des,bs_extract,
      bs_flatb,bs_id3,bs_match,bs_orber,bs_pmatch, bs_pmatch_bugs,
-     bs_pmatch_in_guards,bs_potpurri,bs_remove3,bs_save,bs_shell_native,
+     bs_pmatch_in_guards,bs_potpurri,bs_save,
      bs_split,bs_system_limit_32,bs_utf,bs_var_segs].
 
 test(Config, TestCase) ->
