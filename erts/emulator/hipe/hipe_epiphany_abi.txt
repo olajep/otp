@@ -40,7 +40,8 @@ r8 (TEMP_LR) is used to preserve lr around BIF calls,
 and to pass the callee address in native-to-BEAM traps.
 r9 (TEMP_ARG0) is used to preserve the return value in nbif_stack_trap_ra,
 and lr in hipe_epiphany_inc_stack (the caller saved its lr in TEMP_LR).
-r12 is used to construct callee addresses in calls via trampolines.
+r12 is used to construct callee addresses in calls via trampolines and native
+stubs.
 
 Notes:
  - We might want to make the r32-r43 (C calleE-save) registers reserved, because

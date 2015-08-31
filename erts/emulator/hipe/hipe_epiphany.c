@@ -104,7 +104,7 @@ try_alloc(Uint nrbytes, int nrcallees, Eterm callees, Uint32 **trampvec)
      * shared memory allocator!
      */
     address = erts_alloc(ERTS_ALC_T_HIPE_SLAVE, nrbytes);
-    if (!address) return NULL;
+    /* erts_alloc cannot return NULL; it aborts when out of memory */
 
     for (trampnr = 1; trampnr <= nrcallees; ++trampnr) {
 	Eterm m, f, mfa = tuple_val(callees)[trampnr];
@@ -161,6 +161,11 @@ GLOBAL_HIPE_FUN(alloc_code)(Uint nrbytes, Eterm callees, Eterm *trampolines,
 static Uint32 *alloc_stub(Uint nrbytes)
 {
     return try_alloc(nrbytes, 0, NIL, NULL);
+}
+
+static void free_stub(void *stub)
+{
+    erts_free(ERTS_ALC_T_HIPE_SLAVE, stub);
 }
 
 #define EMIT16(P,C) ({				    \
@@ -248,38 +253,67 @@ GLOBAL_HIPE_FUN(make_native_stub)(void *beamAddress, unsigned int beamArity)
 #else
     const void *nbif_callemu_addr = &nbif_callemu;
 #endif
+    int long_jump = 0;
 
-    ret = code = (char*)alloc_stub(3 * 4 + 2);
+    while(1) {
+	ret = code = (char*)alloc_stub((long_jump ? 5 : 3) * 4 + 2);
 
-    /*
-     * Native code calls BEAM via a stub looking as follows:
-     *
-     * mov  r8, %low(beamAddress)
-     * mov  r0, #beamArity
-     * movt r8, %high(beamAddress)
-     * b    nbif_callemu
-     *
-     * I'm using r0 and r8 since they aren't used for parameter passing in
-     * native code. Trampolines (for b/bl to distant targets) may modify r12.
-     */
+	/*
+	 * Native code calls BEAM via a stub looking as follows:
+	 *
+	 * mov  r8, %low(beamAddress)
+	 * mov  r0, #beamArity
+	 * movt r8, %high(beamAddress)
+	 * b    nbif_callemu
+	 *
+	 * Sometimes, nbif_callemu is not reachable by a "b" instruction. In that
+	 * case, a slightly longer stub is used:
+	 *
+	 * mov  r12, %low(nbif_callemu)
+	 * mov  r8,  %low(beamAddress)
+	 * movt r12, %high(nbif_callemu)
+	 * mov  r0,  #beamArity
+	 * movt r8,  %high(beamAddress)
+	 * jr   r12
+	 *
+	 * I'm using r0 and r8 since they aren't used for parameter passing in
+	 * native code. r12 is the scratch that trampolines use to construct the
+	 * callee address; we're thus free to use it for that purpose since any
+	 * callers of this stub must consider that they might need trampolines
+	 * to reach here.
+	 */
 
-    /*
-     * It is not a given that we will be able to reach nbif_callemu with a
-     * branch.
-     */
-    if (!reachable_pcrel(nbif_callemu_addr, ret + 2 * 4 + 2, 0))
-	abort();
+	if (!long_jump
+	    && !reachable_pcrel(nbif_callemu_addr, ret + 2 * 4 + 2, 0)) {
+	    /* Retry with a longjump */
+	    free_stub(ret);
+	    long_jump = 1;
+	    continue;
+	}
 
-    /* mov r8, %low(beamAddress) */
-    EMIT32(code, 0x2002000b | uimm16((Uint)beamAddress & 0xffff));
-    /* mov r0, #beamArity*/
-    EMIT16(code, 0x0003 | uimm8(beamArity));
-    /* movt r8, %high(beamAddress) */
-    EMIT32(code, 0x3002000b | uimm16((Uint)beamAddress >> 16));
-    /* b nbif_callemu */
-    EMIT32(code, 0x000000e8 | simm24(((char*)nbif_callemu_addr - code) >> 1));
+	/* mov  r12, %low(nbif_callemu) */
+	if (long_jump)
+	    EMIT32(code, 0x2002800b | uimm16((Uint)nbif_callemu_addr & 0xffff));
+	/* mov r8, %low(beamAddress) */
+	EMIT32(code, 0x2002000b | uimm16((Uint)beamAddress & 0xffff));
+	/* movt r12, %high(nbif_callemu) */
+	if (long_jump)
+	    EMIT32(code, 0x3002800b | uimm16((Uint)nbif_callemu_addr >> 16));
+	/* mov r0, #beamArity*/
+	EMIT16(code, 0x0003 | uimm8(beamArity));
+	/* movt r8, %high(beamAddress) */
+	EMIT32(code, 0x3002000b | uimm16((Uint)beamAddress >> 16));
+	if (long_jump) {
+	    /* jr   r12 */
+	    EMIT32(code, 0x0402114f);
+	} else {
+	    /* b nbif_callemu */
+	    EMIT32(code, 0x000000e8
+		   | simm24(((char*)nbif_callemu_addr - code) >> 1));
+	}
 
-    return ret;
+	return ret;
+    }
 }
 
 int
