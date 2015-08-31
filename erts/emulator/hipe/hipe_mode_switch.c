@@ -204,21 +204,30 @@ void hipe_mode_switch_init(void)
 
 void hipe_set_call_trap(Uint *bfun, void *nfun, int is_closure)
 {
+    /*
+     * We don't know if the slave is loaded, so we mustn't look up a slave
+     * opcode until we're sure it's not a master fun
+     */
 #ifdef ERTS_SLAVE_EMU_ENABLED
-    if (bfun[-5] == SlaveOpCode(op_i_func_info_IaaI)) {
-	bfun[0] =
-	    is_closure
-	    ? SlaveOpCode(op_hipe_trap_call_closure)
-	    : SlaveOpCode(op_hipe_trap_call);
-    } else
+    if (bfun[-5] == BeamOpCode(op_i_func_info_IaaI))
+#else
+    HIPE_ASSERT(bfun[-5] == BeamOpCode(op_i_func_info_IaaI));
 #endif
     {
-	HIPE_ASSERT(bfun[-5] == BeamOpCode(op_i_func_info_IaaI));
 	bfun[0] =
 	    is_closure
 	    ? BeamOpCode(op_hipe_trap_call_closure)
 	    : BeamOpCode(op_hipe_trap_call);
     }
+#ifdef ERTS_SLAVE_EMU_ENABLED
+    else {
+	HIPE_ASSERT(bfun[-5] == SlaveOpCode(op_i_func_info_IaaI));
+	bfun[0] =
+	    is_closure
+	    ? SlaveOpCode(op_hipe_trap_call_closure)
+	    : SlaveOpCode(op_hipe_trap_call);
+    }
+#endif
     bfun[-4] = (Uint)nfun;
 }
 
