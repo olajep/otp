@@ -826,7 +826,9 @@ void erts_slave_serve_hipe_bt(struct slave *slave,
     Process *const p = slave->c_p;
 
     slave_state_swapin(p, &arg->state);
+    slave_schedule_in(p);
     arg->head = hipe_build_stacktrace(p, arg->s);
+    slave_schedule_out(p);
     slave_state_swapout(p, &arg->state);
 }
 

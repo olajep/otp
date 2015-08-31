@@ -74,4 +74,9 @@ struct slave_state {
 void slave_state_swapin(Process *p, const struct slave_state *state);
 void slave_state_swapout(Process *p, struct slave_state *state);
 
+#ifndef ERTS_SLAVE
+void slave_schedule_in(Process *p);
+void slave_schedule_out(Process *p);
+#endif
+
 #endif /* !ERL_SLAVE_STATE_H__ */

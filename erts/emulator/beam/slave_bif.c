@@ -78,6 +78,7 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 #endif
 
     slave_state_swapin(p, &arg->state);
+    slave_schedule_in(p);
     old_i = p->i;
 
     if (arg->result == THE_NON_VALUE && p->freason == TRAP) {
@@ -130,6 +131,7 @@ erts_slave_serve_bif(struct slave *slave, struct slave_syscall_bif *arg)
 		 arg->bif_no, old_i, p->i);
     }
 
+    slave_schedule_out(p);
     slave_state_swapout(p, &arg->state);
 
 #if HARDDEBUG
@@ -152,6 +154,7 @@ erts_slave_serve_gc(struct slave *slave, struct slave_syscall_gc *arg)
     Process *p = slave->c_p;
 
     slave_state_swapin(p, &arg->state);
+    slave_schedule_in(p);
 #if HARDDEBUG
     erts_printf("Garbage collecting %T (heap size %d"
 #ifdef HIPE
@@ -166,6 +169,7 @@ erts_slave_serve_gc(struct slave *slave, struct slave_syscall_gc *arg)
 #endif
 
     arg->ret = erts_garbage_collect(p, arg->need, arg->objv, arg->nobj);
+    slave_schedule_out(p);
     slave_state_swapout(p, &arg->state);
 
 #if HARDDEBUG

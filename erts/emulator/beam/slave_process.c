@@ -367,8 +367,7 @@ erl_create_slave_process(Process *parent, Eterm mod, Eterm func,
     p->fp_exception = 0;
 #endif
 
-    /* The main lock is unlocked by state_slave_swapout below. */
-    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL_MINOR);
+    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
     res = p->common.id;
     p->slave_host = slave;
 
@@ -441,8 +440,7 @@ slave_do_exit_process(Process* p, struct slave_syscall_ready *arg)
     int is_exiting = erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_EXITING;
     if (!is_exiting)
 	slave_state_swapin(p, &arg->state);
-    /* slave_state_swaping grabs the lock the first time */
-    else erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
+    slave_schedule_in(p);
     if (is_exiting) {
 	erts_continue_exit_process(p);
     } else {
@@ -470,7 +468,7 @@ slave_do_exit_process(Process* p, struct slave_syscall_ready *arg)
 
 	erts_do_exit_process(p, arg->exit_reason);
     }
-    erts_smp_proc_unlock(p, ERTS_PROC_LOCK_MAIN);
+    slave_schedule_out(p);
 
     return !(erts_smp_atomic32_read_nob(&p->state) & ERTS_PSFLG_FREE);
 }
