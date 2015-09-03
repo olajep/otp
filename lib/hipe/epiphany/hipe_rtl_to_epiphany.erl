@@ -219,16 +219,14 @@ conv_alub(I, Map, Data) ->
 	%% Since there is no condition code that tests just the overflow flag,
 	%% we mask it from the STATUS special register instead.
 	TmpStatus = new_untagged_temp(),
-	TmpMask = new_untagged_temp(),
-	OverflowFlagMask = 1 bsl 7,
-	MaskInstr = hipe_epiphany:mk_alu('and', TmpStatus, TmpStatus, TmpMask),
+	Shift = (31 - 7), %% Test bit 7 by shifting it to position 31
 	ExtractOverflowFlag =
-	  hipe_epiphany:mk_movi(TmpMask, OverflowFlagMask,
-				[hipe_epiphany:mk_movfs(TmpStatus, status),
-				 MaskInstr]),
+	  [hipe_epiphany:mk_movfs(TmpStatus, status),
+	   hipe_epiphany:mk_alu('lsl', TmpStatus, TmpStatus,
+				hipe_epiphany:mk_uimm5(Shift))],
 	{case RtlCond of
-	   overflow -> ne; %% non-zero
-	   not_overflow -> eq %% zero
+	   overflow     -> lt; %% (0 != NEG) = bit 31 set
+	   not_overflow -> gte %% (0 == NEG) = bit 31 clear
 	 end, ExtractOverflowFlag}
     end,
   I1 = mk_alu(Dst, Src1, RtlAluOp, Src2),
