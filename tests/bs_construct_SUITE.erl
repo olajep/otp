@@ -45,7 +45,8 @@
 suite() -> [{ct_hooks,[ts_install_cth]}].
 
 all() -> 
-    [bs_add, otp_7422, zero_width, bad_append,
+    [%% bs_add, %% mostly relevant to BEAM
+     otp_7422, zero_width, bad_append,
 
      test1, test2, test3, test4, test5, testf, not_used,
      in_guard, mem_leak, coerce_to_float, bjorn,
