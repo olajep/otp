@@ -53,6 +53,7 @@
 -define(FITS_SIMM11(Val), ((-16#400 =< (Val)) and ((Val) < 16#400))).
 -define(FITS_UIMM5(Val), ((0 =< (Val)) and ((Val) < 16#20))).
 -define(FITS_UIMM11(Val), ((0 =< (Val)) and ((Val) < 16#800))).
+-define(FITS_UIMM16(Val), ((0 =< (Val)) and ((Val) < 16#10000))).
 
 translate(RTL) ->
   hipe_gensym:init(epiphany),
@@ -495,9 +496,13 @@ mk_mem(Instr, Reg0, Base1, Base2, RtlSize, Tail) ->
 	  0 when ?FITS_UIMM11(-ImmVal) ->
 	    {[], '-', hipe_epiphany:mk_uimm11(-ImmVal)};
 	  _ ->
+	    {Sign1, Imm} = case ?FITS_UIMM16(-Rhs1) of
+			    true  -> {'-', -Rhs1};
+			    false -> {'+', Rhs1}
+			  end,
 	    Tmp2 = new_untagged_temp(),
-	    Movi2 = hipe_epiphany:mk_movi(Tmp2, Rhs1),
-	    {Movi2, '+', Tmp2}
+	    Movi2 = hipe_epiphany:mk_movi(Tmp2, Imm),
+	    {Movi2, Sign1, Tmp2}
 	end
     end,
   MkFun = case Instr of
