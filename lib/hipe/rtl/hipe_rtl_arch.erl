@@ -648,11 +648,18 @@ handle_real_fp_exception() ->
 heap_flush() ->
   case get(hipe_target_arch) of
     epiphany ->
-      NextLbl = hipe_rtl:mk_new_label(),
       %% Epihany-III shared memory is really broken. We make sure later loads
-      %% won't return stale data(sic) with a fence primop.
-      [hipe_rtl:mk_call([], heap_flush, [],
-			hipe_rtl:label_name(NextLbl), [], not_remote),
+      %% won't return stale data(sic) with an inline fence sequence.
+      {RetryLbl, NextLbl} = {hipe_rtl:mk_new_label(), hipe_rtl:mk_new_label()},
+      HFV = hipe_rtl:mk_reg(hipe_epiphany_registers:heap_fence_val()),
+      Tmp = hipe_rtl:mk_new_reg(),
+      [hipe_rtl:mk_comment(heap_flush),
+       hipe_rtl:mk_alu(HFV, HFV, 'add', hipe_rtl:mk_imm(1)),
+       pcb_store(?P_HEAP_FENCE, HFV),
+       RetryLbl,
+       pcb_load(Tmp, ?P_HEAP_FENCE),
+       hipe_rtl:mk_branch(Tmp, 'eq', HFV, hipe_rtl:label_name(NextLbl),
+			  hipe_rtl:label_name(RetryLbl), 0.9),
        NextLbl];
     _ -> []
   end.

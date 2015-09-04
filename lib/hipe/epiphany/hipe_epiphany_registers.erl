@@ -33,6 +33,7 @@
 	 heap_pointer/0,
 	 stack_pointer/0,
 	 proc_pointer/0,
+	 heap_fence_val/0,
 
 	 lr/0,
 
@@ -152,10 +153,13 @@
 -define(STACK_POINTER, ?R6).
 -define(PROC_POINTER, ?R32).
 
+-define(HEAP_FENCE_VAL, ?R33).
+
 reg_name(?LR) -> "lr";
 reg_name(?HEAP_POINTER) -> "HP";
 reg_name(?STACK_POINTER) -> "NSP";
 reg_name(?PROC_POINTER) -> "P";
+reg_name(?HEAP_FENCE_VAL) -> "HFV";
 reg_name(R) when R =< ?LAST_PRECOLOURED -> [$r | integer_to_list(R)].
 
 first_virtual() -> ?LAST_PRECOLOURED + 1.
@@ -169,6 +173,7 @@ fixed() -> [
 	    ?HEAP_POINTER,
 	    ?PROC_POINTER,
 	    ?STACK_POINTER,
+	    ?HEAP_FENCE_VAL,
 	    %% Reserved by C
 	    ?SP,
 	    %% "Reserved for constants" by C
@@ -181,6 +186,7 @@ temp3() -> ?TEMP3.
 heap_pointer() -> ?HEAP_POINTER.
 stack_pointer() -> ?STACK_POINTER.
 proc_pointer() -> ?PROC_POINTER.
+heap_fence_val() -> ?HEAP_FENCE_VAL.
 lr() -> ?LR.
 
 allocatable() ->

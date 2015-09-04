@@ -43,6 +43,7 @@ define(NR_RET_REGS,4)dnl admissible values are 0 to 4, inclusive
 `#define NSP	r6'
 `#define HP	r7'
 `#define TEMP_LR	r8'
+`#define HFV	r33'
 
 /*
  * Context switching macros.

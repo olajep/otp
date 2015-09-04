@@ -30,8 +30,9 @@ r6, r7, and r32 are fixed (unallocatable).
 r6 (NSP) is the current process' native stack pointer.
 r7 (HP) is the current process' heap pointer.
 r32 (P) is the current process' "Process" pointer.
+r33 (HFV) is the value of the current process' heap fence.
 
-r0-r5, r8-r12, r14 (lr), r15-r27, r33-r63 are caller-save. They are used as
+r0-r5, r8-r12, r14 (lr), r15-r27, r34-r63 are caller-save. They are used as
 temporary scratch registers and for function call parameters and results.
 
 The runtime system uses temporaries in specific contexts:

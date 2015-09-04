@@ -558,16 +558,21 @@ static const struct rts_param rts_params[] = {
     },
     { 49, "P_MSG_FIRST", 1, offsetof(struct process, msg.first) },
     { 50, "P_MSG_SAVE", 1, offsetof(struct process, msg.save) },
+    { 51, "P_HEAP_FENCE",
+#if defined(__epiphany__)
+      1, offsetof(struct process, hipe.heap_fence)
+#endif
+    },
 
 #ifdef HIPE
-    { 51, "EFE_OTHER_NATIVE_ADDRESS",
+    { 60, "EFE_OTHER_NATIVE_ADDRESS",
 #ifdef ERTS_SLAVE
       1, offsetof(struct erl_fun_entry, master_native_address)
 #elif defined(ERTS_SLAVE_EMU_ENABLED)
       1, offsetof(struct erl_fun_entry, slave_native_address)
 #endif
     },
-    { 52, "EFT_OTHER_NATIVE_ADDRESS",
+    { 61, "EFT_OTHER_NATIVE_ADDRESS",
 #ifdef ERTS_SLAVE
       1, offsetof(struct erl_fun_thing, master_native_address),
 #elif defined(ERTS_SLAVE_EMU_ENABLED)
@@ -577,7 +582,7 @@ static const struct rts_param rts_params[] = {
 #endif
 
     /* special Erlang constants */
-    { 60, "THE_NON_VALUE", 1, (int)THE_NON_VALUE },
+    { 70, "THE_NON_VALUE", 1, (int)THE_NON_VALUE },
 
 };
 

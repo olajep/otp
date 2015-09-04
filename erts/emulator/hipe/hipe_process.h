@@ -42,6 +42,9 @@ struct hipe_process_state {
     || defined(__powerpc64__) || defined(__arm__) || defined(__epiphany__)
     void (*nra)(void);		/* Native code return address. */
 #endif
+#if defined(__epiphany__)
+    Uint heap_fence;		/* Used to prevent self-inconsistency in E-III */
+#endif
     unsigned int narity;	/* Arity of BIF call, for stack walks. */
 #ifdef NO_FPE_SIGNALS
     double float_result;        /* to be checked for inf/NaN by hipe_emulate_fpe */ 
@@ -63,6 +66,9 @@ static __inline__ void hipe_init_process(struct hipe_process_state *p)
     p->ngra = NULL;
 #if defined(__sparc__) || defined(__powerpc__) || defined(__ppc__) || defined(__powerpc64__) || defined(__arm__)
     p->nra = NULL;
+#endif
+#if defined(__epiphany__)
+    p->heap_fence = 0;
 #endif
     p->narity = 0;
 }

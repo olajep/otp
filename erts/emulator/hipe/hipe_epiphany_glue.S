@@ -72,6 +72,7 @@
 	gie
 	str	r5,  [sp, #26]
 	mov	P,   r0
+	ldr	HFV, [P, #P_HEAP_FENCE/4]
 	RESTORE_CACHED_STATE
 	rts
 
