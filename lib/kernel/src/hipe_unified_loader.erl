@@ -197,6 +197,15 @@ load_nosmp(Mod, Bin, Mode) ->
 
 %%------------------------------------------------------------------------
 
+-record(fundef, {address     :: integer(),
+		 mfa         :: mfa(),
+		 is_closure  :: boolean(),
+		 is_exported :: boolean(),
+		 refs        :: [{integer(), [{term(), integer()}]}],
+		 labels      :: [{integer(), integer()}],
+		 code        :: binary(),
+		 trampolines}).
+
 load_common(Mod, Bin, Beam, OldReferencesToPatch, Mode) ->
   %% Unpack the binary.
   [{Version, CheckSum},
@@ -224,25 +233,18 @@ load_common(Mod, Bin, Beam, OldReferencesToPatch, Mode) ->
       %% Create data segment
       {ConstAddr,ConstMap2} =
 	create_data_segment(ConstAlign, ConstSize, ConstMap, Mode),
-      %% Find callees for which we may need trampolines.
-      CalleeMFAs = find_callee_mfas(Refs, Mode),
-      %% Write the code to memory.
-      {CodeAddress,Trampolines} =
-	enter_code(CodeSize, CodeBinary, CalleeMFAs, Mod, Beam, Mode),
-      %% Construct CalleeMFA-to-trampoline mapping.
-      TrampolineMap = mk_trampoline_map(CalleeMFAs, Trampolines, Mode),
-      %% Patch references to code labels in data seg.
-      ok = patch_consts(LabelMap, ConstAddr, CodeAddress),
       %% Find out which functions are being loaded (and where).
       %% Note: Addresses are sorted descending.
-      {MFAs,Addresses} = exports(ExportMap, CodeAddress),
+      {MFAs, Funs} = partition_into_funs(ExportMap, LabelMap, Refs, CodeBinary),
       %% Remove references to old versions of the module.
       ReferencesToPatch = get_refs_from(MFAs, [], Mode),
       %% io:format("References to patch: ~w~n", [ReferencesToPatch]),
       ok = remove_refs_from(MFAs, Mode),
-      %% Patch all dynamic references in the code.
-      %%  Function calls, Atoms, Constants, System calls
-      ok = patch(Refs, CodeAddress, ConstMap2, Addresses, TrampolineMap, Mode),
+      %% Write the code to memory.
+      update_code_size(CodeSize, CodeBinary, Mod, Beam),
+      Addresses = enter_funs(Funs, Mode),
+      %% Patch all references in the code.
+      load_funs(Addresses, Addresses, ConstAddr, ConstMap2, Mode),
 
       %% Tell the system where the loaded funs are. 
       %%  (patches the BEAM code to redirect to native.)
@@ -260,9 +262,12 @@ load_common(Mod, Bin, Beam, OldReferencesToPatch, Mode) ->
 	BeamBinary when is_binary(BeamBinary) ->
 	  %% Find all closures in the code.
 	  [] = erase(closures_to_patch),	%Clean up, assertion.
-	  ClosurePatches = find_closure_patches(Refs),
 	  AddressesOfClosuresToPatch =
-	    calculate_addresses(ClosurePatches, CodeAddress, Addresses, Mode),
+	    lists:concat(
+	      [begin
+		 ClosurePatches = find_closure_patches(FunRefs),
+		 calculate_addresses(ClosurePatches, FunAddress, Addresses, Mode)
+	       end || #fundef{address=FunAddress, refs=FunRefs} <- Addresses]),
 	  export_funs(Addresses, Mode),
 	  export_funs(Mod, BeamBinary, Addresses, AddressesOfClosuresToPatch, Mode)
       end,
@@ -278,6 +283,43 @@ load_common(Mod, Bin, Beam, OldReferencesToPatch, Mode) ->
       ?debug_msg("****************Loader Finished****************\n", []),
       {module,Mod}  % for compatibility with code:load_file/1
   end.
+
+%%------------------------------------------------------------------------
+
+enter_funs([Fun|Funs], Mode) ->
+  Address = enter_fun(Fun, Mode),
+  [Address|enter_funs(Funs, Mode)];
+enter_funs([], _) ->
+  [].
+
+enter_fun(FunDef,  Mode) ->
+  #fundef{mfa=MFA, refs=Refs, code=CodeBinary} = FunDef,
+  %% Find callees for which we may need trampolines.
+  CalleeMFAs = find_callee_mfas(Refs, Mode),
+  %% Write the code to memory.
+  {CodeAddress,Trampolines} =
+    enter_fun_code(CodeBinary, CalleeMFAs, MFA, Mode),
+  FunDef#fundef{address=CodeAddress,trampolines=Trampolines}.
+
+load_funs([Fun|Funs], Addresses, ConstAddr, ConstMap, Mode) ->
+  load_fun(Fun, Addresses, ConstAddr, ConstMap, Mode),
+  load_funs(Funs, Addresses, ConstAddr, ConstMap, Mode);
+load_funs([], _, _ ,_ , _) ->
+  [].
+
+load_fun(FunDef, Addresses, ConstAddr, ConstMap, Mode) ->
+  #fundef{address=CodeAddress, labels=LabelMap, refs=Refs,
+	  trampolines=Trampolines} = FunDef,
+  %% Find callees for which we may need trampolines.
+  CalleeMFAs = find_callee_mfas(Refs, Mode),
+  %% Construct CalleeMFA-to-trampoline mapping.
+  TrampolineMap = mk_trampoline_map(CalleeMFAs, Trampolines, Mode),
+  %% Patch references to code labels in data seg.
+  ok = patch_consts(LabelMap, ConstAddr, CodeAddress),
+
+  %% Patch all dynamic references in the code.
+  %%  Function calls, Atoms, Constants, System calls
+  ok = patch(Refs, CodeAddress, ConstMap, Addresses, TrampolineMap, Mode).
 
 %%----------------------------------------------------------------
 %% Scan the list of patches and build a set (returned as a tuple)
@@ -363,11 +405,6 @@ trampoline_map_lookup(Primop, Map) ->
 
 %%------------------------------------------------------------------------
 
--record(fundef, {address     :: integer(),
-		 mfa         :: mfa(),
-		 is_closure  :: boolean(),
-		 is_exported :: boolean()}).
-
 exports(ExportMap, BaseAddress) ->
   exports(ExportMap, BaseAddress, [], []).
 
@@ -386,6 +423,47 @@ exports([], _, MFAs, Addresses) ->
   {MFAs, Addresses}.
 
 mod({M,_F,_A}) -> M.
+
+partition_into_funs(ExportMap, LabelMap, Refs, CodeBinary) when ExportMap =/= [] ->
+  {MFAs, Exports} = exports(ExportMap, 0),
+  Funs = partition_by_funs(Exports, LabelMap, Refs, CodeBinary),
+  {MFAs, Funs}.
+
+%% XXX: could use some optimisation
+%% Funs :: [{FunDef, LabelMap, Refs}]
+partition_by_funs([FunDef=#fundef{address=Offset}
+		     |Rest=[#fundef{address=NextOffset}|_]],
+		  LabelMap, Refs, CodeBinary) when Offset < NextOffset ->
+  CodeSize = NextOffset-Offset,
+  <<FunCode:CodeSize/binary, CodeRest/binary>> = CodeBinary,
+  [FunDef#fundef{labels = partition_labels(Offset, NextOffset, LabelMap),
+		 refs   = partition_refs(Offset, NextOffset, Refs),
+		 code   = FunCode}
+   |partition_by_funs(Rest, LabelMap, Refs, CodeRest)];
+partition_by_funs([FunDef=#fundef{address=Offset}], LabelMap, Refs, FunCode) ->
+  %% Atoms are greater than any integer
+  [FunDef#fundef{labels = partition_labels(Offset, max, LabelMap),
+		 refs   = partition_refs(Offset, max, Refs),
+		 code   = FunCode}].
+
+partition_labels(Offset, NextOffset, LabelMap) ->
+  [{No, LabelOff - Offset}
+   || {No, LabelOff} <- LabelMap, LabelOff >= Offset, LabelOff < NextOffset].
+
+partition_refs(Offset, NextOffset, Refs) ->
+    [begin
+       PartRefs = [{adjust_ref_offset(Offset, Ref),
+		    [RefOffset - Offset
+		     || RefOffset <- RefOffsets, RefOffset >= Offset,
+			RefOffset < NextOffset]}
+		   || {Ref, RefOffsets} <- TypeRefs],
+       {Type, [PR || PR = {_, Offsets} <- PartRefs, Offsets =/= []]}
+     end || {Type, TypeRefs} <- Refs].
+
+adjust_ref_offset(Offset, ?STACK_DESC(ExnRA, FSize, Arity, Live))
+  when is_integer(ExnRA) ->
+  ?STACK_DESC(ExnRA - Offset, FSize, Arity, Live);
+adjust_ref_offset(_Offset, Ref) -> Ref.
 
 %%------------------------------------------------------------------------
 
@@ -832,25 +910,17 @@ add_ref(CalleeMFA, Address, Addresses, RefType, Trampoline, RemoteOrLocal, Mode)
   hipe_bifs:add_ref(Mode, CalleeMFA,
 		    {CallerMFA,Address,RefType,Trampoline,RemoteOrLocal}).
 
-% For FunDefs sorted from low to high addresses
-address_to_mfa_lth(Address, FunDefs) ->
-    case address_to_mfa_lth(Address, FunDefs, false) of
-	false ->
-	    ?error_msg("Local adddress not found ~w\n",[Address]),
-	    exit({?MODULE, local_address_not_found});
-	MFA ->
-	    MFA
+address_to_mfa_lth(Address, []) ->
+  ?error_msg("Local adddress not found 0x~.16b\n",[Address]),
+  exit({?MODULE, local_address_not_found});
+address_to_mfa_lth(Address, [#fundef{address=Adr, mfa=MFA, code=Code}|Rest]) ->
+  CodeSize = byte_size(Code),
+  if Address >= Adr, Address < Adr + CodeSize ->
+      MFA;
+     true ->
+      address_to_mfa_lth(Address, Rest)
     end.
     
-address_to_mfa_lth(Address, [#fundef{address=Adr, mfa=MFA}|Rest], Prev) ->
-  if Address < Adr -> 
-	  Prev;
-     true -> 
-	  address_to_mfa_lth(Address, Rest, MFA)
-  end;
-address_to_mfa_lth(_Address, [], Prev) -> 
-    Prev.
-
 % For FunDefs sorted from high to low addresses
 %% address_to_mfa_htl(Address, [#fundef{address=Adr, mfa=MFA}|_Rest]) when Address >= Adr -> MFA;
 %% address_to_mfa_htl(Address, [_ | Rest]) -> address_to_mfa_htl(Address, Rest);
@@ -995,15 +1065,19 @@ mfa_to_address(_, [], _) -> false.
 
 -ifdef(DO_ASSERT).
 
--define(init_assert_patch(Base, Size), put(hipe_assert_code_area,{Base,Base+Size})).
+-define(init_assert_patch(), put(hipe_assert_code_area,[])).
+-define(insert_assert_patch(Base, Size),
+	put(hipe_assert_code_area,
+	    [{Base,Base+Size}|get(hipe_assert_code_area)])).
 
 assert_local_patch(Address) when is_integer(Address) ->
-  {First,Last} = get(hipe_assert_code_area),
-  Address >= First andalso Address < (Last).
+  lists:any(fun({First,Last}) -> Address >= First andalso Address < (Last) end,
+	    get(hipe_assert_code_area)).
 
 -else.
 
--define(init_assert_patch(Base, Size), ok).
+-define(init_assert_patch(), ok).
+-define(insert_assert_patch(Base, Size), ok).
 
 -endif.
 
@@ -1012,13 +1086,16 @@ assert_local_patch(Address) when is_integer(Address) ->
 
 %% Beam: nil() | binary()  (used as a flag)
 
-enter_code(CodeSize, CodeBinary, CalleeMFAs, Mod, Beam, Mode) ->
+update_code_size(CodeSize, CodeBinary, Mod, Beam) ->
   true = byte_size(CodeBinary) =:= CodeSize,
-  hipe_bifs:update_code_size(Mod, Beam, CodeSize),
+  ?init_assert_patch(),
+  hipe_bifs:update_code_size(Mod, Beam, CodeSize).
+
+enter_fun_code(CodeBinary, CalleeMFAs, _Mod, Mode) ->
   {CodeAddress,Trampolines}
     = hipe_bifs:enter_code(Mode, CodeBinary, CalleeMFAs),
-  ?debug_msg("Module ~p loaded in mode ~p at 0x~8.16.0B~n",
-	     [Mod, Mode, CodeAddress]),
-  ?init_assert_patch(CodeAddress, byte_size(CodeBinary)),
+  ?msg("~w loaded in mode ~w at 0x~.16b+0x~.16b~n",
+       [_Mod, Mode, CodeAddress, byte_size(CodeBinary)]),
+  ?insert_assert_patch(CodeAddress, byte_size(CodeBinary)),
   {CodeAddress,Trampolines}.
 
