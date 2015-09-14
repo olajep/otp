@@ -473,6 +473,82 @@ _hipe_epiphany_inc_stack:
 	# this relies on LOAD_ARG_REGS not clobbering TEMP_ARG0
 	jr	TEMP_ARG0
 
+	.macro SPILL_ARG_REGS
+#if NR_ARG_REGS >= 1
+	mov	TEMP_ARG0,	ARG0
+#endif
+#if NR_ARG_REGS >= 2
+	mov	TEMP_ARG1,	ARG1
+#endif
+#if NR_ARG_REGS >= 3
+	mov	TEMP_ARG2,	ARG2
+#endif
+#if NR_ARG_REGS >= 4
+	mov	TEMP_ARG3,	ARG3
+#endif
+#if NR_ARG_REGS >= 5
+	mov	TEMP_ARG4,	ARG4
+#endif
+#if NR_ARG_REGS >= 6
+	mov	TEMP_ARG5,	ARG5
+#endif
+#if NR_ARG_REGS >= 7
+	mov	TEMP_ARG6,	ARG6
+#endif
+#if NR_ARG_REGS >= 8
+	mov	TEMP_ARG7,	ARG7
+#endif
+#if NR_ARG_REGS >= 9
+#error Too many argument regs
+#endif
+	.endm
+
+	.macro RESTORE_ARG_REGS
+#if NR_ARG_REGS >= 1
+	mov	ARG0,	TEMP_ARG0
+#endif
+#if NR_ARG_REGS >= 2
+	mov	ARG1,	TEMP_ARG1
+#endif
+#if NR_ARG_REGS >= 3
+	mov	ARG2,	TEMP_ARG2
+#endif
+#if NR_ARG_REGS >= 4
+	mov	ARG3,	TEMP_ARG3
+#endif
+#if NR_ARG_REGS >= 5
+	mov	ARG4,	TEMP_ARG4
+#endif
+#if NR_ARG_REGS >= 6
+	mov	ARG5,	TEMP_ARG5
+#endif
+#if NR_ARG_REGS >= 7
+	mov	ARG6,	TEMP_ARG6
+#endif
+#if NR_ARG_REGS >= 8
+	mov	ARG7,	TEMP_ARG7
+#endif
+#if NR_ARG_REGS >= 9
+#error Too many argument regs
+#endif
+	.endm
+
+/*
+ * hipe_cold_call
+ */
+	.section .local_text
+	.global _hipe_cold_call
+_hipe_cold_call:
+	mov	r0, r12
+	mov	TEMP_LR, lr
+	SPILL_ARG_REGS
+	mov	r1, CORIX
+	bl	_hipe_cold_call_c
+	RESTORE_ARG_REGS
+	mov	lr, TEMP_LR
+	jr	r0
+	.section .text
+
 #if defined(__linux__) && defined(__ELF__)
 .section .note.GNU-stack,"",%progbits
 #endif

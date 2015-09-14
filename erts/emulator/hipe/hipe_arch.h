@@ -51,6 +51,12 @@ extern void *hipe_make_native_stub(void *beamAddress, unsigned int beamArity);
 #include "hipe_epiphany.h"
 #endif
 
+#ifdef HIPE_USE_CACHE
+struct sdesc;
+extern void *hipe_cache_insert(void *address, Uint nrbytes, Uint num_tramp,
+			       int sdesc_count, struct sdesc **sdescs);
+#endif
+
 #if !defined(AEXTERN)
 #define AEXTERN(RET,NAME,PROTO)	extern RET NAME PROTO
 #endif

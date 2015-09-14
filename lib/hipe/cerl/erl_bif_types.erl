@@ -1063,7 +1063,7 @@ type(hipe_bifs, enter_code, 3, Xs, Opaques) ->
 			     %% is of size same as the length of the MFA list
 			     t_sup(t_nil(), t_binary())]) end, Opaques);
 type(hipe_bifs, enter_sdesc, 2, Xs, Opaques) ->
-  strict(hipe_bifs, enter_sdesc, 2, Xs, fun (_) -> t_nil() end, Opaques);
+  strict(hipe_bifs, enter_sdesc, 2, Xs, fun (_) -> t_integer() end, Opaques);
 type(hipe_bifs, find_na_or_make_stub, 3, Xs, Opaques) ->
   strict(hipe_bifs, find_na_or_make_stub, 3, Xs,
 	 fun (_) -> t_integer() end, Opaques); % address

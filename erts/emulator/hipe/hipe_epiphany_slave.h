@@ -33,6 +33,8 @@ static __inline__ int hipe_slave_word32_address_ok(void *address)
 /* Native stack growth direction. */
 #define HIPE_SLAVE_NSTACK_GROWS_DOWN
 
+#define HIPE_SLAVE_USE_CACHE
+
 #define hipe_slave_arch_name	am_epiphany
 
 /* for hipe_bifs_enter_code_2 */

@@ -44,6 +44,7 @@ define(NR_RET_REGS,4)dnl admissible values are 0 to 4, inclusive
 `#define HP	r7'
 `#define TEMP_LR	r8'
 `#define HFV	r33'
+`#define CORIX	r34'
 
 /*
  * Context switching macros.
@@ -73,6 +74,7 @@ define(NR_RET_REGS,4)dnl admissible values are 0 to 4, inclusive
 `       .macro RESTORE_CACHED_STATE
         ldr	HP, [P, #P_HP/4]
         ldr	NSP, [P, #P_NSP/4]
+        mov	CORIX, 0
         .endm'
 
 `       .macro SAVE_CONTEXT_BIF
@@ -141,8 +143,20 @@ ifelse(eval(NR_ARG_REGS >= 8),0,,
  *	(TEMP_LR contains the caller's saved return address).
  *	Must be a C callee-save register.
  *	Must be otherwise unused in the call path.
+ *
+ * TEMP_ARG0 - TEMP_ARG7:
+ *      Used in hipe_cold_call to preserve the arguments.
+ *	Must be C callee-save registers.
+ *	Must be otherwise unused in the call path.
  */
-`#define TEMP_ARG0	r9'
+`#define TEMP_ARG0	r36'
+`#define TEMP_ARG1	r37'
+`#define TEMP_ARG2	r38'
+`#define TEMP_ARG3	r39'
+`#define TEMP_ARG4	r40'
+`#define TEMP_ARG5	r41'
+`#define TEMP_ARG6	r42'
+`#define TEMP_ARG7	r43'
 
 dnl XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 dnl X								X

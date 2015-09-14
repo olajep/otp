@@ -78,6 +78,9 @@ static __inline__ void hipe_delete_process(struct hipe_process_state *p)
 #ifndef __epiphany__
     if (p->nstack)
 	erts_free(ERTS_ALC_T_HIPE, (void*)p->nstack);
+#else
+    extern void hipe_slave_cache_empty(void);
+    hipe_slave_cache_empty();
 #endif
 }
 

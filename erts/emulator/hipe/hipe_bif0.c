@@ -845,7 +845,7 @@ BIF_RETTYPE hipe_bifs_enter_sdesc_2(BIF_ALIST_2)
 	fprintf(stderr, "%s: duplicate entry!\r\n", __FUNCTION__);
 	BIF_ERROR(BIF_P, BADARG);
     }
-    BIF_RET(NIL);
+    BIF_RET(Uint_to_term((Uint)sdesc, BIF_P));
 }
 
 /*
@@ -2338,4 +2338,66 @@ BIF_RETTYPE hipe_bifs_patch_call_3(BIF_ALIST_3)
     }
 
     BIF_RET(NIL);
+}
+
+static int
+sdesc_comp(const void *lp, const void *rp)
+{
+    const struct sdesc *left = lp, *right = rp;
+    return (int)left->bucket.hvalue - right->bucket.hvalue;
+}
+
+BIF_RETTYPE hipe_bifs_cache_insert_2(BIF_ALIST_2)
+{
+    int sdesc_count, i;
+    void *address, *entry;
+    struct sdesc **sdescs;
+    Uint nrbytes, num_tramp;
+    Eterm *tuple, list, mfa;
+    void *(*fun)(void *address, Uint nrbytes, Uint num_tramp, int sdesc_count,
+		 struct sdesc **sdescs, Eterm mfa);
+    ErtsAlcType_t alctr;
+
+    switch (BIF_ARG_1) {
+#ifdef HIPE_USE_CACHE
+    case am_master:
+	fun = hipe_cache_insert;
+	alctr = ERTS_ALC_T_HIPE;
+	break;
+#endif
+#ifdef HIPE_SLAVE_USE_CACHE
+    case am_slave:
+	fun = hipe_slave_cache_insert;
+	alctr = ERTS_ALC_T_HIPE_SLAVE;
+	break;
+#endif
+    default:
+	BIF_ERROR(BIF_P, BADARG);
+    }
+
+    if (is_not_tuple_arity(BIF_ARG_2, 5)) BIF_ERROR(BIF_P, BADARG);
+    tuple = tuple_val(BIF_ARG_2);
+    list = tuple[4];
+    mfa  = tuple[5];
+
+    if ((address = term_to_address(tuple[1])) == 0) BIF_ERROR(BIF_P, BADARG);
+    if (term_to_Uint(tuple[2], &nrbytes)   == 0)    BIF_ERROR(BIF_P, BADARG);
+    if (term_to_Uint(tuple[3], &num_tramp) == 0)    BIF_ERROR(BIF_P, BADARG);
+
+    if ((sdesc_count = erts_list_length(list)) < 0)
+	BIF_ERROR(BIF_P, BADARG);
+
+    sdescs = erts_alloc(alctr, sizeof(*sdescs) * sdesc_count);
+    for (i = sdesc_count-1; i >= 0; i--, list = list_val(list)[1]) {
+	if ((sdescs[i] = term_to_address(list_val(list)[0])) == 0) {
+	    erts_free(alctr, sdescs);
+	    BIF_ERROR(BIF_P, BADARG);
+	}
+    }
+
+    /* They must be sorted by address to facilitate binary search */
+    qsort(sdescs, sdesc_count, sizeof(*sdescs), sdesc_comp);
+
+    entry = fun(address, nrbytes, num_tramp, sdesc_count, sdescs, mfa);
+    BIF_RET(Uint_to_term((Uint)entry, BIF_P));
 }

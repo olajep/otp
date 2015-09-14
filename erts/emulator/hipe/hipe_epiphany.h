@@ -45,6 +45,8 @@ static __inline__ int hipe_word32_address_ok(void *address)
 /* Native stack growth direction. */
 #define HIPE_NSTACK_GROWS_DOWN
 
+#define HIPE_USE_CACHE
+
 #define hipe_arch_name	am_epiphany
 
 extern void hipe_epiphany_inc_stack(void);

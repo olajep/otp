@@ -31,18 +31,20 @@ r6 (NSP) is the current process' native stack pointer.
 r7 (HP) is the current process' heap pointer.
 r32 (P) is the current process' "Process" pointer.
 r33 (HFV) is the value of the current process' heap fence.
+r34 (CORIX) contains the current core's index, multiplied by 8
 
-r0-r5, r8-r12, r14 (lr), r15-r27, r34-r63 are caller-save. They are used as
+r0-r5, r8-r12, r14 (lr), r15-r27, r35-r63 are caller-save. They are used as
 temporary scratch registers and for function call parameters and results.
 
 The runtime system uses temporaries in specific contexts:
 r0 is used to pass the callee arity in native-to-BEAM traps.
 r8 (TEMP_LR) is used to preserve lr around BIF calls,
 and to pass the callee address in native-to-BEAM traps.
-r9 (TEMP_ARG0) is used to preserve the return value in nbif_stack_trap_ra,
-and lr in hipe_epiphany_inc_stack (the caller saved its lr in TEMP_LR).
 r12 is used to construct callee addresses in calls via trampolines and native
 stubs.
+r36 (TEMP_ARG0) is used to preserve the return value in nbif_stack_trap_ra,
+and lr in hipe_epiphany_inc_stack (the caller saved its lr in TEMP_LR).
+r36-r43 (TEMP_ARG0 - TEMP_ARG7) is used to preserve arguments in hipe_cold_call.
 
 Notes:
  - We might want to make the r32-r43 (C calleE-save) registers reserved, because

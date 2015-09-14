@@ -90,6 +90,8 @@ bif hipe_bifs:remove_refs_from/1
 bif hipe_bifs:remove_refs_from/2
 bif hipe_bifs:redirect_referred_from/2
 
+bif hipe_bifs:cache_insert/2
+
 # atoms used by add_ref/2
 atom call
 atom load_mfa

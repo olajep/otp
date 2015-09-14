@@ -27,6 +27,7 @@
 
 #include "hipe_native_bif.h"	/* nbif_callemu() */
 #include "hipe_bif0.h"
+#include "hipe_slave_cache.h"
 
 #ifndef HIPE_EPIPHANY_C_SLAVE_MODE
 #  include "hipe_arch.h"
@@ -38,6 +39,7 @@
 /* Only for SLAVE_SYM_nbif_callemu; can we get rid of this? */
 #  include "slave_syms.h"
 
+#  include "slave_io.h" /* for slave_workgroup.num_cores */
 #  include "hipe_slave.h"
 #  define GLOBAL_HIPE_FUN(Name) hipe_slave_ ## Name
 #  define MODE am_slave
@@ -57,6 +59,19 @@
 #endif
 
 #ifndef ERTS_SLAVE
+static Uint16 uimm8(char immediate) {
+    return (Uint16)immediate << 5;
+}
+
+static Uint32 uimm16(Uint16 immediate) {
+    return uimm8(immediate & 0xff)
+	| (((Uint32)immediate >> 8) << 20);
+}
+
+static Uint32 simm24(Sint32 immediate) {
+    return immediate << 8;
+}
+
 static int check_callees(Eterm callees)
 {
     Eterm *tuple;
@@ -94,10 +109,16 @@ reachable_pcrel(const void *ptr, const void *from_start, Uint from_len)
 }
 
 static Uint32 *
-try_alloc(Uint nrbytes, int nrcallees, Eterm callees, Uint32 **trampvec)
+try_alloc(Uint codebytes, int nrcallees, Uint32 **trampvec)
 {
-    Uint32 *address;
+    Uint32 *address, *trampoline;
     int trampnr;
+
+    /*
+     * To facilitate caching, trampolines are always emitted and are not reused.
+     */
+    Uint codewords = (codebytes + 3) / 4;
+    Uint nrbytes = 4 * (3 * nrcallees + codewords);
 
     /*
      * There's no memory protection to deal with on Epiphany -- just use the
@@ -106,34 +127,20 @@ try_alloc(Uint nrbytes, int nrcallees, Eterm callees, Uint32 **trampvec)
     address = erts_alloc(ERTS_ALC_T_HIPE_SLAVE, nrbytes);
     /* erts_alloc cannot return NULL; it aborts when out of memory */
 
+    trampoline = address + codewords;
     for (trampnr = 1; trampnr <= nrcallees; ++trampnr) {
-	Eterm m, f, mfa = tuple_val(callees)[trampnr];
-	unsigned int a;
-	Uint32 *trampoline;
-	if (is_atom(mfa))
-	    trampoline = hipe_primop_get_trampoline(MODE, mfa);
-	else {
-	    m = tuple_val(mfa)[1];
-	    f = tuple_val(mfa)[2];
-	    a = unsigned_val(tuple_val(mfa)[3]);
-	    trampoline = hipe_mfa_get_trampoline(MODE, m, f, a);
-	}
-	if (!trampoline || !reachable_pcrel(trampoline, address, nrbytes)) {
-	    /* We expect this case to be fairly rare */
-	    trampoline = erts_alloc(ERTS_ALC_T_HIPE_SLAVE,
-				    3 * sizeof(Uint32));
-	    trampoline[0] = LITTLE32(0x2002800b); /* mov  r12, 0 */
-	    trampoline[1] = LITTLE32(0x3002800b); /* movt r12, 0 */
-	    trampoline[2] = LITTLE32(0x0402114f); /* jr   r12 */
-	    /* No icache and coherent DRAM access on the Epiphany; no flushing
-	     * required. */
-	    if (is_atom(mfa))
-		hipe_primop_set_trampoline(MODE, mfa, trampoline);
-	    else
-		hipe_mfa_set_trampoline(MODE, m, f, a, trampoline);
-	}
+
+	trampoline[0] = LITTLE32(0x2002800b); /* mov  r12, 0 */
+	trampoline[1] = LITTLE32(0x3002800b); /* movt r12, 0 */
+	trampoline[2] = LITTLE32(0x0402114f); /* jr   r12 */
+	/* No icache and coherent DRAM access on the Epiphany; no flushing
+	 * required. */
+
 	trampvec[trampnr-1] = trampoline;
+	trampoline += 3;
+	ASSERT((void*)trampoline <= (((void*)address)+nrbytes));
     }
+
     return address;
 }
 
@@ -151,7 +158,7 @@ GLOBAL_HIPE_FUN(alloc_code)(Uint nrbytes, Eterm callees, Eterm *trampolines,
     trampvecbin = new_binary(p, NULL, nrcallees*sizeof(Uint32*));
     trampvec = (Uint32**)binary_bytes(trampvecbin);
 
-    address = try_alloc(nrbytes, nrcallees, callees, trampvec);
+    address = try_alloc(nrbytes, nrcallees, trampvec);
     if (address) {
 	*trampolines = trampvecbin;
     }
@@ -160,7 +167,7 @@ GLOBAL_HIPE_FUN(alloc_code)(Uint nrbytes, Eterm callees, Eterm *trampolines,
 
 static Uint32 *alloc_stub(Uint nrbytes)
 {
-    return try_alloc(nrbytes, 0, NIL, NULL);
+    return try_alloc(nrbytes, 0, NULL);
 }
 
 static void free_stub(void *stub)
@@ -192,19 +199,6 @@ static void free_stub(void *stub)
 static Uint32 load_unaligned_32(const Uint32 *address) {
     const char *p = (const char*)address;
     return p[0] | p[1] << 8 | p[2] << 16 | p[3] << 24;
-}
-
-static Uint16 uimm8(char immediate) {
-    return (Uint16)immediate << 5;
-}
-
-static Uint32 uimm16(Uint16 immediate) {
-    return uimm8(immediate & 0xff)
-	| (((Uint32)immediate >> 8) << 20);
-}
-
-static Uint32 simm24(Sint32 immediate) {
-    return immediate << 8;
 }
 
 static void patch_simm24(void* address, Sint32 immediate) {
@@ -319,25 +313,74 @@ GLOBAL_HIPE_FUN(make_native_stub)(void *beamAddress, unsigned int beamArity)
 int
 GLOBAL_HIPE_FUN(patch_call)(void *callAddress, void *destAddress, void *trampoline)
 {
-    if (reachable_pcrel(destAddress, callAddress, 0)) {
-	/* The destination can be reached with a b/bl instruction.
-	   This is typical for nearby Erlang code. */
-	patch_simm24(callAddress, (destAddress - callAddress) >> 1);
+    /* We unconditionally use the trampolines to facilitate caching. */
+    if (reachable_pcrel(trampoline, callAddress, 0)) {
+	/* Update the trampoline's address computation.
+	   (May be redundant, but we can't tell.) */
+	patch_uimm16(trampoline,   (Uint32)destAddress & 0xffff);
+	patch_uimm16(trampoline+4, (Uint32)destAddress >> 16);
+	/* Update this call site. */
+	patch_simm24(callAddress, (trampoline - callAddress) >> 1);
     } else {
-	/* The destination is too distant for b/bl.
-	   Must do a b/bl to the trampoline. */
-	if (reachable_pcrel(trampoline, callAddress, 0)) {
-	    /* Update the trampoline's address computation.
-	       (May be redundant, but we can't tell.) */
-	    patch_uimm16(trampoline,   (Uint32)destAddress & 0xffff);
-	    patch_uimm16(trampoline+4, (Uint32)destAddress >> 16);
-	    /* Update this call site. */
-	    patch_simm24(callAddress, (trampoline - callAddress) >> 1);
-	} else {
-	    return -1;
-	}
+	return -1;
     }
     return 0;
+}
+
+void *
+GLOBAL_HIPE_FUN(cache_insert)(void *address, Uint codebytes, Uint nrcallees,
+			      int sdesc_count, struct sdesc **sdescs, Eterm mfa)
+{
+#ifdef HIPE_EPIPHANY_C_SLAVE_MODE
+    void *hipe_cold_call_addr = (void*) SLAVE_SYM_hipe_cold_call;
+    const int corecount = slave_workgroup.num_cores;
+#else
+    void *hipe_cold_call_addr = &hipe_cold_call;
+    const int corecount = epiphany_workgroup_size();
+#endif
+
+    /*
+     * To facilitate caching, trampolines are always emitted and are not reused.
+     */
+    Uint codewords = (codebytes + 3) / 4;
+    Uint nrbytes = 4 * (3 * nrcallees + codewords);
+
+    int coreix;
+    struct fun_entrypoint *entry
+	= erts_alloc(ERTS_ALC_T_HIPE_SLAVE, sizeof(*entry)
+		     + sizeof(*entry->table) * corecount);
+    ASSERT(corecount > 0 && corecount <= 1024);
+
+    /* mov  r12, %low(table) */
+    entry->code[0] = LITTLE32(0x2002800b | uimm16((Uint)(&entry->table[0].address) & 0xffff));
+    /* movt r12, %high(table) */
+    entry->code[1] = LITTLE32(0x3002800b | uimm16((Uint)(&entry->table[0].address) >> 16));
+    entry->code[2] = LITTLE32(0x06001149); /* ldr r0, [r12,r34] (r34 = CORIX) */
+    entry->code[3] = LITTLE32(0x0002014f); /* jr.l r0 */
+
+    entry->cold_address = address;
+    entry->size = nrbytes;
+    entry->sdescs = sdescs;
+    entry->sdesc_count = sdesc_count;
+
+#ifdef DEBUG
+    if (is_tuple_arity(mfa, 3) && is_atom(tuple_val(mfa)[1])
+	&& is_atom(tuple_val(mfa)[2]) && is_byte(tuple_val(mfa)[3])) {
+	entry->dbg_M = tuple_val(mfa)[1];
+	entry->dbg_F = tuple_val(mfa)[2];
+	entry->dbg_A = unsigned_val(tuple_val(mfa)[3]);
+    } else {
+	entry->dbg_M = entry->dbg_F = am_undefined;
+	entry->dbg_A = 0;
+    }
+#endif
+
+    for (coreix = 0; coreix < corecount; coreix++) {
+	entry->table[coreix].address = hipe_cold_call_addr;
+	entry->table[coreix].count = 0;
+    }
+
+    return entry->code;
 }
 
 #endif /* !ERTS_SLAVE */

@@ -136,9 +136,9 @@
 -define(ARG6, ?R17).
 -define(ARG7, ?R18).
 
--define(TEMP1, ?R15).
--define(TEMP2, ?R34).
--define(TEMP3, ?R35). %% For spilling STR (INDEX) :(
+-define(TEMP1, ?R44).
+-define(TEMP2, ?R45).
+-define(TEMP3, ?R46). %% For spilling STR (INDEX) :(
 
 -define(RET0, ?R0).
 -define(RET1, ?R1).
@@ -154,6 +154,7 @@
 -define(PROC_POINTER, ?R32).
 
 -define(HEAP_FENCE_VAL, ?R33).
+-define(CORIX, ?R34).
 
 reg_name(?LR) -> "lr";
 reg_name(?HEAP_POINTER) -> "HP";
@@ -174,6 +175,7 @@ fixed() -> [
 	    ?PROC_POINTER,
 	    ?STACK_POINTER,
 	    ?HEAP_FENCE_VAL,
+	    ?CORIX,
 	    %% Reserved by C
 	    ?SP,
 	    %% "Reserved for constants" by C

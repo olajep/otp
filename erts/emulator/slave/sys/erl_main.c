@@ -94,11 +94,7 @@ main(int argc, char **argv)
     e_reg_write(E_REG_ILAT, 0);
     e_reg_write(E_REG_IMASK, 0);
 
-    /* Bits 2 and 3 protects the lower and upper half of data_bank1 from writing */
-    e_reg_write(E_REG_MEMPROTECT,
-		e_reg_read(E_REG_MEMPROTECT)
-		| (1 << 2)
-		| (1 << 3));
+    e_reg_write(E_REG_MEMPROTECT, 0);
 
     if (is_leader()) {
         erl_start(argc, argv);
@@ -127,5 +123,8 @@ void erts_start_schedulers() {
 
 EPIPHANY_SRAM_FUNC static void __attribute__((interrupt))
 handl(int __attribute__((unused)) crap) {
-    erts_printf("Interrupted! IPEND=%x\n", e_reg_read(E_REG_IPEND));
+    Uint lr;
+    asm volatile("mov %0, lr" : "=r"(lr));
+    erts_printf("Interrupted! IPEND=%#x, IRET=%#x, lr=%#x\n",
+		e_reg_read(E_REG_IPEND), e_reg_read(E_REG_IRET), lr);
 };

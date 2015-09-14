@@ -38,6 +38,13 @@ extern const void *hipe_slave_closure_stub_address(unsigned int arity);
 #include "hipe_epiphany_slave.h"
 /* #endif */
 
+#ifdef HIPE_SLAVE_USE_CACHE
+struct sdesc;
+extern void *hipe_slave_cache_insert(void *address, Uint nrbytes,
+				     Uint num_tramp, int sdesc_count,
+				     struct sdesc **sdescs, Eterm mfa);
+#endif
+
 #if !defined(AEXTERN)
 #define AEXTERN(RET,NAME,PROTO)	extern RET NAME PROTO
 #endif
