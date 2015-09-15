@@ -82,7 +82,7 @@ state() ->
       Beam :: binary(),
       Info :: {list(), list()}.
 make_stub_module(_, _, _) ->
-    erlang:nif_error(undef).
+    erlang:nif_error(undefined).
 
 %% load_module/2
 -spec load_module(Module, Binary) -> {module, Module} | {error, Reason} when

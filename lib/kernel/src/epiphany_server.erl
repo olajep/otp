@@ -82,7 +82,7 @@ init_loop() ->
 	{error, wait} ->
 	    timer:sleep(100),
 	    init_loop();
-	offline ->
+	{error, offline} ->
 	    init_stop(normal)
     end.
 
@@ -109,7 +109,7 @@ init_stop(Reason) ->
 
 %% @doc The set of modules that we require to be loaded (in addition to the
 %% preloaded modules, which are already loaded by epiphany:boot()) before any
-%% processes are spawn on the epiphanys.
+%% processes are spawned on the epiphanys.
 -spec prerequisite_modules() -> [module()].
 prerequisite_modules() ->
     [code, code_server, error_handler].
