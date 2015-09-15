@@ -88,6 +88,29 @@ Stack Descriptors
 -----------------
 sdesc_fsize() is the frame size excluding the return address word.
 
+Software Caching Design
+=======================
+
+Each function is loaded separately, immediately followed by trampolines to all
+functions it calls, making up a unit of position-independent code.
+
+The entry to each function is actually a stub
+
+struct fun_entrypoint {
+       UWord code[4];
+       // ...
+       struct {
+              UWord address;
+              Sint  count;
+       } table[];
+}
+
+wher code[4] is:
+        mov     r12, %low(table)
+        movt    r12, %high(table)
+        ldr     r0, [r12, CORIX]
+        jr      r0
+
 Epiphany SDK Calling Conventions
 ================================
 
