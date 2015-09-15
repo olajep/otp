@@ -401,8 +401,13 @@ HIPE_ppc_TAB=../hipe/hipe_ppc.tab
 HIPE_ppc64_TAB=../hipe/hipe_ppc64.tab $(HIPE_ARCH64_TAB)
 HIPE_arm_TAB=../hipe/hipe_arm.tab
 HIPE_epiphany_TAB=../hipe/hipe_epiphany.tab
-HIPE_ARCH_TAB=$(HIPE_$(ARCH)_TAB)
-BIFS += ../hipe/hipe_bif0.tab ../hipe/hipe_bif1.tab ../hipe/hipe_bif2.tab $(HIPE_ARCH_TAB)
+HIPE_ARCH_TAB=$(HIPE_$(ARCH)_TAB) $(HIPE_arm_TAB)
+ifndef MASTER_ARCH
+MASTER_ARCH=arm # << ETODO: actually convey master arch info
+endif
+HIPE_MASTER_ARCH_TAB=$(HIPE_$(MASTER_ARCH)_TAB)
+BIFS += ../hipe/hipe_bif0.tab ../hipe/hipe_bif1.tab ../hipe/hipe_bif2.tab \
+	$(HIPE_ARCH_TAB) $(HIPE_MASTER_ARCH_TAB)
 ifdef USE_PERFCTR
 BIFS += ../hipe/hipe_perfctr.tab
 endif
