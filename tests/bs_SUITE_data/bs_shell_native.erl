@@ -13,7 +13,13 @@
 
 %% This makes sure the shell runs native code
 prepare_for_test() ->
-  lists:foreach(fun (M) -> {ok, M} = hipe:c(M) end, [erl_bits, erl_eval]).
+  Res = lists:foreach(fun (M) ->
+			  io:fwrite("Compiling ~w with hipe~n", [M]),
+			  {ok, M} = hipe:c(M, [{target, epiphany}])
+		      end,
+		      [erl_bits, erl_eval]),
+  io:fwrite("~p~n", [Res]),
+  Res.
 
 test() ->
   ok = eval_bits_in_shell(),

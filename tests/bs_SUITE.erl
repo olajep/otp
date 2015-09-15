@@ -44,18 +44,21 @@ all() ->
      bs_split,bs_system_limit_32,bs_utf,bs_var_segs].
 
 test(Config, TestCase) ->
-    Dir = ?config(data_dir, Config),
-    F = filename:join(Dir, atom_to_list(TestCase) ++ ".erl"),
-    {ok, TestCase} = compile:file(F),
-    code:ensure_loaded_epiphany(TestCase),
-    case erlang:function_exported(TestCase, prepare_for_test, 0) of
+    ?line Dir = ?config(data_dir, Config),
+    ?line F = filename:join(Dir, atom_to_list(TestCase) ++ ".erl"),
+    ?line io:fwrite("Compiling ~p with beam~n", [TestCase]),
+    ?line {ok, TestCase} = compile:file(F),
+    ?line code:ensure_loaded_epiphany(TestCase),
+    ?line case erlang:function_exported(TestCase, prepare_for_test, 0) of
 	true -> ok = TestCase:prepare_for_test();
 	false -> ok
     end,
-    ok = TestCase:test(),
-    HiPEOpts = try TestCase:hipe_options() catch error:undef -> [] end,
-    {ok, TestCase} = hipe:c(TestCase, [{target, epiphany}|HiPEOpts]),
-    ok = TestCase:test().
+    %% ok = TestCase:test(),
+    ?line HiPEOpts = try TestCase:hipe_options() catch error:undef -> [] end,
+    ?line io:fwrite("Compiling ~p with hipe~n", [TestCase]),
+    ?line {ok, TestCase} = hipe:c(TestCase, [{target, epiphany}|HiPEOpts]),
+    ?line io:fwrite("Running ~p~n", [TestCase]),
+    ?line ok = TestCase:test().
 
 bs_add(Config) ->
     test(Config, bs_add).

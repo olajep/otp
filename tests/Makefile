@@ -57,10 +57,12 @@ beam: $(addprefix beam/,$(OBJS))
 	TARGET=$(TARGET) SLAVE_TARGET=$(SLAVE_TARGET) \
 		./run --beam $(FLAGS) $(TS_MODS)
 
-compile: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS)) $(addprefix debug/,$(OBJS))
+compile: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS)) \
+	$(addprefix debug/,$(OBJS))
 
 clean:
-	rm -f $(OBJS)
+	rm -f $(OBJS) $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS)) \
+		$(addprefix debug/,$(OBJS))
 
 beam/%.beam: %.erl
 	$(erlc_verbose)cd beam && $(ERLC) ../$<
