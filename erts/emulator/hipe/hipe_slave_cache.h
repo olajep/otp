@@ -56,4 +56,6 @@ extern void *hipe_cold_call_c(void *table_pointer, UWord corix);
 extern void hipe_slave_cache_empty(void);
 #endif
 
+extern const struct sdesc *hipe_cache_find_sdesc(unsigned long ra);
+
 #endif /* !__HIPE_SLAVE_CACHE_H__ */

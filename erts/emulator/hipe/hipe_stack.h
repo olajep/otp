@@ -25,6 +25,11 @@
 
 #if defined(ERTS_SLAVE_EMU_ENABLED) || defined(ERTS_SLAVE)
 #  include "slave.h"
+#  include "hipe_slave.h"
+#endif
+
+#if defined(HIPE_USE_CACHE) || defined(HIPE_SLAVE_USE_CACHE)
+#  include "hipe_slave_cache.h"
 #endif
 
 /*
@@ -108,11 +113,17 @@ static __inline__ const struct sdesc *hipe_slave_find_sdesc(unsigned long ra)
     unsigned int i = (ra >> table->ra_lsr_count) & table->mask;
     const struct sdesc *sdesc = table->bucket[i];
     ASSERT(table->mask);
+#ifdef HIPE_SLAVE_USE_CACHE
+    if (!sdesc) return hipe_cache_find_sdesc(ra);
+#endif
     ASSERT(sdesc);
     if (likely(sdesc->bucket.hvalue == ra))
 	return sdesc;
     do {
 	sdesc = sdesc->bucket.next;
+#ifdef HIPE_SLAVE_USE_CACHE
+	if (!sdesc) return hipe_cache_find_sdesc(ra);
+#endif
 	ASSERT(sdesc);
     } while (sdesc->bucket.hvalue != ra);
     return sdesc;
@@ -124,11 +135,17 @@ static __inline__ const struct sdesc *hipe_find_sdesc(unsigned long ra)
     unsigned int i = (ra >> HIPE_RA_LSR_COUNT) & hipe_sdesc_table.mask;
     const struct sdesc *sdesc = hipe_sdesc_table.bucket[i];
     ASSERT(hipe_sdesc_table.mask);
+#ifdef HIPE_USE_CACHE
+    if (!sdesc) return hipe_cache_find_sdesc(ra);
+#endif
     ASSERT(sdesc);
     if (likely(sdesc->bucket.hvalue == ra))
 	return sdesc;
     do {
 	sdesc = sdesc->bucket.next;
+#ifdef HIPE_USE_CACHE
+	if (!sdesc) return hipe_cache_find_sdesc(ra);
+#endif
 	ASSERT(sdesc);
     } while (sdesc->bucket.hvalue != ra);
     return sdesc;

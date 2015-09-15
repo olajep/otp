@@ -73,8 +73,14 @@
 	str	r5,  [sp, #26]
 	mov	P,   r0
 	ldr	HFV, [P, #P_HEAP_FENCE/4]
+
+	/* ETODO cache this value somewhere */
+	mov	TEMP_LR, lr
+	bl	_epiphany_coreno
+	lsl	CORIX, r0, 3 	; CORIX = coreno * 8
+
 	RESTORE_CACHED_STATE
-	rts
+	jr 	TEMP_LR
 
 /*
  * Return to the calling C function.

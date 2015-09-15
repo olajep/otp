@@ -957,12 +957,12 @@ HIPE_ultrasparc_OBJS=$(OBJDIR)/hipe_sparc.o $(OBJDIR)/hipe_sparc_glue.o $(OBJDIR
 HIPE_ppc_OBJS=$(OBJDIR)/hipe_ppc.o $(OBJDIR)/hipe_ppc_glue.o $(OBJDIR)/hipe_ppc_bifs.o $(OBJDIR)/hipe_risc_stack.o
 HIPE_ppc64_OBJS=$(HIPE_ppc_OBJS) $(HIPE_ARCH64_OBJS)
 HIPE_arm_OBJS=$(OBJDIR)/hipe_arm.o $(OBJDIR)/hipe_arm_glue.o $(OBJDIR)/hipe_arm_bifs.o $(OBJDIR)/hipe_risc_stack.o
-HIPE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany.o $(OBJDIR)/hipe_epiphany_glue.o $(OBJDIR)/hipe_epiphany_bifs.o $(OBJDIR)/hipe_risc_stack.o
+HIPE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany.o $(OBJDIR)/hipe_epiphany_glue.o $(OBJDIR)/hipe_epiphany_bifs.o $(OBJDIR)/hipe_risc_stack.o $(OBJDIR)/hipe_slave_cache.o
 HIPE_noarch_OBJS=
 HIPE_ARCH_OBJS=$(HIPE_$(ARCH)_OBJS)
 
 ifdef BUILD_SLAVE
-HIPE_SLAVE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany_slave.o
+HIPE_SLAVE_epiphany_OBJS=$(OBJDIR)/hipe_epiphany_slave.o $(OBJDIR)/hipe_slave_cache.o
 HIPE_SLAVE_ARCH_OBJS=$(HIPE_SLAVE_$(SLAVE_ARCH)_OBJS)
 HIPE_ARCH_OBJS += $(HIPE_SLAVE_ARCH_OBJS)
 endif

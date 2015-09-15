@@ -2343,8 +2343,8 @@ BIF_RETTYPE hipe_bifs_patch_call_3(BIF_ALIST_3)
 static int
 sdesc_comp(const void *lp, const void *rp)
 {
-    const struct sdesc *left = lp, *right = rp;
-    return (int)left->bucket.hvalue - right->bucket.hvalue;
+    const struct sdesc *const *left = lp, *const *right = rp;
+    return (int)(*left)->bucket.hvalue - (*right)->bucket.hvalue;
 }
 
 BIF_RETTYPE hipe_bifs_cache_insert_2(BIF_ALIST_2)

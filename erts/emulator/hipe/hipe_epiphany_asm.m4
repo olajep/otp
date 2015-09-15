@@ -74,7 +74,6 @@ define(NR_RET_REGS,4)dnl admissible values are 0 to 4, inclusive
 `       .macro RESTORE_CACHED_STATE
         ldr	HP, [P, #P_HP/4]
         ldr	NSP, [P, #P_NSP/4]
-        mov	CORIX, 0
         .endm'
 
 `       .macro SAVE_CONTEXT_BIF

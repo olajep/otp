@@ -242,9 +242,10 @@ load_common(Mod, Bin, Beam, OldReferencesToPatch, Mode) ->
       ok = remove_refs_from(MFAs, Mode),
       %% Write the code to memory.
       update_code_size(CodeSize, CodeBinary, Mod, Beam),
-      Addresses = enter_funs(Funs, Mode),
+      CodeAddresses = enter_funs(Funs, Mode),
       %% Patch all references in the code.
-      load_funs(Addresses, Addresses, ConstAddr, ConstMap2, Mode),
+      Addresses = load_funs(CodeAddresses, CodeAddresses, ConstAddr, ConstMap2,
+			    Mode),
 
       %% Tell the system where the loaded funs are. 
       %%  (patches the BEAM code to redirect to native.)
@@ -267,7 +268,7 @@ load_common(Mod, Bin, Beam, OldReferencesToPatch, Mode) ->
 	      [begin
 		 ClosurePatches = find_closure_patches(FunRefs),
 		 calculate_addresses(ClosurePatches, FunAddress, Addresses, Mode)
-	       end || #fundef{address=FunAddress, refs=FunRefs} <- Addresses]),
+	       end || #fundef{address=FunAddress, refs=FunRefs} <- CodeAddresses]),
 	  export_funs(Addresses, Mode),
 	  export_funs(Mod, BeamBinary, Addresses, AddressesOfClosuresToPatch, Mode)
       end,
@@ -302,8 +303,8 @@ enter_fun(FunDef,  Mode) ->
   FunDef#fundef{address=CodeAddress,trampolines=Trampolines}.
 
 load_funs([Fun|Funs], Addresses, ConstAddr, ConstMap, Mode) ->
-  load_fun(Fun, Addresses, ConstAddr, ConstMap, Mode),
-  load_funs(Funs, Addresses, ConstAddr, ConstMap, Mode);
+  [load_fun(Fun, Addresses, ConstAddr, ConstMap, Mode)
+   |load_funs(Funs, Addresses, ConstAddr, ConstMap, Mode)];
 load_funs([], _, _ ,_ , _) ->
   [].
 
@@ -319,7 +320,37 @@ load_fun(FunDef, Addresses, ConstAddr, ConstMap, Mode) ->
 
   %% Patch all dynamic references in the code.
   %%  Function calls, Atoms, Constants, System calls
-  ok = patch(Refs, CodeAddress, ConstMap, Addresses, TrampolineMap, Mode).
+  DynRefs = proplists:delete(?SDESC, Refs),
+  patch(DynRefs, CodeAddress, ConstMap, Addresses, TrampolineMap, Mode),
+
+  %% Insert stack descriptors into hash table
+  SdescRefs = proplists:get_value(?SDESC, Refs, []),
+  SdescList =
+    patch_accum(sdesc, SdescRefs, CodeAddress, {ConstMap,CodeAddress},
+		Addresses, Mode, []),
+
+  %% If required by the target, generate cache metadata and trampoline.
+  generate_cache_entry(Mode, FunDef, SdescList).
+
+%%----------------------------------------------------------------
+%% If the target architecture needs it, emit a cache table, stack
+%% descriptor vector, and entry point for the MFA.
+generate_cache_entry(Mode, FunDef, Sdescs) ->
+  #fundef{address=Address, trampolines=Trampolines, code=Code, mfa=MFA}
+    = FunDef,
+  case mode_arch(Mode) of
+    epiphany ->
+      SizeofLong = 4,
+      NumTramp = size(Trampolines) div SizeofLong,
+      Entry = cache_insert(Mode, Address, byte_size(Code), NumTramp, Sdescs,
+			   MFA),
+      ?debug_msg("~.16b is cache entry for ~w~n", [Entry, MFA]),
+      FunDef#fundef{address=Entry};
+    _ -> FunDef
+  end.
+
+cache_insert(Mode, Address, CodeSize, NumTramp, Sdescs, MFA) ->
+  hipe_bifs:cache_insert(Mode, {Address, CodeSize, NumTramp, Sdescs, MFA}).
 
 %%----------------------------------------------------------------
 %% Scan the list of patches and build a set (returned as a tuple)
@@ -544,21 +575,22 @@ export_funs(Mod, Beam, Addresses, ClosuresToPatch, Mode) ->
 
 patch([{Type,SortedRefs}|Rest], CodeAddress, ConstMap2, Addresses,
       TrampolineMap, Mode) ->
-  ?debug_msg("Patching ~w at [~w+offset] with ~w\n",
+  ?debug_msg("Patching ~w at [0x~.16b+offset] with ~w\n",
 	     [Type,CodeAddress,SortedRefs]),
-  case ?EXT2PATCH_TYPE(Type) of 
-    call_local -> 
+  case ?EXT2PATCH_TYPE(Type) of
+    call_local ->
       patch_call(SortedRefs, CodeAddress, Addresses, 'local', TrampolineMap,
-		Mode);
+		 Mode);
     call_remote ->
       patch_call(SortedRefs, CodeAddress, Addresses, 'remote', TrampolineMap,
-		Mode);
-    Other -> 
+		 Mode);
+    Other ->
       patch_all(Other, SortedRefs, CodeAddress, {ConstMap2,CodeAddress},
 		Addresses, Mode)
   end,
   patch(Rest, CodeAddress, ConstMap2, Addresses, TrampolineMap, Mode);
 patch([], _, _, _, _, _) -> ok.
+
 
 %%----------------------------------------------------------------
 %% Handle a 'call_local' or 'call_remote' patch.
@@ -619,7 +651,7 @@ patch_all(_, [], _, _, _, _) -> ok.
 
 patch_all_offsets(Type, Data, [Offset|Offsets], BaseAddress,
 		  ConstAndZone, Addresses, Mode) ->
-  ?debug_msg("Patching ~w at [~w+~w] with ~w\n",
+  ?debug_msg("Patching ~w at [0x~.16b+0x~.16b] with ~w\n",
 	     [Type,BaseAddress,Offset, Data]),
   Address = BaseAddress + Offset,
   patch_offset(Type, Data, Address, ConstAndZone, Addresses, Mode),
@@ -627,6 +659,24 @@ patch_all_offsets(Type, Data, [Offset|Offsets], BaseAddress,
   patch_all_offsets(Type, Data, Offsets, BaseAddress, ConstAndZone, Addresses,
 		   Mode);
 patch_all_offsets(_, _, [], _, _, _, _) -> ok.
+
+patch_accum(Type, [{Data, Offsets}|Rest], BaseAddress, ConstAndZone, Addresses,
+	    Mode, Acc) ->
+  patch_accum(Type, Rest, BaseAddress, ConstAndZone, Addresses, Mode,
+	      patch_accum_offsets(Type, Data, Offsets, BaseAddress,
+				  ConstAndZone, Addresses, Mode, Acc));
+patch_accum(_Type, [], _, _, _, _, Acc) -> Acc.
+
+patch_accum_offsets(Type, Data, [Offset|Offsets], BaseAddress,
+		    ConstAndZone, Addresses, Mode, Acc) ->
+  ?debug_msg("Patching ~w at [0x~.16b+0x~.16b] with ~w\n",
+	     [Type,BaseAddress,Offset, Data]),
+  Address = BaseAddress + Offset,
+  Thingu = patch_offset(Type, Data, Address, ConstAndZone, Addresses, Mode),
+  ?debug_msg("Patching done\n",[]),
+  patch_accum_offsets(Type, Data, Offsets, BaseAddress, ConstAndZone, Addresses,
+		      Mode, [Thingu|Acc]);
+patch_accum_offsets(_, _, [], _, _, _, _, Acc) -> Acc.
 
 %%----------------------------------------------------------------
 %% Handle any patch type except 'call_local' or 'call_remote'.
@@ -1094,8 +1144,8 @@ update_code_size(CodeSize, CodeBinary, Mod, Beam) ->
 enter_fun_code(CodeBinary, CalleeMFAs, _Mod, Mode) ->
   {CodeAddress,Trampolines}
     = hipe_bifs:enter_code(Mode, CodeBinary, CalleeMFAs),
-  ?msg("~w loaded in mode ~w at 0x~.16b+0x~.16b~n",
-       [_Mod, Mode, CodeAddress, byte_size(CodeBinary)]),
+  ?debug_msg("~w loaded in mode ~w at 0x~.16b+0x~.16b~n",
+	     [_Mod, Mode, CodeAddress, byte_size(CodeBinary)]),
   ?insert_assert_patch(CodeAddress, byte_size(CodeBinary)),
   {CodeAddress,Trampolines}.
 
