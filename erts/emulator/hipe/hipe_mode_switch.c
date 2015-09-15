@@ -646,11 +646,13 @@ Process *hipe_mode_switch(Process *p, unsigned cmd, Eterm reg[])
 
 #define HIPE_INITIAL_NSTACK_SIZE	128
 
+#ifndef __epiphany__
 /* PRE: size is zero or a power of two */
 static unsigned hipe_next_nstack_size(unsigned size)
 {
     return size ? size * 2 : HIPE_INITIAL_NSTACK_SIZE;
 }
+#endif
 
 #if 0 && defined(HIPE_NSTACK_GROWS_UP)
 #define hipe_nstack_avail(p)	((p)->hipe.nstend - (p)->hipe.nsp)

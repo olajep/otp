@@ -42,6 +42,7 @@
  */
 struct hipe_sdesc_table hipe_sdesc_table;
 
+#ifndef ERTS_SLAVE
 static struct sdesc **alloc_bucket(ErtsAlcType_t alctr, unsigned int size)
 {
     unsigned long nbytes = size * sizeof(struct sdesc*);
@@ -216,6 +217,8 @@ struct sdesc *hipe_decode_sdesc(Eterm arg)
 {
     return decode_sdesc(ERTS_ALC_T_HIPE, arg);
 }
+
+#endif /* !ERTS_SLAVE */
 
 /*
  * Table in the slave runtime, maintained from the master, read from the

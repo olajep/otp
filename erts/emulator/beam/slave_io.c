@@ -105,11 +105,13 @@ static int get_desired_maps(struct desired_map **mapsp) {
     unsigned phy_base  = 0x3e000000;
     unsigned size      = 0x02000000;
     unsigned ephy_base = 0x8e000000;
+#ifdef DEBUG
     void *slave_data_end = (void*)SLAVE_SYM_end;
     void *slave_heap_start = (void*)SLAVE_SYM___heap_start;
     ASSERT((void*)ephy_base < slave_data_end);
     ASSERT(slave_data_end < slave_heap_start);
     ASSERT(slave_heap_start < (void*)(ephy_base + size));
+#endif
 
     maps->virt_addr = (void*)ephy_base;
     maps->phy_addr = phy_base;

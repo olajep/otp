@@ -59,39 +59,7 @@ erts_queue_monitor_message(Process *p,
 			   Eterm item,
 			   Eterm reason)
 {
-    Eterm tup;
-    Eterm* hp;
-    Eterm reason_copy, ref_copy, item_copy;
-    Uint reason_size, ref_size, item_size, heap_size;
-    ErlOffHeap *ohp;
-    ErlHeapFragment *bp;
-
-    reason_size = IS_CONST(reason) ? 0 : size_object(reason);
-    item_size   = IS_CONST(item) ? 0 : size_object(item);
-    ref_size    = size_object(ref);
-
-    heap_size = 6+reason_size+ref_size+item_size;
-
-    hp = erts_alloc_message_heap(heap_size,
-				 &bp,
-				 &ohp,
-				 p,
-				 p_locksp);
-
-    reason_copy = (IS_CONST(reason)
-		   ? reason
-		   : copy_struct(reason, reason_size, &hp, ohp));
-    item_copy   = (IS_CONST(item)
-		   ? item
-		   : copy_struct(item, item_size, &hp, ohp));
-    ref_copy    = copy_struct(ref, ref_size, &hp, ohp);
-
-    tup = TUPLE5(hp, am_DOWN, ref_copy, type, item_copy, reason_copy);
-    erts_queue_message(p, p_locksp, bp, tup, NIL
-#ifdef USE_VM_PROBES
-		       , NIL
-#endif
-		       );
+    EPIPHANY_STUB_BT();
 }
 
 BIF_RETTYPE hibernate_3(BIF_ALIST_3)

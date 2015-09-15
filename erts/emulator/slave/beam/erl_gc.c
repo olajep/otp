@@ -24,6 +24,7 @@
 #include "erl_vm.h"
 #include "global.h"
 #include "bif.h"
+#include "erl_gc.h"
 
 #include "slave_command.h"
 

@@ -5797,7 +5797,10 @@ build_stacktrace(Process* c_p, Eterm exc) {
     FunctionInfo* stkp;
     Eterm res = NIL;
     Uint heap_size;
-    Eterm *hp, *hp_init;
+    Eterm *hp;
+#ifdef DEBUG
+    Eterm *hp_init;
+#endif
     Eterm mfa;
     int i;
 
@@ -5856,7 +5859,10 @@ build_stacktrace(Process* c_p, Eterm exc) {
     /*
      * Allocate heap space and build the stacktrace.
      */
-    hp_init = hp = HAlloc(c_p, heap_size);
+#ifdef DEBUG
+    hp_init =
+#endif
+	hp = HAlloc(c_p, heap_size);
     while (stkp > stk) {
 	stkp--;
 	hp = erts_build_mfa_item(stkp, hp, am_true, &mfa);
