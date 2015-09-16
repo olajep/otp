@@ -35,7 +35,6 @@
 /* Tunables */
 #define MAX_CACHED_FUNS 100
 #define CACHE_SIZE 4096
-#define CACHE_THRESH 1
 
 #define MAX_CORES 16
 
@@ -54,14 +53,13 @@ typedef struct hipe_slave_cache_entry entry_table[MAX_CORES][MAX_CACHED_FUNS];
 unsigned hipe_cached_count[MAX_CORES];
 entry_table hipe_slave_cache_entries;
 
-EPIPHANY_SRAM_DATA static int remaining_cache_bytes = CACHE_SIZE;
+EPIPHANY_SRAM_DATA int hipe_remaining_cache_bytes = CACHE_SIZE;
 EPIPHANY_SRAM_HEAP static char hipe_cache_area[CACHE_SIZE];
 
 static void *
 cache_insert(struct fun_entrypoint *ptr, UWord corix) {
-    int i;
     void *hot_address = hipe_cache_area
-	+ (CACHE_SIZE - remaining_cache_bytes);
+	+ (CACHE_SIZE - hipe_remaining_cache_bytes);
     unsigned entry_ix = hipe_cached_count[corix]++;
 #ifdef DEBUG
     erts_fprintf(stderr, "Caching %T:%T/%d (%p) at %p+%#x\n",
@@ -75,7 +73,7 @@ cache_insert(struct fun_entrypoint *ptr, UWord corix) {
     ptr->table[corix].address = hot_address;
     hipe_slave_cache_entries[corix][entry_ix].hot_address = hot_address;
     hipe_slave_cache_entries[corix][entry_ix].entry_info = ptr;
-    remaining_cache_bytes -= ptr->size;
+    hipe_remaining_cache_bytes -= ptr->size;
 
     /* For safety */
     epiphany_dram_fence();
@@ -85,39 +83,25 @@ cache_insert(struct fun_entrypoint *ptr, UWord corix) {
      * (complicates partial eviction)
      */
     HTRACE("Done! %d bytes remaining. Calling local code now...\n",
-	   remaining_cache_bytes);
+	   hipe_remaining_cache_bytes);
     return hot_address;
 }
 
 void *
 hipe_cold_call_c(void *optr, UWord corix) {
      struct fun_entrypoint *ptr = optr - offsetof(struct fun_entrypoint, table);
-     Sint new_count;
-
      corix = corix / 8;
-     new_count = ptr->table[corix].count + 1;
-     ptr->table[corix].count = new_count;
 
-     /* Inline heap fence */
-     while (*(volatile Sint*)&ptr->table[corix].count != new_count);
+     ASSERT(hipe_remaining_cache_bytes >= ptr->size);
 
-#ifdef DEBUG
-     HTRACE("Calling %T:%T/%d (%p) through cold_call, coreix=%u, count=%d\n",
-	    ptr->dbg_M, ptr->dbg_F, ptr->dbg_A,
-	    ptr->cold_address, corix, new_count);
-#else
-     HTRACE("Calling %p through cold_call, coreix=%u, new_count=%d\n",
-	    ptr->cold_address, corix, new_count);
-#endif
-
-     if (unlikely(new_count > CACHE_THRESH
-		  && remaining_cache_bytes >= ptr->size
-		  && hipe_cached_count[corix] < MAX_CACHED_FUNS
-		  )) {
+     if (likely(hipe_cached_count[corix] < MAX_CACHED_FUNS)) {
 	 return cache_insert(ptr, corix);
+     } else {
+	 erts_fprintf(stderr, "WARNING: %s: Cache table full. "
+		      "Increase MAX_CACHED_FUNS\n",
+		      __FILE__);
+	 return ptr->cold_address;
      }
-  do_cold:
-     return ptr->cold_address;
 }
 
 void
@@ -129,7 +113,7 @@ hipe_slave_cache_empty(void)
 	struct fun_entrypoint *ptr = hipe_slave_cache_entries[corix][i].entry_info;
 	ptr->table[corix].address = hipe_cold_call;
     }
-    remaining_cache_bytes = CACHE_SIZE;
+    hipe_remaining_cache_bytes = CACHE_SIZE;
     hipe_cached_count[corix] = 0;
 }
 #endif /* ERTS_SLAVE */

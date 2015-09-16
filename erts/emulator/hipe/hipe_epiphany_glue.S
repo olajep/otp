@@ -547,6 +547,30 @@ _hipe_epiphany_inc_stack:
 #endif
 	.global _hipe_cold_call
 _hipe_cold_call:
+	add	TEMP_ARG0, r12, CORIX
+	ldr	r0, [TEMP_ARG0, #1]
+	add	r0, r0, 1
+	str	r0, [TEMP_ARG0, #1]
+.fence_retry:
+	ldr	TEMP_ARG1, [TEMP_ARG0, #1]
+	sub	TEMP_ARG1, r0, TEMP_ARG1
+	bne	.fence_retry
+	sub 	TEMP_ARG1, r0, #HIPE_CACHE_THRESH
+	bgt	.perhaps_cache
+.do_cold:
+	ldr	r0, [r12, -#((FEP_TABLE - FEP_COLD_ADDRESS)/4)]
+	jr 	r0
+
+	;; Test that there is enough cache space remaining
+.perhaps_cache:
+	mov	r0, %low(_hipe_remaining_cache_bytes)
+	ldr	TEMP_ARG0, [r12, -#((FEP_TABLE - FEP_SIZE)/4)]
+	movt	r0, %high(_hipe_remaining_cache_bytes)
+	ldr	r0, [r0]
+	sub	r0, r0, TEMP_ARG0
+	blt	.do_cold
+
+.do_cache:
 	mov	r0, r12
 	mov	TEMP_LR, lr
 	SPILL_ARG_REGS

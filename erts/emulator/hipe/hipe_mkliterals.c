@@ -165,6 +165,7 @@
 #undef ARG5
 #include "hipe_sparc_asm.h"
 #include "erl_binary.h"
+#include "hipe_slave_cache.h"
 
 #define ARRAY_SIZE(x)	(sizeof(x) / sizeof((x)[0]))
 
@@ -416,6 +417,10 @@ static const struct literal {
     { "EPIPHANY_LEAF_WORDS", EPIPHANY_LEAF_WORDS },
     { "EPIPHANY_NR_ARG_REGS", EPIPHANY_NR_ARG_REGS },
     { "EPIPHANY_NR_RET_REGS", EPIPHANY_NR_RET_REGS },
+
+    { "FEP_COLD_ADDRESS", offsetof(struct fun_entrypoint, cold_address) },
+    { "FEP_TABLE",        offsetof(struct fun_entrypoint, table) },
+    { "FEP_SIZE",         offsetof(struct fun_entrypoint, size) },
 
 };
 
