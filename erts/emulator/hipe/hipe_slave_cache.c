@@ -57,52 +57,67 @@ entry_table hipe_slave_cache_entries;
 EPIPHANY_SRAM_DATA static int remaining_cache_bytes = CACHE_SIZE;
 EPIPHANY_SRAM_HEAP static char hipe_cache_area[CACHE_SIZE];
 
-void * __attribute__((section(".local_text"))) /* EPIPHANY_SRAM_HEAP */
+static void *
+cache_insert(struct fun_entrypoint *ptr, UWord corix) {
+    int i;
+    void *hot_address = hipe_cache_area
+	+ (CACHE_SIZE - remaining_cache_bytes);
+    unsigned entry_ix = hipe_cached_count[corix]++;
+#ifdef DEBUG
+    erts_fprintf(stderr, "Caching %T:%T/%d (%p) at %p+%#x\n",
+		 ptr->dbg_M, ptr->dbg_F, ptr->dbg_A,
+		 ptr->cold_address, hot_address, ptr->size);
+#else
+    erts_fprintf(stderr, "Caching %p at %p+%#x\n",
+		 ptr->cold_address, hot_address, ptr->size);
+#endif
+    memcpy(hot_address, ptr->cold_address, ptr->size);
+    ptr->table[corix].address = hot_address;
+    hipe_slave_cache_entries[corix][entry_ix].hot_address = hot_address;
+    hipe_slave_cache_entries[corix][entry_ix].entry_info = ptr;
+    remaining_cache_bytes -= ptr->size;
+
+    /* For safety */
+    epiphany_dram_fence();
+
+    /*
+     * ETODO: patch export entries of cached funs to call cache directly
+     * (complicates partial eviction)
+     */
+    HTRACE("Done! %d bytes remaining. Calling local code now...\n",
+	   remaining_cache_bytes);
+    return hot_address;
+}
+
+void *
 hipe_cold_call_c(void *optr, UWord corix) {
      struct fun_entrypoint *ptr = optr - offsetof(struct fun_entrypoint, table);
-#ifdef DEBUG
-     HTRACE("Calling %T:%T/%d (%p) through cold_call, coreix=%u\n",
-		  ptr->dbg_M, ptr->dbg_F, ptr->dbg_A,
-		  ptr->cold_address, corix);
-#else
-     HTRACE("Calling %p through cold_call, coreix=%u\n",
-		  ptr->cold_address, corix);
-#endif
+     Sint new_count;
 
      corix = corix / 8;
-     ptr->table[corix].count++;
-     if (unlikely(remaining_cache_bytes >= ptr->size
-		  && ptr->table[corix].count > CACHE_THRESH
+     new_count = ptr->table[corix].count + 1;
+     ptr->table[corix].count = new_count;
+
+     /* Inline heap fence */
+     while (*(volatile Sint*)&ptr->table[corix].count != new_count);
+
+#ifdef DEBUG
+     HTRACE("Calling %T:%T/%d (%p) through cold_call, coreix=%u, count=%d\n",
+	    ptr->dbg_M, ptr->dbg_F, ptr->dbg_A,
+	    ptr->cold_address, corix, new_count);
+#else
+     HTRACE("Calling %p through cold_call, coreix=%u, new_count=%d\n",
+	    ptr->cold_address, corix, new_count);
+#endif
+
+     if (unlikely(new_count > CACHE_THRESH
+		  && remaining_cache_bytes >= ptr->size
 		  && hipe_cached_count[corix] < MAX_CACHED_FUNS
 		  )) {
-	 int i;
-	 void *hot_address = hipe_cache_area
-	     + (CACHE_SIZE - remaining_cache_bytes);
-	 unsigned entry_ix = hipe_cached_count[corix]++;
-#ifdef DEBUG
-	 erts_fprintf(stderr, "Caching %T:%T/%d (%p) at %p+%#x\n",
-		      ptr->dbg_M, ptr->dbg_F, ptr->dbg_A,
-		      ptr->cold_address, hot_address, ptr->size);
-#else
-	 erts_fprintf(stderr, "Caching %p at %p+%#x\n",
-		      ptr->cold_address, hot_address, ptr->size);
-#endif
-	 memcpy(hot_address, ptr->cold_address, ptr->size);
-	 ptr->table[corix].address = hot_address;
-	 hipe_slave_cache_entries[corix][entry_ix].hot_address = hot_address;
-	 hipe_slave_cache_entries[corix][entry_ix].entry_info = ptr;
-	 remaining_cache_bytes -= ptr->size;
-
-	 /*
-	  * ETODO: patch export entries of cached funs to call cache directly
-	  * (complicates partial eviction)
-	  */
-	 HTRACE("Done! %d bytes remaining. Calling local code now...\n",
-		remaining_cache_bytes);
-	 return hot_address;
+	 return cache_insert(ptr, corix);
      }
   do_cold:
-    return ptr->cold_address;
+     return ptr->cold_address;
 }
 
 void

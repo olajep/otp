@@ -689,7 +689,7 @@ void hipe_inc_nstack(Process *p)
  * Some test cases need all 4096 words, unfortunately, until we get the
  * segmented stack
  */
-#define NSTACK_SIZE  1024
+#define NSTACK_SIZE  2048
 
 Eterm EPIPHANY_SRAM_HEAP nstack_storage[NSTACK_SIZE];
 

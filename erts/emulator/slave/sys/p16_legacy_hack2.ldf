@@ -93,10 +93,11 @@ SECTIONS
 	.reserved_crt0  ORIGIN(IVT_RAM) + LENGTH(IVT_RAM) + LENGTH(WORKGROUP_RAM) : {*.o(RESERVED_CRT0) *.o(reserved_crt0)} > INTERNAL_RAM
 
 	. = ADDR(.reserved_crt0) + SIZEOF(.reserved_crt0);
-	.text_bank0 . : {*.o(.text_bank0) *.o(.data_bank0)} > BANK0_SRAM
-
-	.local_heap  : {*.o(.local_heap) *.o(.local_text)} > SRAM_HEAP
-
+	.data_bank0 . : {*.o(.data_bank0)} > BANK0_SRAM
+	. = ADDR(.data_bank0) + SIZEOF(.data_bank0);
+	.text_bank0 . : {*.o(.text_bank0)} > BANK0_SRAM
+	
+	.local_heap   : {*.o(.local_heap)} > SRAM_HEAP
 
 	.code_dram    : {*.o(code_dram)   *.o(.code_dram)  } > EXTERNAL_DRAM_0
 	.shared_dram  : {*.o(shared_dram) *.o(.shared_dram)} > EXTERNAL_DRAM_1

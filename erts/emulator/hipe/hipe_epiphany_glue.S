@@ -542,18 +542,24 @@ _hipe_epiphany_inc_stack:
 /*
  * hipe_cold_call
  */
-	.section .local_text
+#ifndef DEBUG
+	.section .text_bank0
+#endif
 	.global _hipe_cold_call
 _hipe_cold_call:
 	mov	r0, r12
 	mov	TEMP_LR, lr
 	SPILL_ARG_REGS
+	mov	r12, %low(_hipe_cold_call_c)
 	mov	r1, CORIX
-	bl	_hipe_cold_call_c
+	movt	r12, %high(_hipe_cold_call_c)
+	jalr	r12
 	RESTORE_ARG_REGS
 	mov	lr, TEMP_LR
 	jr	r0
+#ifndef DEBUG
 	.section .text
+#endif
 
 #if defined(__linux__) && defined(__ELF__)
 .section .note.GNU-stack,"",%progbits
