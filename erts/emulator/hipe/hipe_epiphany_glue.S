@@ -23,6 +23,11 @@
 #include "hipe_epiphany_asm.h"
 #include "hipe_mode_switch.h"
 
+/*
+ * Tunables.
+ */
+#define HIPE_CACHE_THRESH	4
+
 	.text
 	.p2align 1
 

@@ -34,7 +34,7 @@
 
 /* Tunables */
 #define MAX_CACHED_FUNS 100
-#define CACHE_SIZE 4096
+#define CACHE_SIZE 8192
 
 #define MAX_CORES 16
 

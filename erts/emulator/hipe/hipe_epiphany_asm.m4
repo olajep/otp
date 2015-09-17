@@ -33,9 +33,7 @@ changecom(`/*', `*/')dnl
 define(LEAF_WORDS,16)dnl number of stack words for leaf functions
 define(NR_ARG_REGS,5)dnl admissible values are 0 to 8, inclusive
 define(NR_RET_REGS,4)dnl admissible values are 0 to 4, inclusive
-define(CACHE_THRESH,1)dnl admissible values are 0 and up
 
-`#define HIPE_CACHE_THRESH	'CACHE_THRESH
 `#define EPIPHANY_LEAF_WORDS	'LEAF_WORDS
 
 /*

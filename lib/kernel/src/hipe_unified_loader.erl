@@ -197,7 +197,9 @@ load_nosmp(Mod, Bin, Mode) ->
 
 %%------------------------------------------------------------------------
 
--record(fundef, {address     :: integer(),
+-record(fundef, {entry       :: integer(),
+		 offset      :: integer(),
+		 address     :: integer(),
 		 mfa         :: mfa(),
 		 is_closure  :: boolean(),
 		 is_exported :: boolean(),
@@ -240,12 +242,13 @@ load_common(Mod, Bin, Beam, OldReferencesToPatch, Mode) ->
       ReferencesToPatch = get_refs_from(MFAs, [], Mode),
       %% io:format("References to patch: ~w~n", [ReferencesToPatch]),
       ok = remove_refs_from(MFAs, Mode),
-      %% Write the code to memory.
+      %% Write the code to memory, nsert stack descriptors and generate caching
+      %% trampolines.
       update_code_size(CodeSize, CodeBinary, Mod, Beam),
-      CodeAddresses = enter_funs(Funs, Mode),
-      %% Patch all references in the code.
-      Addresses = load_funs(CodeAddresses, CodeAddresses, ConstAddr, ConstMap2,
-			    Mode),
+      Addresses = enter_funs(Funs, Mode),
+      %% Patch all dynamic references in the code
+      %%  Function calls, Atoms, Constants, System calls
+      load_funs(Addresses, Addresses, ConstAddr, ConstMap2, Mode),
 
       %% Tell the system where the loaded funs are. 
       %%  (patches the BEAM code to redirect to native.)
@@ -268,7 +271,7 @@ load_common(Mod, Bin, Beam, OldReferencesToPatch, Mode) ->
 	      [begin
 		 ClosurePatches = find_closure_patches(FunRefs),
 		 calculate_addresses(ClosurePatches, FunAddress, Addresses, Mode)
-	       end || #fundef{address=FunAddress, refs=FunRefs} <- CodeAddresses]),
+	       end || #fundef{address=FunAddress, refs=FunRefs} <- Addresses]),
 	  export_funs(Addresses, Mode),
 	  export_funs(Mod, BeamBinary, Addresses, AddressesOfClosuresToPatch, Mode)
       end,
@@ -293,20 +296,27 @@ enter_funs([Fun|Funs], Mode) ->
 enter_funs([], _) ->
   [].
 
-enter_fun(FunDef,  Mode) ->
-  #fundef{mfa=MFA, refs=Refs, code=CodeBinary} = FunDef,
+enter_fun(FunDef0,  Mode) ->
+  #fundef{mfa=MFA, refs=Refs, code=CodeBinary} = FunDef0,
   %% Find callees for which we may need trampolines.
   CalleeMFAs = find_callee_mfas(Refs, Mode),
   %% Write the code to memory.
   {CodeAddress,Trampolines} =
     enter_fun_code(CodeBinary, CalleeMFAs, MFA, Mode),
-  FunDef#fundef{address=CodeAddress,trampolines=Trampolines}.
 
-load_funs([Fun|Funs], Addresses, ConstAddr, ConstMap, Mode) ->
-  [load_fun(Fun, Addresses, ConstAddr, ConstMap, Mode)
-   |load_funs(Funs, Addresses, ConstAddr, ConstMap, Mode)];
-load_funs([], _, _ ,_ , _) ->
-  [].
+  %% Insert stack descriptors into hash table
+  SdescRefs = proplists_get_value(?SDESC, Refs, []),
+  SdescList =
+    patch_accum(sdesc, SdescRefs, CodeAddress, {[],CodeAddress}, [], Mode, []),
+
+  FunDef = FunDef0#fundef{address=CodeAddress,trampolines=Trampolines},
+  %% If required by the target, generate cache metadata and trampoline.
+  generate_cache_entry(Mode, FunDef, SdescList).
+
+
+load_funs(Funs, Addresses, ConstAddr, ConstMap, Mode) ->
+  Clos = fun(Fun) -> load_fun(Fun, Addresses, ConstAddr, ConstMap, Mode) end,
+  lists:foreach(Clos, Funs).
 
 load_fun(FunDef, Addresses, ConstAddr, ConstMap, Mode) ->
   #fundef{address=CodeAddress, labels=LabelMap, refs=Refs,
@@ -320,17 +330,14 @@ load_fun(FunDef, Addresses, ConstAddr, ConstMap, Mode) ->
 
   %% Patch all dynamic references in the code.
   %%  Function calls, Atoms, Constants, System calls
-  DynRefs = proplists:delete(?SDESC, Refs),
-  patch(DynRefs, CodeAddress, ConstMap, Addresses, TrampolineMap, Mode),
+  DynRefs = [Ref || {Key,_}=Ref<-Refs, Key=/=?SDESC], %% proplists:delete(?SDESC, Refs),
+  patch(DynRefs, CodeAddress, ConstMap, Addresses, TrampolineMap, Mode).
 
-  %% Insert stack descriptors into hash table
-  SdescRefs = proplists:get_value(?SDESC, Refs, []),
-  SdescList =
-    patch_accum(sdesc, SdescRefs, CodeAddress, {ConstMap,CodeAddress},
-		Addresses, Mode, []),
-
-  %% If required by the target, generate cache metadata and trampoline.
-  generate_cache_entry(Mode, FunDef, SdescList).
+%% We cannot call arbitrary modules
+proplists_get_value(_, [], Default) -> Default;
+proplists_get_value(K, [{K, V}|_], _) -> V;
+proplists_get_value(K, [_|Rest], Default) ->
+  proplists_get_value(K, Rest, Default).
 
 %%----------------------------------------------------------------
 %% If the target architecture needs it, emit a cache table, stack
@@ -345,8 +352,8 @@ generate_cache_entry(Mode, FunDef, Sdescs) ->
       Entry = cache_insert(Mode, Address, byte_size(Code), NumTramp, Sdescs,
 			   MFA),
       ?debug_msg("~.16b is cache entry for ~w~n", [Entry, MFA]),
-      FunDef#fundef{address=Entry};
-    _ -> FunDef
+      FunDef#fundef{entry=Entry};
+    _ -> FunDef#fundef{entry=Address}
   end.
 
 cache_insert(Mode, Address, CodeSize, NumTramp, Sdescs, MFA) ->
@@ -446,8 +453,8 @@ exports([Offset,M,F,A,IsClosure,IsExported|Rest], BaseAddress, MFAs, Addresses) 
     _false ->
       MFA = {M,F,A},
       Address = BaseAddress + Offset,
-      FunDef = #fundef{address=Address, mfa=MFA, is_closure=IsClosure,
-		       is_exported=IsExported},
+      FunDef = #fundef{offset=Offset, address=Address, entry=Address, mfa=MFA,
+		       is_closure=IsClosure, is_exported=IsExported},
       exports(Rest, BaseAddress, [MFA|MFAs], [FunDef|Addresses])
   end;
 exports([], _, MFAs, Addresses) ->
@@ -462,20 +469,24 @@ partition_into_funs(ExportMap, LabelMap, Refs, CodeBinary) when ExportMap =/= []
 
 %% XXX: could use some optimisation
 %% Funs :: [{FunDef, LabelMap, Refs}]
-partition_by_funs([FunDef=#fundef{address=Offset}
-		     |Rest=[#fundef{address=NextOffset}|_]],
+partition_by_funs([FunDef=#fundef{offset=Offset}
+		     |Rest=[#fundef{offset=NextOffset}|_]],
 		  LabelMap, Refs, CodeBinary) when Offset < NextOffset ->
   CodeSize = NextOffset-Offset,
   <<FunCode:CodeSize/binary, CodeRest/binary>> = CodeBinary,
-  [FunDef#fundef{labels = partition_labels(Offset, NextOffset, LabelMap),
-		 refs   = partition_refs(Offset, NextOffset, Refs),
-		 code   = FunCode}
+  [FunDef#fundef{labels  = partition_labels(Offset, NextOffset, LabelMap),
+		 refs    = partition_refs(Offset, NextOffset, Refs),
+		 code    = FunCode,
+		 address = undefined,
+		 entry   = undefined}
    |partition_by_funs(Rest, LabelMap, Refs, CodeRest)];
-partition_by_funs([FunDef=#fundef{address=Offset}], LabelMap, Refs, FunCode) ->
+partition_by_funs([FunDef=#fundef{offset=Offset}], LabelMap, Refs, FunCode) ->
   %% Atoms are greater than any integer
   [FunDef#fundef{labels = partition_labels(Offset, max, LabelMap),
 		 refs   = partition_refs(Offset, max, Refs),
-		 code   = FunCode}].
+		 code   = FunCode,
+		 address = undefined,
+		 entry   = undefined}].
 
 partition_labels(Offset, NextOffset, LabelMap) ->
   [{No, LabelOff - Offset}
@@ -534,26 +545,26 @@ find_closure_refs([], Refs) ->
 %%------------------------------------------------------------------------
 
 export_funs([FunDef | Addresses], Mode) ->
-  #fundef{address=Address, mfa=MFA, is_closure=IsClosure,
+  #fundef{entry=Entry, mfa=MFA, is_closure=IsClosure,
 	  is_exported=IsExported} = FunDef,
   ?IF_DEBUG({M,F,A} = MFA, no_debug),
   ?IF_DEBUG(
      case IsClosure of
        false ->
 	 ?debug_msg("LINKING: ~w:~w/~w to (0x~.16b)\n",
-		    [M,F,A, Address]);
+		    [M,F,A, Entry]);
        true ->
 	 ?debug_msg("LINKING: ~w:~w/~w to closure (0x~.16b)\n",
-		    [M,F,A, Address])
+		    [M,F,A, Entry])
      end, no_debug),
-  hipe_bifs:set_funinfo_native_address(Mode, MFA, {Address, IsExported}),
-  hipe_bifs:set_native_address(Mode, MFA, {Address, IsClosure}),
+  hipe_bifs:set_funinfo_native_address(Mode, MFA, {Entry, IsExported}),
+  hipe_bifs:set_native_address(Mode, MFA, {Entry, IsClosure}),
   export_funs(Addresses, Mode);
 export_funs([], _Mode) ->
   ok.
 
 export_funs(Mod, Beam, Addresses, ClosuresToPatch, Mode) ->
-  Fs = [{F,A,Address} || #fundef{address=Address, mfa={_M,F,A}} <- Addresses],
+  Fs = [{F,A,Entry} || #fundef{entry=Entry, mfa={_M,F,A}} <- Addresses],
   BifMod = case Mode of slave -> epiphany; master -> code end,
   Mod = BifMod:make_stub_module(Mod, Beam, {Fs,ClosuresToPatch}),
   ok.
@@ -1093,7 +1104,7 @@ get_native_address(MFA, Addresses, RemoteOrLocal, Mode) ->
       hipe_bifs:find_na_or_make_stub(Mode, MFA, IsRemote)
   end.
 
-mfa_to_address(MFA, [#fundef{address=Adr, mfa=MFA,
+mfa_to_address(MFA, [#fundef{entry=Adr, mfa=MFA,
 			     is_exported=IsExported}|_Rest], RemoteOrLocal) ->
   case RemoteOrLocal of
     local ->
