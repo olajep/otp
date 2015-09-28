@@ -57,6 +57,8 @@ struct segment {
 #define ARE_SEGMENTS_CONTIGUOUS(S1, S2) \
     ((void*)(S1) + (S1)->length + HEADER_SZ == (S2))
 
+#define SORTED_FREELIST 0
+
 /*
  * The list that starts at first_seg and continues with the ->next pointers
  * is sorted by memory address to facilitate block merging.
@@ -98,6 +100,14 @@ static void debug_verify(const char *file, int line, const char *func) {
 			 file, line, func,
 			 free, free->prev_free, last);
 	}
+#if SORTED_FREELIST
+	if (last >= free) {
+	    die = 1;
+	    erts_fprintf(stderr, "%s:%d:%s(): List consistency broken! "
+			 "Segment %#x comes after %#x\n", file, line, func,
+			 last, free);
+	}
+#endif
 	last = free;
 	free = free->next_free;
     }
@@ -150,7 +160,7 @@ insert_new(struct segment *new)
 	return;
     }
 
-    /* Fiind last segment that comes before new */
+    /* Find last segment that comes before new */
     while (seg->next && seg->next < new) seg = seg->next;
 
     new->prev = seg;
@@ -168,6 +178,7 @@ insert_free(struct segment *seg)
     ASSERT(seg->next_free == NULL);
     ASSERT(seg->length < 32 * 1024 * 1024);
 
+#if !SORTED_FREELIST
     seg->next_free = NULL;
     seg->prev_free = last_free;
     last_free = seg;
@@ -178,6 +189,36 @@ insert_free(struct segment *seg)
 	ASSERT(first_free == NULL);
 	first_free = seg;
     }
+#else
+    struct segment *after = seg->prev;
+    while(after && !after->is_free) after = after->prev;
+    if (!after) {
+	seg->next_free = first_free;
+	seg->prev_free = NULL;
+	first_free = seg;
+	if (seg->next_free) {
+	    ASSERT(seg->next_free > seg);
+	    ASSERT(seg->next_free->prev_free == NULL);
+	    seg->next_free->prev_free = seg;
+	} else {
+	    ASSERT(last_free == NULL);
+	    last_free = seg;
+	}
+    } else {
+	ASSERT(after < seg);
+	seg->next_free = after->next_free;
+	seg->prev_free = after;
+	after->next_free = seg;
+	if (seg->next_free) {
+	    ASSERT(seg->next_free > seg);
+	    ASSERT(seg->next_free->prev_free == after);
+	    seg->next_free->prev_free = seg;
+	} else {
+	    ASSERT(last_free == after);
+	    last_free = seg;
+	}
+    }
+#endif
 
     used -= seg->length + HEADER_SZ;
     SET_SEGMENT_FREE(seg, 1);
