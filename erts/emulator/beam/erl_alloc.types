@@ -112,7 +112,8 @@ allocator	BINARY		true		binary_alloc
 allocator	DRIVER		true		driver_alloc
 
 +if slave
-allocator       SLAVE           true            slave_alloc
+allocator	SLAVE		true		slave_alloc
+allocator	SLAVE_LL	true		slave_ll_alloc
 +endif
 
 
@@ -335,8 +336,8 @@ type	SL_MPATHS	SHORT_LIVED	SYSTEM		sl_migration_paths
 type	HIPE		SYSTEM		SYSTEM		hipe_data
 
 +if slave
-type	HIPE_SLAVE		SLAVE		SYSTEM	hipe_slave_data
-type	HIPE_DATA		SLAVE		SYSTEM	hipe_const_data
+type	HIPE_SLAVE		SLAVE_LL	SYSTEM	hipe_slave_data
+type	HIPE_DATA		SLAVE_LL	SYSTEM	hipe_const_data
 type	HIPE_DATA_FALLBACK	SYSTEM		SYSTEM	hipe_const_data_fallback
 +else
 type	HIPE_DATA		SYSTEM		SYSTEM	hipe_const_data
@@ -388,18 +389,18 @@ type	PORT_DATA_HEAP	STANDARD	SYSTEM		port_data_heap
 +endif
 
 +if slave
-type	SLAVE_COMMAND		SLAVE	SYSTEM		slave_command
-type	SLAVE_HEAP		SLAVE	PROCESSES	slave_heap
-type	SLAVE_HEAP_FRAG		SLAVE	PROCESSES	slave_heap_frag
-type	SLAVE_EXPORT		SLAVE	CODE		slave_export_entry
-type	SLAVE_CODE		SLAVE	CODE		slave_code_data
-type	SLAVE_PREPARED_CODE	SLAVE	CODE		slave_prepared_code
-type	SLAVE_EXPORT_TABLE	SLAVE	CODE		slave_export_tab
-type	SLAVE_MSG_REF	        SLAVE	PROCESSES	slave_msg_ref
-type	SLAVE_MODULE	        SLAVE	CODE		slave_module_entry
-type	SLAVE_MODULE_TABLE	SLAVE	CODE		slave_module_tab
-type	SLAVE_MODULE_REFS	SLAVE	CODE		slave_module_refs
-type	SLAVE_BINARY	        SLAVE	BINARIES	slave_binary
+type	SLAVE_COMMAND		SLAVE_LL	SYSTEM		slave_command
+type	SLAVE_HEAP		SLAVE		PROCESSES	slave_heap
+type	SLAVE_HEAP_FRAG		SLAVE		PROCESSES	slave_heap_frag
+type	SLAVE_EXPORT		SLAVE_LL	CODE		slave_export_entry
+type	SLAVE_CODE		SLAVE_LL	CODE		slave_code_data
+type	SLAVE_PREPARED_CODE	SLAVE_LL	CODE		slave_prepared_code
+type	SLAVE_EXPORT_TABLE	SLAVE_LL	CODE		slave_export_tab
+type	SLAVE_MSG_REF	        SLAVE		PROCESSES	slave_msg_ref
+type	SLAVE_MODULE	        SLAVE_LL	CODE		slave_module_entry
+type	SLAVE_MODULE_TABLE	SLAVE_LL	CODE		slave_module_tab
+type	SLAVE_MODULE_REFS	SLAVE_LL	CODE		slave_module_refs
+type	SLAVE_BINARY	        SLAVE		BINARIES	slave_binary
 
 # Fun entries are read by both emulators, so they need to be allocated with the
 # SLAVE allocator.
@@ -410,30 +411,30 @@ type	SLAVE_BINARY	        SLAVE	BINARIES	slave_binary
 #
 # The same applies for the atom allocators.
 
-type	FUN_ENTRY			SLAVE		CODE	fun_entry
+type	FUN_ENTRY			SLAVE_LL	CODE	fun_entry
 type	FUN_ENTRY_FALLBACK		LONG_LIVED	CODE	fun_entry_fallback
-type	ATOM				SLAVE		ATOM	atom_entry
-type	ATOM_TXT			SLAVE		ATOM	atom_text
-type	ATOM_TABLE			SLAVE		ATOM	atom_tab
+type	ATOM				SLAVE_LL	ATOM	atom_entry
+type	ATOM_TXT			SLAVE_LL	ATOM	atom_text
+type	ATOM_TABLE			SLAVE_LL	ATOM	atom_tab
 type	ATOM_FALLBACK			LONG_LIVED	ATOM	atom_entry_fallback
 type	ATOM_TXT_FALLBACK		LONG_LIVED	ATOM	atom_text_fallback
 type	ATOM_TABLE_FALLBACK		LONG_LIVED	ATOM	atom_tab_fallback
-type	SLAVE_MISC			SLAVE		SYSTEM	slave_misc
+type	SLAVE_MISC			SLAVE_LL	SYSTEM	slave_misc
 type	SLAVE_MISC_FALLBACK		LONG_LIVED	SYSTEM	slave_misc_fallback
-type	EXPORT_TABLE	        	SLAVE	        CODE	export_tab
+type	EXPORT_TABLE			SLAVE_LL	CODE	export_tab
 type	EXPORT_TABLE_FALLBACK		LONG_LIVED	CODE	export_tab_fallback
 
-type  	LL_TEMP_TERM            	SLAVE           SYSTEM	ll_temp_term
-type	NIF_TRAP_EXPORT	        	SLAVE	        CODE	nif_trap_export_entry
-type	EXPORT		        	SLAVE           CODE	export_entry
+type	LL_TEMP_TERM			SLAVE_LL	SYSTEM	ll_temp_term
+type	NIF_TRAP_EXPORT			SLAVE		CODE	nif_trap_export_entry
+type	EXPORT				SLAVE_LL	CODE	export_entry
 +if halfword
-type  	LL_TEMP_TERM_FALLBACK           LONG_LIVED_LOW	SYSTEM	ll_temp_term_fallback
+type	LL_TEMP_TERM_FALLBACK		LONG_LIVED_LOW	SYSTEM	ll_temp_term_fallback
 type	NIF_TRAP_EXPORT_FALLBACK	STANDARD_LOW	CODE	nif_trap_export_entry_fallback
-type	EXPORT_FALLBACK		        LONG_LIVED_LOW	CODE	export_entry_fallback
+type	EXPORT_FALLBACK			LONG_LIVED_LOW	CODE	export_entry_fallback
 +else # "fullword"
-type  	LL_TEMP_TERM_FALLBACK           LONG_LIVED	SYSTEM	ll_temp_term_fallback
+type	LL_TEMP_TERM_FALLBACK		LONG_LIVED	SYSTEM	ll_temp_term_fallback
 type	NIF_TRAP_EXPORT_FALLBACK	STANDARD	CODE	nif_trap_export_entry_fallback
-type	EXPORT_FALLBACK		        LONG_LIVED	CODE	export_entry_fallback
+type	EXPORT_FALLBACK			LONG_LIVED	CODE	export_entry_fallback
 +endif
 
 +else

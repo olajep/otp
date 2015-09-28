@@ -747,6 +747,11 @@ erts_alloc_init(int *argc, char **argv, ErtsAllocInitOpts *eaiop)
     erts_allctrs[ERTS_ALC_A_SLAVE].free			= erl_slave_free;
     /* It's enabled later, when it gets memory to manage */
     erts_allctrs_info[ERTS_ALC_A_SLAVE].enabled		= 0;
+
+    erts_allctrs[ERTS_ALC_A_SLAVE_LL].alloc		= erl_slave_alloc;
+    erts_allctrs[ERTS_ALC_A_SLAVE_LL].realloc		= erl_slave_realloc;
+    erts_allctrs[ERTS_ALC_A_SLAVE_LL].free		= erl_slave_free;
+    erts_allctrs_info[ERTS_ALC_A_SLAVE_LL].enabled	= 0;
 #endif
 
 #if HALFWORD_HEAP
@@ -2659,12 +2664,12 @@ erts_alloc_util_allocators(void *proc)
     Uint sz;
     int i;
     /*
-     * Currently all allocators except sys_alloc and slave_alloc are
-     * alloc_util allocators.
+     * Currently all allocators except sys_alloc, slave_alloc and slave_ll_alloc
+     * are alloc_util allocators.
      */
     sz = ((ERTS_ALC_A_MAX + 1 - ERTS_ALC_A_MIN) -
 #ifdef ERTS_SLAVE_EMU_ENABLED
-	  2
+	  3
 #else
 	  1
 #endif
@@ -2677,6 +2682,7 @@ erts_alloc_util_allocators(void *proc)
 	case ERTS_ALC_A_SYSTEM:
 #ifdef ERTS_SLAVE_EMU_ENABLED
 	case ERTS_ALC_A_SLAVE:
+	case ERTS_ALC_A_SLAVE_LL:
 #endif
 	    break;
 	default: {

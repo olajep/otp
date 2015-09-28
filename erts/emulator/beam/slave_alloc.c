@@ -391,43 +391,8 @@ fallback(ErtsAlcType_t n)
     }
 }
 
-#if SORTED_FREELIST
-/*
- * Wether an allocation of type n should be allocated long_lived.
- */
-static int
-long_lived(ErtsAlcType_t n)
-{
-    switch(n) {
-    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_COMMAND):
-    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_EXPORT):
-    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_CODE):
-    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_PREPARED_CODE):
-    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_EXPORT_TABLE):
-    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_MODULE):
-    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_MODULE_TABLE):
-    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_MODULE_REFS):
-    case ERTS_ALC_T2N(ERTS_ALC_T_FUN_ENTRY):
-    case ERTS_ALC_T2N(ERTS_ALC_T_ATOM):
-    case ERTS_ALC_T2N(ERTS_ALC_T_ATOM_TXT):
-    case ERTS_ALC_T2N(ERTS_ALC_T_ATOM_TABLE):
-    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_MISC):
-    case ERTS_ALC_T2N(ERTS_ALC_T_LL_TEMP_TERM):
-    case ERTS_ALC_T2N(ERTS_ALC_T_EXPORT_TABLE):
-    case ERTS_ALC_T2N(ERTS_ALC_T_EXPORT):
-#ifdef HIPE
-    case ERTS_ALC_T2N(ERTS_ALC_T_HIPE_DATA):
-    case ERTS_ALC_T2N(ERTS_ALC_T_HIPE_SLAVE):
-#endif
-	return 1;
-    default:
-	return 0;
-    }
-}
-#endif
-
 void *
-erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
+erl_slave_alloc(ErtsAlcType_t n, void *extra, Uint size)
 {
     struct segment *free;
 #ifdef DEBUG
@@ -435,20 +400,18 @@ erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 #endif
     void *res = NULL;
     if (fallback_enabled) {
-	return erts_alloc_fnf(fallback(t), size);
+	return erts_alloc_fnf(fallback(n), size);
     }
 
     size = ALIGN(size, 16);
     LOCK();
 #if SORTED_FREELIST
-    if (!long_lived(t))
-#endif
-    {
-	free = first_free;
+    if (ERTS_ALC_N_MIN_A_SLAVE_LL <= n && n <= ERTS_ALC_N_MAX_A_SLAVE_LL) {
+	free = last_free;
 	while(free) {
 	    if (free->length >= size) {
 		if (free->length - size >= SPLIT_THRESHOLD)
-		    split_free(free, size);
+		    free = rev_split_free(free, size);
 		unlink_free(free);
 		res = ((void*)free) + HEADER_SZ;
 		break;
@@ -457,16 +420,16 @@ erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 	    count ++;
 	    max = MAX(max, free->length);
 #  endif
-	    free = free->next_free;
+	    free = free->prev_free;
 	}
-    }
-#if SORTED_FREELIST
-    else {
-	free = last_free;
+    } else
+#endif /* SORTED_FREELIST */
+    {
+	free = first_free;
 	while(free) {
 	    if (free->length >= size) {
 		if (free->length - size >= SPLIT_THRESHOLD)
-		    free = rev_split_free(free, size);
+		    split_free(free, size);
 		unlink_free(free);
 		res = ((void*)free) + HEADER_SZ;
 		break;
@@ -492,10 +455,10 @@ erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 }
 
 void
-erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
+erl_slave_free(ErtsAlcType_t n, void *extra, void *ptr)
 {
     if (fallback_enabled) {
-	erts_free(fallback(t), ptr);
+	erts_free(fallback(n), ptr);
     } else {
 	struct segment *seg = SEGMENT(ptr);
 	LOCK();
@@ -506,15 +469,15 @@ erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
     }
 }
 
-void *erl_slave_realloc(ErtsAlcType_t t, void *extra, void *block, Uint size) {
+void *erl_slave_realloc(ErtsAlcType_t n, void *extra, void *block, Uint size) {
     if (fallback_enabled) {
-	return erts_realloc(fallback(t), block, size);
+	return erts_realloc(fallback(n), block, size);
     } else {
-	void *newblock = erl_slave_alloc(t, extra, size);
+	void *newblock = erl_slave_alloc(n, extra, size);
 	Uint tocopy = MIN(SEGMENT(block)->length, size);
 	if (newblock) {
 	    sys_memcpy(newblock, block, tocopy);
-	    erl_slave_free(t, extra, block);
+	    erl_slave_free(n, extra, block);
 	}
 	return newblock;
     }
