@@ -1,8 +1,15 @@
 TS_MODS=pdict_SUITE maps_SUITE map_SUITE basic_binary_SUITE bs_match_tail_SUITE
-TS_MODS+=bs_bincomp_SUITE bs_match_bin_SUITE bs_SUITE
+TS_MODS+=bs_bincomp_SUITE bs_match_bin_SUITE
 
-# binary_SUITE, bs_utf_SUITE, bs_match_misc_SUITE, bs_match_int_SUITE,
-# bs_construct_SUITE are known to be broken with HiPE
+ifeq ($(findstring beam,$(MAKECMDGOALS)),beam)
+# These suites are known to be broken with HiPE
+TS_MODS+=binary_SUITE bs_utf_SUITE bs_match_misc_SUITE bs_match_int_SUITE
+TS_MODS+=bs_construct_SUITE
+else
+# bs_SUITE is a HiPE suite; it compiles all its tests at runtime.
+TS_MODS+=bs_SUITE
+endif
+
 
 TS_OBJS=$(addsuffix .beam,$(TS_MODS))
 OBJS=regressions.beam unit.beam matmul.beam fannkuchredux.beam mandelbrot.beam \
@@ -46,11 +53,11 @@ test: $(addprefix beam/,$(OBJS)) $(addprefix debug/,$(OBJS))
 
 fast: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS))
 	TARGET=$(TARGET) SLAVE_TARGET=$(SLAVE_TARGET) \
-		./run --fast $(FLAGS) $(TS_MODS)
+		./run $(FLAGS) --fast $(TS_MODS)
 
 beam: $(addprefix beam/,$(OBJS))
 	TARGET=$(TARGET) SLAVE_TARGET=$(SLAVE_TARGET) \
-		./run --beam $(FLAGS) $(TS_MODS)
+		./run $(FLAGS) --beam $(TS_MODS)
 
 compile: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS)) \
 	$(addprefix debug/,$(OBJS))
