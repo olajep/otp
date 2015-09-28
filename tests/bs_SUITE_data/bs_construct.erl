@@ -6,7 +6,7 @@
 
 -export([test/0]).
 
--define(line_trace,1).
+%% -define(line_trace,1).
 -include_lib("test_server/include/test_server.hrl").
 
 test() ->

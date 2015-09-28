@@ -419,7 +419,7 @@ type	ATOM_FALLBACK			LONG_LIVED	ATOM	atom_entry_fallback
 type	ATOM_TXT_FALLBACK		LONG_LIVED	ATOM	atom_text_fallback
 type	ATOM_TABLE_FALLBACK		LONG_LIVED	ATOM	atom_tab_fallback
 type	SLAVE_MISC			SLAVE		SYSTEM	slave_misc
-type	SLAVE_MISC_FALLBACK		STANDARD	SYSTEM	slave_misc_fallback
+type	SLAVE_MISC_FALLBACK		LONG_LIVED	SYSTEM	slave_misc_fallback
 type	EXPORT_TABLE	        	SLAVE	        CODE	export_tab
 type	EXPORT_TABLE_FALLBACK		LONG_LIVED	CODE	export_tab_fallback
 

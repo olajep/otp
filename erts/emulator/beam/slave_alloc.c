@@ -57,7 +57,7 @@ struct segment {
 #define ARE_SEGMENTS_CONTIGUOUS(S1, S2) \
     ((void*)(S1) + (S1)->length + HEADER_SZ == (S2))
 
-#define SORTED_FREELIST 0
+#define SORTED_FREELIST 1
 
 /*
  * The list that starts at first_seg and continues with the ->next pointers
@@ -172,6 +172,10 @@ insert_new(struct segment *new)
 static void
 insert_free(struct segment *seg)
 {
+#if SORTED_FREELIST
+    struct segment *after;
+#endif
+
     ASSERT(seg->prev != NULL || first_seg == seg);
     ASSERT(!IS_SEGMENT_FREE(seg));
     ASSERT(seg->prev_free == NULL);
@@ -190,7 +194,7 @@ insert_free(struct segment *seg)
 	first_free = seg;
     }
 #else
-    struct segment *after = seg->prev;
+    after = seg->prev;
     while(after && !after->is_free) after = after->prev;
     if (!after) {
 	seg->next_free = first_free;
@@ -251,6 +255,17 @@ split_free(struct segment *seg, size_t size)
     insert_free(second);
     DEBUG_VERIFY();
 }
+
+#if SORTED_FREELIST
+static struct segment *
+rev_split_free(struct segment *seg, size_t size)
+{
+    size_t other_size = seg->length - HEADER_SZ - size;
+    split_free(seg, other_size);
+    ASSERT(seg->next->length == size);
+    return seg->next;
+}
+#endif
 
 static void
 unlink_free(struct segment *seg)
@@ -376,6 +391,41 @@ fallback(ErtsAlcType_t n)
     }
 }
 
+#if SORTED_FREELIST
+/*
+ * Wether an allocation of type n should be allocated long_lived.
+ */
+static int
+long_lived(ErtsAlcType_t n)
+{
+    switch(n) {
+    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_COMMAND):
+    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_EXPORT):
+    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_CODE):
+    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_PREPARED_CODE):
+    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_EXPORT_TABLE):
+    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_MODULE):
+    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_MODULE_TABLE):
+    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_MODULE_REFS):
+    case ERTS_ALC_T2N(ERTS_ALC_T_FUN_ENTRY):
+    case ERTS_ALC_T2N(ERTS_ALC_T_ATOM):
+    case ERTS_ALC_T2N(ERTS_ALC_T_ATOM_TXT):
+    case ERTS_ALC_T2N(ERTS_ALC_T_ATOM_TABLE):
+    case ERTS_ALC_T2N(ERTS_ALC_T_SLAVE_MISC):
+    case ERTS_ALC_T2N(ERTS_ALC_T_LL_TEMP_TERM):
+    case ERTS_ALC_T2N(ERTS_ALC_T_EXPORT_TABLE):
+    case ERTS_ALC_T2N(ERTS_ALC_T_EXPORT):
+#ifdef HIPE
+    case ERTS_ALC_T2N(ERTS_ALC_T_HIPE_DATA):
+    case ERTS_ALC_T2N(ERTS_ALC_T_HIPE_SLAVE):
+#endif
+	return 1;
+    default:
+	return 0;
+    }
+}
+#endif
+
 void *
 erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 {
@@ -388,23 +438,47 @@ erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 	return erts_alloc_fnf(fallback(t), size);
     }
 
-    LOCK();
-    free = first_free;
     size = ALIGN(size, 16);
-    while(free) {
-	if (free->length >= size) {
-	    if (free->length - size >= SPLIT_THRESHOLD)
-		split_free(free, size);
-	    unlink_free(free);
-	    res = ((void*)free) + HEADER_SZ;
-	    break;
-	}
-#ifdef DEBUG
-	count ++;
-	max = MAX(max, free->length);
+    LOCK();
+#if SORTED_FREELIST
+    if (!long_lived(t))
 #endif
-	free = free->next_free;
+    {
+	free = first_free;
+	while(free) {
+	    if (free->length >= size) {
+		if (free->length - size >= SPLIT_THRESHOLD)
+		    split_free(free, size);
+		unlink_free(free);
+		res = ((void*)free) + HEADER_SZ;
+		break;
+	    }
+#  ifdef DEBUG
+	    count ++;
+	    max = MAX(max, free->length);
+#  endif
+	    free = free->next_free;
+	}
     }
+#if SORTED_FREELIST
+    else {
+	free = last_free;
+	while(free) {
+	    if (free->length >= size) {
+		if (free->length - size >= SPLIT_THRESHOLD)
+		    free = rev_split_free(free, size);
+		unlink_free(free);
+		res = ((void*)free) + HEADER_SZ;
+		break;
+	    }
+#  ifdef DEBUG
+	    count ++;
+	    max = MAX(max, free->length);
+#  endif
+	    free = free->prev_free;
+	}
+    }
+#endif /* SORTED_FREELIST */
     if (!res) {
 	erts_printf("Failed to allocate %d bytes shared DRAM!\n", size);
 #ifdef DEBUG
