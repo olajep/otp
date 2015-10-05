@@ -1,8 +1,13 @@
-BENCH_MODS=mandelbrot matmul fannkuchredux
+BENCH_MODS=binarytrees mandelbrot matmul fannkuchredux
+## regexdna # not used -- spends all its time in PCRE anyway
+## fasta # requires erts_internal:port_command/3, but crashes after a while with
+	 # beam/erl_port_task.c:1533:erts_port_task_schedule(): Internal error:
+	 # Missing run-queue
 BENCH_OBJS=$(addsuffix .beam,$(BENCH_MODS))
 OBJS=driver.beam $(BENCH_OBJS)
 
-EXTRA_OPT_OBJS=lists.beam epiphany.beam epiphany_server.beam re.beam
+EXTRA_OPT_OBJS=lists.beam epiphany.beam epiphany_server.beam colib.beam
+# re.beam
 
 ERL_TOP=$(shell readlink -f ..)
 

@@ -41,7 +41,7 @@
 -define(SR, -1.5).
 -define(SI, -1).
 
-prepare() -> {nil, [?MODULE, lists, epiphany, epiphany_server]}.
+prepare() -> {nil, [lists]}.
 
 bench(nil) ->
     main(["64"]).
@@ -100,7 +100,7 @@ row(M,X, Y2, N, Bits, Bytes, BitC) ->
 %Mandelbrot algorithm
 m(Iter, CR,CI) -> m(Iter - 1, CR, CI, CR, CI).
 
-m(Iter, R, I, CR, CI) ->
+m(Iter, R, I, CR, CI) when is_float(R), is_float(I), is_float(CR), is_float(CI) ->
     case R*R+I*I > ?LIM_SQR of
 	false when Iter > 0 -> m(Iter-1, R*R-I*I+CR, 2*R*I+CI, CR, CI);
 	false -> 1;
