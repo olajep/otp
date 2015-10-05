@@ -1,16 +1,15 @@
-TS_MODS=pdict_SUITE maps_SUITE map_SUITE basic_binary_SUITE
-TS_MODS+=bs_match_tail_SUITE
-TS_MODS+=bs_bincomp_SUITE
+TS_MODS=pdict_SUITE maps_SUITE map_SUITE basic_binary_SUITE bs_match_tail_SUITE
+TS_MODS+=bs_bincomp_SUITE bs_match_bin_SUITE
+
+ifeq ($(findstring beam,$(MAKECMDGOALS)),beam)
+# These suites are known to be broken with HiPE
+TS_MODS+=binary_SUITE bs_utf_SUITE bs_match_misc_SUITE bs_match_int_SUITE
+TS_MODS+=bs_construct_SUITE
+else
+# bs_SUITE is a HiPE suite; it compiles all its tests at runtime.
 TS_MODS+=bs_SUITE
-
-# binary_SUITE, bs_utf_SUITE, bs_match_misc_SUITE, bs_match_int_SUITE,
-# bs_construct_SUITE are known to be broken with HiPE
-
-ifneq ($(findstring --mods-conc,$(FLAGS)),--mods-conc)
-# bs_match_bin makes a huge allocation. It fails that allocation in concurrent
-# testing due to memory pressure and fragmentation.
-TS_MODS+=bs_match_bin_SUITE
 endif
+
 
 TS_OBJS=$(addsuffix .beam,$(TS_MODS))
 OBJS=regressions.beam unit.beam matmul.beam fannkuchredux.beam mandelbrot.beam \
@@ -35,6 +34,9 @@ BINDIR=$(ERL_TOP)/bin/$(TARGET)
 ERL=$(ERL_TOP)/bin/erl
 ERLC=$(ERL_TOP)/bin/erlc
 
+# Fully concurrent testing
+FLAGS=--mods-conc
+
 # Hipe targets whatever emulator is running it, so we need to build the debug
 # files with debug erlc. An alternative would be to build a HiPE cross-compiler
 # (not very easy without modifying the existing build scripts)
@@ -51,11 +53,11 @@ test: $(addprefix beam/,$(OBJS)) $(addprefix debug/,$(OBJS))
 
 fast: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS))
 	TARGET=$(TARGET) SLAVE_TARGET=$(SLAVE_TARGET) \
-		./run --fast $(FLAGS) $(TS_MODS)
+		./run $(FLAGS) --fast $(TS_MODS)
 
 beam: $(addprefix beam/,$(OBJS))
 	TARGET=$(TARGET) SLAVE_TARGET=$(SLAVE_TARGET) \
-		./run --beam $(FLAGS) $(TS_MODS)
+		./run $(FLAGS) --beam $(TS_MODS)
 
 compile: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS)) \
 	$(addprefix debug/,$(OBJS))

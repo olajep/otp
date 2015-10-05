@@ -39,14 +39,19 @@
 %%      phash2(Binary, N)
 %%
 
+%% -define(line_trace,1).
 -include_lib("test_server/include/test_server.hrl").
 
--ifdef(notdef).
+-ifdef(line_trace).
 -define(TRACE_FMT(F,A), io:format(F, A)).
 -define(TRACE_PUT(C), io:put_chars(C)).
+-define(VERBOSE_FMT(F,A), io:format(F, A)).
+-define(VERBOSE_PUT(C), io:put_chars(C)).
 -else.
 -define(TRACE_FMT(F,A), ok).
 -define(TRACE_PUT(C), ok).
+-define(VERBOSE_FMT(F,A), ok).
+-define(VERBOSE_PUT(C), ok).
 -endif.
 
 -export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1, 
@@ -76,7 +81,10 @@ suite() -> [{ct_hooks,[ts_install_cth]},
 	    {timetrap,{minutes,4}}].
 
 all() -> 
-    [copy_terms, conversions, deep_lists, deep_bitstr_lists,
+    [
+     t_split_binary, bad_terms, %% Slow, start early
+
+     copy_terms, conversions, deep_lists, deep_bitstr_lists,
      bad_split,
      bad_list_to_binary, bad_binary_to_list, terms,
      terms_float, float_middle_endian, external_size, t_iolist_size,
@@ -90,10 +98,9 @@ all() ->
      bit_sized_binary_sizes, otp_6817, otp_8117, deep,
      obsolete_funs, robustness, otp_8180,
      %%trapping, %% Requires system tasks
-     large,
+     large
      %% error_after_yield, %% Requires tracing
      %% cmp_old_impl, %% Does not work outside test_server
-     t_split_binary, bad_terms %% Slow
     ].
 
 groups() -> 
@@ -126,8 +133,8 @@ copy_terms(Config) when is_list(Config) ->
 		Pid ! Term,
 		receive
 		    Term -> ok;
-		    Other ->
-			io:format("Sent: ~P\nGot back:~P", [Term,12,Other,12]),
+		    _Other ->
+			?VERBOSE_FMT("Sent: ~P\nGot back:~P", [Term,12,_Other,12]),
 			?t:fail(bad_term)
 		end
 	end,
@@ -223,9 +230,9 @@ test_deep_list(List) ->
     ?line Bitsize = 8*Size,
     ?line FlatList = binary_to_list(Bin),
     ?line FlatList = bitstring_to_list(Bin),
-    io:format("testing plain binary..."),
+    ?VERBOSE_PUT("testing plain binary..."),
     ?line t_binary_to_list_3(FlatList, Bin, 1, Size),
-    io:format("testing unaligned sub binary..."),
+    ?VERBOSE_PUT("testing unaligned sub binary..."),
     ?line t_binary_to_list_3(FlatList, make_unaligned_sub_binary(Bin), 1, Size).
 
 t_binary_to_list_3(List, Bin, From, To) ->
@@ -422,8 +429,8 @@ test_hash_1(Bin, Sbin, Unaligned, Hash) when is_function(Hash, 2) ->
     N = 65535,
     case {Hash(Bin, N),Hash(Sbin, N),Hash(Unaligned, N)} of
 	{H,H,H} -> ok;
-	{H1,H2,H3} ->
-	    io:format("Different hash values: ~p, ~p, ~p\n", [H1,H2,H3]),
+	{_H1,_H2,_H3} ->
+	    ?VERBOSE_FMT("Different hash values: ~p, ~p, ~p\n", [_H1,_H2,_H3]),
 	    ?t:fail()
     end.
 
@@ -452,8 +459,8 @@ bad_term_to_binary(Config) when is_list(Config) ->
 terms(Config) when is_list(Config) ->
     TestFun = fun(Term) ->
 		      try
-			  S = io_lib:format("~p", [Term]),
-			  ?TRACE_PUT(S)
+			  _S = io_lib:format("~p", [Term]),
+			  ?TRACE_PUT(_S)
 		      catch
 			  error:badarg ->
 			      ?TRACE_PUT("bit sized binary")
@@ -525,9 +532,9 @@ external_size(Config) when is_list(Config) ->
     ?line Unaligned = make_unaligned_sub_binary(Bin),
     case {erlang:external_size(Bin),erlang:external_size(Unaligned)} of
 	{X,X} -> ok;
-	{Sz1,Sz2} ->
-	    io:format("  Aligned size: ~p\n", [Sz1]),
-	    io:format("Unaligned size: ~p\n", [Sz2]),
+	{_Sz1,_Sz2} ->
+	    ?VERBOSE_FMT("  Aligned size: ~p\n", [_Sz1]),
+	    ?VERBOSE_FMT("Unaligned size: ~p\n", [_Sz2]),
 	    ?line ?t:fail()
     end,
     true = (erlang:external_size(Bin) =:= erlang:external_size(Bin, [{minor_version, 1}])),
@@ -536,14 +543,14 @@ external_size(Config) when is_list(Config) ->
 external_size_1(Term, Size0, Limit) when Size0 < Limit ->
     case erlang:external_size(Term) of
 	Size when is_integer(Size), Size0 < Size ->
-	    io:format("~p", [Size]),
+	    ?VERBOSE_FMT("~p", [Size]),
 	    external_size_1([Term|Term], Size, Limit)
     end;
 external_size_1(_, _, _) -> ok.
 
 t_iolist_size(Config) when is_list(Config) ->
     ?line Seed = now(),
-    ?line io:format("Seed: ~p", [Seed]),
+    ?line ?VERBOSE_FMT("Seed: ~p", [Seed]),
     ?line random:seed(Seed),
     ?line Base = <<0:(1 bsl 20)/unit:8>>,
     ?line Powers = [1 bsl N || N <- lists:seq(2, 25)],
@@ -553,8 +560,8 @@ t_iolist_size(Config) when is_list(Config) ->
 		       N <- Powers],
     ?line Sizes1 = lists:flatten(Sizes0),
     ?line Sizes = lists:usort(Sizes1),
-    io:format("~p sizes:", [length(Sizes)]),
-    io:format("~p\n", [Sizes]),
+    ?VERBOSE_FMT("~p sizes:", [length(Sizes)]),
+    ?VERBOSE_FMT("~p\n", [Sizes]),
     ?line [begin
 	       ?TRACE_FMT("Testing ~p~n", [Sz]),
 	       Sz = iolist_size(build_iolist(Sz, Base))
@@ -677,8 +684,8 @@ corrupter(Term) when is_function(Term);
 	    NativeChunk = beam_lib:chunks(ListsBinary, [ChunkName]),
 	    case NativeChunk of
 		{ok,{_,[{_,Bin}]}} when is_binary(Bin) ->
-		    S = io_lib:format("Skipping corruption of: ~P", [Term,12]),
-		    ?TRACE_PUT(S);
+		    _S = io_lib:format("Skipping corruption of: ~P", [Term,12]),
+		    ?TRACE_PUT(_S);
 		{error, beam_lib, _} ->
 		    corrupter0(Term)
 	    end
@@ -696,11 +703,11 @@ corrupter(Term) ->
 corrupter0(Term) ->
     random:seed(Seed = now()),
     ?line try
-	      S = io_lib:format("About to corrupt: ~P (seed=~p", [Term,12, Seed]),
-	      ?TRACE_PUT(S)
+	      _S = io_lib:format("About to corrupt: ~P (seed=~p", [Term,12, Seed]),
+	      ?TRACE_PUT(_S)
 	  catch
 	      error:badarg ->
-		  io:format("About to corrupt: <<bit-level-binary:~p (seed=~p",
+		  ?VERBOSE_FMT("About to corrupt: <<bit-level-binary:~p (seed=~p",
 			    [bit_size(Term), Seed])
 	  end,
     ?line Bin = term_to_binary(Term),
@@ -740,7 +747,7 @@ more_bad_terms(suite) -> [];
 more_bad_terms(Config) when is_list(Config) ->
     ?line Data = ?config(data_dir, Config),
     ?line BadFile = filename:join(Data, "bad_binary"),
-    ?line ok = io:format("File: ~s\n", [BadFile]),
+    ?line ok = ?VERBOSE_FMT("File: ~s\n", [BadFile]),
     ?line case file:read_file(BadFile) of
 	      {ok,Bin} ->
 		  ?line {'EXIT',{badarg,_}} = (catch binary_to_term_stress(Bin)),
@@ -911,7 +918,7 @@ try_bad_lengths(B) ->
 
 try_bad_lengths(B, L) when L > 16#FFFFFFF0 ->
     Bin = <<B/binary,L:32>>,
-    io:format("~p\n", [Bin]),
+    ?VERBOSE_FMT("~p\n", [Bin]),
     {'EXIT',_} = (catch binary_to_term_stress(Bin)),
     try_bad_lengths(B, L-1);
 try_bad_lengths(_, _) -> ok.
@@ -1069,7 +1076,7 @@ unaligned_order(Config) when is_list(Config) ->
 
 test_unaligned_order(I, J) ->
     Align = {I,J},
-    io:format("~p ~p", [I,J]),
+    ?VERBOSE_FMT("~p ~p", [I,J]),
     ?line true = test_unaligned_order_1('=:=', <<1,2,3,16#AA,16#7C,4,16#5F,5,16#5A>>,
 					<<1,2,3,16#AA,16#7C,4,16#5F,5,16#5A>>,
 					Align),
@@ -1297,7 +1304,7 @@ bit_sized_binary_sizes(Config) when is_list(Config) ->
 
 bsbs_1(A) ->
     BinSize = 32+A,
-    io:format("A: ~p BinSize: ~p", [A,BinSize]),
+    ?VERBOSE_FMT("A: ~p BinSize: ~p", [A,BinSize]),
     Bin = binary_to_term_stress(<<131,$M,5:32,A,0,0,0,0,0>>),
     BinSize = bit_size(Bin).
 
@@ -1397,10 +1404,10 @@ otp_8180(Config) when is_list(Config) ->
     ok.
 
 run_otp_8180(Name) ->
-    io:format("~s", [Name]),
+    ?VERBOSE_FMT("~s", [Name]),
     ?line {ok,Bins} = file:consult(Name),
     [begin
-	 io:format("~p\n", [Bin]),
+	 ?VERBOSE_FMT("~p\n", [Bin]),
 	 ?line {'EXIT',{badarg,_}} = (catch binary_to_term_stress(Bin))
      end || Bin <- Bins],
     ok.
@@ -1425,7 +1432,7 @@ trapping(Config) when is_list(Config)->
 do_trapping(0, _, _) ->
     ok;
 do_trapping(N, Bif, ArgFun) ->
-    io:format("N=~p: Do ~p ~s gc.\n", [N, Bif, case N rem 2 of 0 -> "with"; 1 -> "without" end]),
+    ?VERBOSE_FMT("N=~p: Do ~p ~s gc.\n", [N, Bif, case N rem 2 of 0 -> "with"; 1 -> "without" end]),
     Pid = spawn(?MODULE,trapping_loop,[Bif, ArgFun, 1000, self()]),
     receive ok -> ok end,
     receive after 100 -> ok end,
@@ -1496,8 +1503,8 @@ error_after_yield(Config) when is_list(Config) ->
     end,
     ok.
 
-error_after_yield(Type, M, F, AN, AFun, TrapFunc) ->
-    io:format("Testing ~p for ~p:~p/~p~n", [Type, M, F, AN]),
+error_after_yield(Type, M, F, _AN, AFun, TrapFunc) ->
+    ?VERBOSE_FMT("Testing ~p for ~p:~p/~p~n", [Type, M, F, _AN]),
     Tracer = self(),
     {Pid, Mon} = spawn_monitor(fun () ->
 				       A = AFun(),
@@ -1524,7 +1531,7 @@ error_after_yield(Type, M, F, AN, AFun, TrapFunc) ->
     receive
 	{trace_delivered, Pid, TD} ->
 	    NoYields = error_after_yield_sched(Pid, TrapFunc, 0),
-	    io:format("No of yields: ~p~n", [NoYields]),
+	    ?VERBOSE_FMT("No of yields: ~p~n", [NoYields]),
 	    true =  NoYields > 2
     end,
     ok.

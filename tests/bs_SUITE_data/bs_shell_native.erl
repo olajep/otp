@@ -18,7 +18,6 @@ prepare_for_test() ->
 			  {ok, M} = hipe:c(M, [{target, epiphany}])
 		      end,
 		      [erl_bits, erl_eval]),
-  io:fwrite("~p~n", [Res]),
   Res.
 
 test() ->

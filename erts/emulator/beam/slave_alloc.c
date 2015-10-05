@@ -57,6 +57,8 @@ struct segment {
 #define ARE_SEGMENTS_CONTIGUOUS(S1, S2) \
     ((void*)(S1) + (S1)->length + HEADER_SZ == (S2))
 
+#define SORTED_FREELIST 1
+
 /*
  * The list that starts at first_seg and continues with the ->next pointers
  * is sorted by memory address to facilitate block merging.
@@ -98,6 +100,14 @@ static void debug_verify(const char *file, int line, const char *func) {
 			 file, line, func,
 			 free, free->prev_free, last);
 	}
+#if SORTED_FREELIST
+	if (last >= free) {
+	    die = 1;
+	    erts_fprintf(stderr, "%s:%d:%s(): List consistency broken! "
+			 "Segment %#x comes after %#x\n", file, line, func,
+			 last, free);
+	}
+#endif
 	last = free;
 	free = free->next_free;
     }
@@ -150,7 +160,7 @@ insert_new(struct segment *new)
 	return;
     }
 
-    /* Fiind last segment that comes before new */
+    /* Find last segment that comes before new */
     while (seg->next && seg->next < new) seg = seg->next;
 
     new->prev = seg;
@@ -162,12 +172,17 @@ insert_new(struct segment *new)
 static void
 insert_free(struct segment *seg)
 {
+#if SORTED_FREELIST
+    struct segment *after;
+#endif
+
     ASSERT(seg->prev != NULL || first_seg == seg);
     ASSERT(!IS_SEGMENT_FREE(seg));
     ASSERT(seg->prev_free == NULL);
     ASSERT(seg->next_free == NULL);
     ASSERT(seg->length < 32 * 1024 * 1024);
 
+#if !SORTED_FREELIST
     seg->next_free = NULL;
     seg->prev_free = last_free;
     last_free = seg;
@@ -178,6 +193,36 @@ insert_free(struct segment *seg)
 	ASSERT(first_free == NULL);
 	first_free = seg;
     }
+#else
+    after = seg->prev;
+    while(after && !after->is_free) after = after->prev;
+    if (!after) {
+	seg->next_free = first_free;
+	seg->prev_free = NULL;
+	first_free = seg;
+	if (seg->next_free) {
+	    ASSERT(seg->next_free > seg);
+	    ASSERT(seg->next_free->prev_free == NULL);
+	    seg->next_free->prev_free = seg;
+	} else {
+	    ASSERT(last_free == NULL);
+	    last_free = seg;
+	}
+    } else {
+	ASSERT(after < seg);
+	seg->next_free = after->next_free;
+	seg->prev_free = after;
+	after->next_free = seg;
+	if (seg->next_free) {
+	    ASSERT(seg->next_free > seg);
+	    ASSERT(seg->next_free->prev_free == after);
+	    seg->next_free->prev_free = seg;
+	} else {
+	    ASSERT(last_free == after);
+	    last_free = seg;
+	}
+    }
+#endif
 
     used -= seg->length + HEADER_SZ;
     SET_SEGMENT_FREE(seg, 1);
@@ -210,6 +255,17 @@ split_free(struct segment *seg, size_t size)
     insert_free(second);
     DEBUG_VERIFY();
 }
+
+#if SORTED_FREELIST
+static struct segment *
+rev_split_free(struct segment *seg, size_t size)
+{
+    size_t other_size = seg->length - HEADER_SZ - size;
+    split_free(seg, other_size);
+    ASSERT(seg->next->length == size);
+    return seg->next;
+}
+#endif
 
 static void
 unlink_free(struct segment *seg)
@@ -336,7 +392,7 @@ fallback(ErtsAlcType_t n)
 }
 
 void *
-erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
+erl_slave_alloc(ErtsAlcType_t n, void *extra, Uint size)
 {
     struct segment *free;
 #ifdef DEBUG
@@ -344,25 +400,46 @@ erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 #endif
     void *res = NULL;
     if (fallback_enabled) {
-	return erts_alloc_fnf(fallback(t), size);
+	return erts_alloc_fnf(fallback(n), size);
     }
 
-    LOCK();
-    free = first_free;
     size = ALIGN(size, 16);
-    while(free) {
-	if (free->length >= size) {
-	    if (free->length - size >= SPLIT_THRESHOLD)
-		split_free(free, size);
-	    unlink_free(free);
-	    res = ((void*)free) + HEADER_SZ;
-	    break;
+    LOCK();
+#if SORTED_FREELIST
+    if (ERTS_ALC_N_MIN_A_SLAVE_LL <= n && n <= ERTS_ALC_N_MAX_A_SLAVE_LL) {
+	free = last_free;
+	while(free) {
+	    if (free->length >= size) {
+		if (free->length - size >= SPLIT_THRESHOLD)
+		    free = rev_split_free(free, size);
+		unlink_free(free);
+		res = ((void*)free) + HEADER_SZ;
+		break;
+	    }
+#  ifdef DEBUG
+	    count ++;
+	    max = MAX(max, free->length);
+#  endif
+	    free = free->prev_free;
 	}
-#ifdef DEBUG
-	count ++;
-	max = MAX(max, free->length);
-#endif
-	free = free->next_free;
+    } else
+#endif /* SORTED_FREELIST */
+    {
+	free = first_free;
+	while(free) {
+	    if (free->length >= size) {
+		if (free->length - size >= SPLIT_THRESHOLD)
+		    split_free(free, size);
+		unlink_free(free);
+		res = ((void*)free) + HEADER_SZ;
+		break;
+	    }
+#  ifdef DEBUG
+	    count ++;
+	    max = MAX(max, free->length);
+#  endif
+	    free = free->next_free;
+	}
     }
     if (!res) {
 	erts_printf("Failed to allocate %d bytes shared DRAM!\n", size);
@@ -377,10 +454,10 @@ erl_slave_alloc(ErtsAlcType_t t, void *extra, Uint size)
 }
 
 void
-erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
+erl_slave_free(ErtsAlcType_t n, void *extra, void *ptr)
 {
     if (fallback_enabled) {
-	erts_free(fallback(t), ptr);
+	erts_free(fallback(n), ptr);
     } else {
 	struct segment *seg = SEGMENT(ptr);
 	LOCK();
@@ -391,15 +468,15 @@ erl_slave_free(ErtsAlcType_t t, void *extra, void *ptr)
     }
 }
 
-void *erl_slave_realloc(ErtsAlcType_t t, void *extra, void *block, Uint size) {
+void *erl_slave_realloc(ErtsAlcType_t n, void *extra, void *block, Uint size) {
     if (fallback_enabled) {
-	return erts_realloc(fallback(t), block, size);
+	return erts_realloc(fallback(n), block, size);
     } else {
-	void *newblock = erl_slave_alloc(t, extra, size);
+	void *newblock = erl_slave_alloc(n, extra, size);
 	Uint tocopy = MIN(SEGMENT(block)->length, size);
 	if (newblock) {
 	    sys_memcpy(newblock, block, tocopy);
-	    erl_slave_free(t, extra, block);
+	    erl_slave_free(n, extra, block);
 	}
 	return newblock;
     }

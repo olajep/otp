@@ -44,6 +44,8 @@ while echo $1 | grep -E '^-' >/dev/null; do
         NOUNIT=1
     elif [ $1 == --noregs ]; then
         NOREGS=1
+    elif [ $1 == --seq ]; then
+        CONCURRENT=0
     elif [ $1 == --conc ]; then
         CONCURRENT="conc"
     elif [ $1 == --mods-conc ]; then

@@ -46,7 +46,8 @@ run_mods_con(Mods) ->
 	    io:fwrite("At ~P~n", [erlang:get_stacktrace(),?MAX_TERM_PRINT_DEPTH]),
 	    lists:foreach(fun cleanup/1, Mods),
 	    halt(1)
-    end.
+    end,
+    init:stop().
 
 opts(Mod) ->
     Datadir = atom_to_list(Mod) ++ "_data",
@@ -92,9 +93,9 @@ run_con(Tests, Running) ->
 run_single(Test = {Mod, Fun, _Opts}) ->
     try
 	run_seq([Test]),
-	io:fwrite("   \e[1m-->\e[0m ~p:~p OK!~n", [Mod, Fun])
+	io:fwrite("   \e[1m-->\e[0m ~p:~p \e[1;32mOK\e[0m!~n", [Mod, Fun])
     catch T:E ->
-	    io:fwrite("   \e[1m-->\e[0m ~p:~p FAIL!~n", [Mod, Test]),
+	    io:fwrite("   \e[1m-->\e[0m ~p:~p \e[1;31mFAIL\e[0m!~n", [Mod, Test]),
 	    io:fwrite("~P:~P~n", [T,?MAX_TERM_PRINT_DEPTH,E,?MAX_TERM_PRINT_DEPTH]),
 	    io:fwrite("At ~P~n", [erlang:get_stacktrace(),?MAX_TERM_PRINT_DEPTH]),
 	    case T of
@@ -106,7 +107,7 @@ run_single(Test = {Mod, Fun, _Opts}) ->
 
 run_seq([]) -> ok;
 run_seq([{Mod, Test, Opts}|Tests]) ->
-    io:fwrite("   \e[1m-->\e[0m Running ~p:~p(~p)~n", [Mod, Test, Opts]),
+    io:fwrite("   \e[1m-->\e[0m Running ~p:~p~n", [Mod, Test]),
     Self = self(),
     {Pid, Ref} = epiphany:spawn_monitor(fun() ->
 						Self ! {ok, Mod:Test(Opts)}

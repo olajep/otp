@@ -2,7 +2,7 @@
 %%%-------------------------------------------------------------------
 -module(bs_potpurri).
 
--define(line_trace,1).
+%% -define(line_trace,1).
 -include_lib("test_server/include/test_server.hrl").
 
 -export([test/0]).
