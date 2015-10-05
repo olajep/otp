@@ -438,10 +438,9 @@ erl_slave_alloc(ErtsAlcType_t n, void *extra, Uint size)
 	    count ++;
 	    max = MAX(max, free->length);
 #  endif
-	    free = free->prev_free;
+	    free = free->next_free;
 	}
     }
-#endif /* SORTED_FREELIST */
     if (!res) {
 	erts_printf("Failed to allocate %d bytes shared DRAM!\n", size);
 #ifdef DEBUG
