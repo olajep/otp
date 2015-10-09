@@ -33,7 +33,8 @@
 
 #ifdef ERTS_SLAVE
 void
-erts_refc_init(erts_refc_t *refcp, erts_aint_t val) {
+erts_refc_init(erts_refc_t *refcp, erts_aint_t val)
+{
     struct master_command_refc cmd = {
 	.op = MASTER_REFC_OP_INIT,
 	.refcp = refcp,
@@ -43,7 +44,8 @@ erts_refc_init(erts_refc_t *refcp, erts_aint_t val) {
 }
 
 void
-erts_refc_inc(erts_refc_t *refcp, erts_aint_t min_val) {
+erts_refc_inc(erts_refc_t *refcp, erts_aint_t min_val)
+{
     struct master_command_refc cmd = {
 	.op = MASTER_REFC_OP_INC,
 	.refcp = refcp,
@@ -53,7 +55,8 @@ erts_refc_inc(erts_refc_t *refcp, erts_aint_t min_val) {
 }
 
 void
-erts_refc_dec(erts_refc_t *refcp, erts_aint_t min_val) {
+erts_refc_dec(erts_refc_t *refcp, erts_aint_t min_val)
+{
     struct master_command_refc cmd = {
 	.op = MASTER_REFC_OP_DEC,
 	.refcp = refcp,
@@ -63,7 +66,8 @@ erts_refc_dec(erts_refc_t *refcp, erts_aint_t min_val) {
 }
 
 void
-erts_refc_add(erts_refc_t *refcp, erts_aint_t diff, erts_aint_t min_val) {
+erts_refc_add(erts_refc_t *refcp, erts_aint_t diff, erts_aint_t min_val)
+{
     struct master_command_refc cmd = {
 	.op = MASTER_REFC_OP_ADD,
 	.refcp = refcp,
@@ -89,7 +93,8 @@ erts_refc_decfree(erts_refc_t *refcp, erts_aint_t min_val,
 
 #else
 void
-erts_slave_serve_refc(struct master_command_refc *cmd) {
+erts_slave_serve_refc(struct master_command_refc *cmd)
+{
     switch (cmd->op) {
     case MASTER_REFC_OP_INIT:
 	erts_refc_init(cmd->refcp, cmd->arg);

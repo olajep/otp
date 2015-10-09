@@ -31,7 +31,7 @@
 #include "slave_alloc.h"
 #include "erl_smp.h"
 
-#define MISALIGNMENT(X, A) (X % A ? A - X % A : 0)
+#define MISALIGNMENT(X, A) ((A - X % A) % A)
 
 #define ALIGN(X, A)				\
     ({						\

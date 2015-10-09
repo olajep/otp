@@ -53,7 +53,7 @@ static erts_smp_rwmtx_t atom_table_lock;
 #endif
 #ifdef ERTS_ATOM_PUT_OPS_STAT
 static erts_smp_atomic_t atom_put_ops;
-#endif
+#endif /* !ERTS_SLAVE */
 
 /* Functions for allocating space for the ext of atoms. We do not
  * use malloc for each atom to prevent excessive memory fragmentation

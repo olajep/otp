@@ -28,11 +28,13 @@
 ErlNode *erts_this_node;
 
 void
-erts_deref_dist_entry(DistEntry *dep) {
+erts_deref_dist_entry(DistEntry *dep)
+{
     EPIPHANY_STUB_BT();
 }
 
 void
-erts_deref_node_entry(ErlNode *np) {
+erts_deref_node_entry(ErlNode *np)
+{
     EPIPHANY_STUB_BT();
 }
