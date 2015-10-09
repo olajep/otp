@@ -35,26 +35,29 @@
 %% POSSIBILITY OF SUCH DAMAGE.
 
 -module(mandelbrot).
--export([prepare/0, bench/1]).
+-export([prepare/0, bench/1, bench/2]).
 -define(LIM_SQR, 4.0).
 -define(ITER, 50).
 -define(SR, -1.5).
 -define(SI, -1).
 
+-define(DEFAULT_WORKERS, 16).
+
 prepare() -> {nil, [lists]}.
 
-bench(nil) ->
-    main(["64"]).
+bench(nil) -> bench(nil, ?DEFAULT_WORKERS).
+bench(nil, NoWorkers) ->
+    main(["64"], NoWorkers).
 
-main([Arg]) ->
+main([Arg], NoWorkers) ->
     N = list_to_integer(Arg),
     Jobs = lists:seq(0, N-1),
     Self = self(),
     Row = fun(Y)-> Self ! {Y, row(N-1, 0, ?SI+Y*2/N, N, 0, [], 7)} end,
-    spawn_link(fun() -> workserver_entry(Row, Jobs) end),
+    spawn_link(fun() -> workserver_entry(Row, Jobs, NoWorkers) end),
     ["P4\n", Arg, " ", Arg, "\n"] ++ [receive {Job, C} -> C end || Job <- Jobs].
 
-workserver_entry(Fun, Jobs) ->
+workserver_entry(Fun, Jobs, NoWorkers) ->
     Self = self(),
     Spawn = case epiphany:state() of
 		offline ->
@@ -64,7 +67,7 @@ workserver_entry(Fun, Jobs) ->
 		    fun epiphany:spawn_link/1
 	    end,
     Workers = [Spawn(fun()-> worker(Fun, Self) end)
-	       || _ <- lists:seq(1,16)],
+	       || _ <- lists:seq(1,NoWorkers)],
     workserver(Workers, Jobs).
 
 workserver(Workers, [Job|Jobs]) ->

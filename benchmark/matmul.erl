@@ -1,6 +1,6 @@
 -module(matmul).
 
--export([prepare/0, bench/1, test/1, mul/3]).
+-export([prepare/0, bench/1, bench/2, test/1, mul/3]).
 
 -define(SUBSIZE, 4).
 -define(ROWS, 96).
@@ -10,8 +10,9 @@ prepare() ->
     Pregen = {matgen(), matgen()},
     {Pregen, [?MODULE, lists, epiphany, epiphany_server]}.
 
-bench({A, B}) ->
-    mul(A, B, 16).
+bench(Pregen) -> bench(Pregen, 16).
+bench({A, B}, NoWorkers) ->
+    mul(A, B, NoWorkers).
 
 -type matrix(Of) :: [[Of]].
 -type matrix() :: matrix(integer()).
