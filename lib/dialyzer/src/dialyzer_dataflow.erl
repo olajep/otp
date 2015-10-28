@@ -72,7 +72,8 @@
 	 t_tuple/0, t_tuple/1, t_tuple_args/1, t_tuple_args/2,
          t_tuple_subtypes/2,
 	 t_unit/0, t_unopaque/2,
-	 t_map/1
+	 t_map/0, t_map/1, t_map_entries/2,
+	 t_is_singleton/2
      ]).
 
 %%-define(DEBUG, true).
@@ -1483,7 +1484,43 @@ bind_pat_vars([Pat|PatLeft], [Type|TypeLeft], Acc, Map, State, Rev) ->
 	  false -> {Map, Literal}
 	end;
       map ->
-	  {Map, t_map([])};
+	MapT = t_inf(Type, t_map(), Opaques),
+	case t_is_none(MapT) of
+	  true ->
+	    bind_opaque_pats(t_map(), Type, Pat, State);
+	  false ->
+	    MapTEntries = t_map_entries(MapT, Opaques),
+	    FoldFun =
+	      fun(Pair, {MapAcc, ListAcc}) ->
+		  Key = cerl:map_pair_key(Pair),
+		  KeyType =
+		    case cerl:type(Key) of
+		      var ->
+			case state__lookup_type_for_letrec(Key, State) of
+			  error -> lookup_type(Key, MapAcc);
+			  {ok, RecType} -> RecType
+			end;
+		      literal ->
+			literal_type(Key)
+		    end,
+		  case t_is_singleton(KeyType, Opaques) of
+		    true ->
+		      Bind = proplists:get_value(KeyType, MapTEntries, t_any()),
+		      {MapAcc1, [ValType]} =
+			bind_pat_vars([cerl:map_pair_val(Pair)],
+				      [Bind], [], MapAcc, State, Rev),
+		      {MapAcc1, [{KeyType, ValType}|ListAcc]};
+		    false ->
+		      %% Visit the tree anyway
+		      {MapAcc1, [_ValType]} =
+			bind_pat_vars([cerl:map_pair_val(Pair)],
+				      [t_any()], [], MapAcc, State, Rev),
+		      {MapAcc1, ListAcc}
+		  end
+	      end,
+	    {Map1, Pairs} = lists:foldl(FoldFun, {Map, []}, cerl:map_es(Pat)),
+	    {Map1, t_inf(MapT, t_map(Pairs))}
+	  end;
       tuple ->
 	Es = cerl:tuple_es(Pat),
 	{TypedRecord, Prototype} =
