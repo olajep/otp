@@ -1699,6 +1699,11 @@ type(maps, is_key, 2, Xs, Opaques) ->
 	       _Found -> erl_types:t_from_term(true)
 	     end
 	 end, Opaques);
+type(maps, Put, 3, Xs, Opaques) when Put =:= put; Put =:= update ->
+  strict(maps, Put, 3, Xs,
+	 fun ([Key, Value, Map]) ->
+	     erl_types:t_map_put({Key, Value}, Map)
+	 end, Opaques);
 
 %%-- string -------------------------------------------------------------------
 type(string, chars, 2, Xs, Opaques) ->  % NOTE: added to avoid loss of info
@@ -2667,6 +2672,10 @@ arg_types(maps, get, 2) ->
   [t_any(), t_map()];
 arg_types(maps, is_key, 2) ->
   [t_any(), t_map()];
+arg_types(maps, put, 3) ->
+  [t_any(), t_any(), t_map()];
+arg_types(maps, update, 3) ->
+  [t_any(), t_any(), t_map()];
 
 %%------- string --------------------------------------------------------------
 arg_types(string, chars, 2) ->

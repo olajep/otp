@@ -141,7 +141,7 @@
 	 t_is_maybe_improper_list/1, t_is_maybe_improper_list/2,
 	 t_is_reference/1, t_is_reference/2,
 	 t_is_remote/1,
-         t_is_singleton/2,
+	 t_is_singleton/2,
 	 t_is_string/1,
 	 t_is_subtype/2,
 	 t_is_tuple/1, t_is_tuple/2,
@@ -154,7 +154,8 @@
 	 t_list_termination/1, t_list_termination/2,
 	 t_map/0,
 	 t_map/1,
-         t_map_entries/2,
+	 t_map_entries/2,
+	 t_map_put/2,
 	 t_matchstate/0,
 	 t_matchstate/2,
 	 t_matchstate_present/1,
@@ -1618,7 +1619,7 @@ t_map() ->
 -spec t_map([{erl_type(), erl_type()}]) -> erl_type().
 
 t_map(L) ->
-  ?map(L).
+  lists:foldl(fun t_map_put/2, t_map(), L).
 
 -spec t_is_map(erl_type()) -> boolean().
 
@@ -1640,6 +1641,24 @@ t_map_entries(M, Opaques) ->
 
 map_entries(?map(E)) ->
   E.
+
+-spec t_map_put({erl_type(), erl_type()}, erl_type()) -> erl_type().
+
+t_map_put(_, ?none) -> ?none;
+t_map_put({Key, Value}, ?map(Pairs)) ->
+  case t_is_none_or_unit(Key) orelse t_is_none_or_unit(Value) of
+    true -> ?none;
+    false ->
+      case t_is_singleton(Key) of
+	true ->
+	  ?map(lists:keystore(Key, 1, Pairs, {Key, Value}));
+	false ->
+	  ?map([{K, case t_is_none(t_inf(K, Key)) of
+		      true -> V;
+		      false -> t_sup(V, Value)
+		    end} || {K, V} <- Pairs])
+      end
+  end.
 
 %%-----------------------------------------------------------------------------
 %% Tuples
@@ -2270,11 +2289,9 @@ t_sup(?tuple_set(List1), T2 = ?tuple(_, Arity, _)) ->
 t_sup(?tuple(_, Arity, _) = T1, ?tuple_set(List2)) ->
   sup_tuple_sets([{Arity, [T1]}], List2);
 t_sup(?map(A), ?map(B)) ->
-  AFiltered = [E || E = {K, _} <- A, is_singleton_type(K)],
-  BFiltered = [E || E = {K, _} <- B, is_singleton_type(K)],
   t_map([{K, t_sup(V1, V2)} ||
-	  {K, V1} <- AFiltered,
-	  {_, V2} <- [lists:keyfind(K, 1, BFiltered)]]);
+	  {K, V1} <- A,
+	  {_, V2} <- [lists:keyfind(K, 1, B)]]);
 t_sup(T1, T2) ->
   ?union(U1) = force_union(T1),
   ?union(U2) = force_union(T2),
@@ -2524,12 +2541,8 @@ t_inf(?map(A), ?map(B), _Opaques) ->
 		 CombinedEntries) of
     true  -> t_none();
     false ->
-      %% Some entries cannot be known to match, or exist only in one of the
-      %% maps. We list them here.
-      EntriesFromB = [E || E = {K, _} <- B, not is_singleton_type(K)
-		       orelse (lists:keyfind(K, 1, A) =:= false)],
-      EntriesFromA = [E || E = {K, _} <- A, not is_singleton_type(K)
-		       orelse (lists:keyfind(K, 1, B) =:= false)],
+      EntriesFromB = [E || E = {K, _} <- B, (lists:keyfind(K, 1, A) =:= false)],
+      EntriesFromA = [E || E = {K, _} <- A, (lists:keyfind(K, 1, B) =:= false)],
       t_map(CombinedEntries ++ EntriesFromB ++ EntriesFromA)
   end;
 t_inf(?matchstate(Pres1, Slots1), ?matchstate(Pres2, Slots2), _Opaques) ->
@@ -4905,6 +4918,11 @@ map_values(?map(Pairs)) ->
   [V || {_, V} <- Pairs].
 
 %% Tests if a type has exactly one possible value.
+-spec t_is_singleton(erl_type()) -> boolean().
+
+t_is_singleton(Type) ->
+  t_is_singleton(Type, 'universe').
+
 -spec t_is_singleton(erl_type(), opaques()) -> boolean().
 
 t_is_singleton(Type, Opaques) ->
