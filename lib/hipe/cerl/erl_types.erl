@@ -4286,8 +4286,24 @@ t_from_form({type, _L, list, []}, _TypeNames, _ET, _S, _MR, _V, _D, L) ->
 t_from_form({type, _L, list, [Type]}, TypeNames, ET, S, MR, V, D, L) ->
   {T, L1} = t_from_form(Type, TypeNames, ET, S, MR, V, D - 1, L - 1),
   {t_list(T), L1};
-t_from_form({type, _L, map, _}, TypeNames, ET, S, MR, V, D, L) ->
-  builtin_type(map, t_map([]), TypeNames, ET, S, MR, V, D, L);
+t_from_form({type, _L, map, any}, TypeNames, ET, S, MR, V, D, L) ->
+  builtin_type(map, t_map(), TypeNames, ET, S, MR, V, D, L);
+t_from_form({type, _L, map, List}, TypeNames, ET, S, MR, V, D, L) ->
+  {Pairs, L5} =
+    fun PairsFromForm(_, L1) when L1 =< 0 -> {[{?any, ?any}], L1};
+	PairsFromForm([], L1) -> {[], L1};
+	PairsFromForm([Pair|Pairs], L1) ->
+	{KF, VF} =
+	  case Pair of
+	    {type, _, map_field_assoc, [KF0, VF0]} -> {KF0, VF0};
+	    {type, _, map_field_exact, [KF0, VF0]} -> {KF0, VF0}
+	  end,
+	{Key, L2} = t_from_form(KF, TypeNames, ET, S, MR, V, D - 1, L1),
+	{Val, L3} = t_from_form(VF, TypeNames, ET, S, MR, V, D - 1, L2),
+	{Assocs, L4} = PairsFromForm(Pairs, L3 - 1),
+	{[{Key, Val}|Assocs], L4}
+    end(List, L),
+  {t_map(Pairs), L5};
 t_from_form({type, _L, mfa, []}, _TypeNames, _ET, _S, _MR, _V, _D, L) ->
   {t_mfa(), L};
 t_from_form({type, _L, module, []}, _TypeNames, _ET, _S, _MR, _V, _D, L) ->
@@ -4749,8 +4765,14 @@ t_form_to_string({type, _L, iodata, []}) -> "iodata()";
 t_form_to_string({type, _L, iolist, []}) -> "iolist()";
 t_form_to_string({type, _L, list, [Type]}) -> 
   "[" ++ t_form_to_string(Type) ++ "]";
-t_form_to_string({type, _L, map, _}) ->
+t_form_to_string({type, _L, map, any}) ->
   "#{}";
+t_form_to_string({type, _L, map, Args}) ->
+  "#{" ++ string:join(t_form_to_string_list(Args), ",") ++ "}";
+t_form_to_string({type, _L, map_field_assoc, [Key, Val]}) ->
+  t_form_to_string(Key) ++ "=>" ++ t_form_to_string(Val);
+t_form_to_string({type, _L, map_field_exact, [Key, Val]}) ->
+  t_form_to_string(Key) ++ ":=" ++ t_form_to_string(Val);
 t_form_to_string({type, _L, mfa, []}) -> "mfa()";
 t_form_to_string({type, _L, module, []}) -> "module()";
 t_form_to_string({type, _L, node, []}) -> "node()";
