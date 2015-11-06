@@ -47,7 +47,8 @@
 	 t_is_any/1, t_is_atom/1, t_is_any_atom/2, t_is_cons/1,
 	 t_is_float/1, t_is_fun/1,
 	 t_is_integer/1, t_non_neg_integer/0,
-	 t_is_list/1, t_is_nil/1, t_is_none/1, t_is_number/1,
+	 t_is_list/1, t_is_map/1, t_is_nil/1, t_is_none/1, t_is_number/1,
+	 t_is_singleton/1,
 
          t_limit/2, t_list/0, t_list/1,
 	 t_list_elements/1, t_nonempty_list/1, t_maybe_improper_list/0,
@@ -57,7 +58,7 @@
 	 t_timeout/0, t_tuple/0, t_tuple/1,
          t_var/1, t_var_name/1,
 	 t_none/0, t_unit/0,
-	 t_map/1
+	 t_map/0, t_map/1, t_map_entries/1, t_map_put/2
      ]).
 
 -include("dialyzer.hrl").
@@ -474,7 +475,106 @@ traverse(Tree, DefinedVars, State) ->
 	[] -> {State2, TupleType}
       end;
     map ->
-	{State, t_map([])};
+      Entries = cerl:map_es(Tree),
+      MapFoldFun = fun(Entry, AccState) ->
+		       {AccState1, KeyVar} = traverse(cerl:map_pair_key(Entry),
+						      DefinedVars, AccState),
+		       {AccState2, ValVar} = traverse(cerl:map_pair_val(Entry),
+						      DefinedVars, AccState1),
+		       {{KeyVar, ValVar}, AccState2}
+		   end,
+      {Pairs, State1} = lists:mapfoldr(MapFoldFun, State, Entries),
+      {State2, ArgVar} = traverse(cerl:map_arg(Tree), DefinedVars, State1),
+      case cerl:is_literal(cerl:fold_literal(Tree)) of
+	true -> %% Dead until fold_literal start understadning maps
+	  {State, t_map(Pairs)};
+	false ->
+	  MapVar = mk_var(Tree),
+	  MapType = ?mk_fun_var(
+		       fun(Map) ->
+			   lists:foldl(
+			     fun({K,V}, TypeAcc) ->
+				 t_map_put({lookup_type(K, Map),
+					    lookup_type(V, Map)},
+					   TypeAcc)
+			     end, t_inf(t_map(), lookup_type(ArgVar, Map)),
+			     Pairs)
+		       end, [ArgVar | lists:append([[K,V] || {K,V} <- Pairs])]),
+	  %% TODO: does the "same element appearing several times" problem apply
+	  %% here too?
+	  Fun =
+	    fun({KeyVar, ValVar}, {AccState, ShadowKeys}) ->
+		%% If Val is known to be the last association of Key (i.e. Key
+		%% is not in ShadowKeys), Val must be a subtype of what is
+		%% associated to Key in Tree
+		TypeFun =
+		  fun(Map) ->
+		      KeyType = lookup_type(KeyVar, Map),
+		      case t_is_singleton(KeyType) of
+			false -> t_any();
+			true ->
+			  case t_is_map(MT = lookup_type(MapVar, Map)) of
+			    true ->
+			      DisjointFromKeyType =
+				fun(ShadowKey) ->
+				    t_is_none(t_inf(lookup_type(ShadowKey, Map),
+						    KeyType))
+				end,
+			      case lists:all(DisjointFromKeyType, ShadowKeys) of
+				true ->
+				  proplists:get_value(
+				    KeyType, t_map_entries(MT), t_any());
+				false ->
+				  %% A later association might shadow this one
+				  t_any()
+			      end;
+
+			    false ->
+			      %% TODO: should I be t_none? We know this
+			      %% expression will not return.
+			      t_any()
+			  end
+		      end
+		  end,
+		ValType = ?mk_fun_var(TypeFun, [KeyVar, MapVar | ShadowKeys]),
+		{state__store_conj(ValVar, sub, ValType, AccState),
+		 [KeyVar | ShadowKeys]}
+	    end,
+	  %% Accumulate shadowing keys right-to-left
+	  {State3, _} = lists:foldr(Fun, {State2, []}, Pairs),
+	  %% Arg must contain all keys that are inserted with the exact (:=)
+	  %% operator, and are known (i.e. are not in ShadowedKeys) to not have
+	  %% been introduced by a previous association
+	  ArgFun =
+	    fun(Map) ->
+		FoldFun =
+		  fun({{KeyVar, _}, Entry}, {AccType, ShadowedKeys}) ->
+		      OpTree = cerl:map_pair_op(Entry),
+		      KeyType = lookup_type(KeyVar, Map),
+		      AccType1 =
+			case cerl:is_literal(OpTree) andalso
+			  cerl:concrete(OpTree) =:= exact of
+			  true ->
+			    case t_is_none(t_inf(ShadowedKeys, KeyType)) of
+			      true ->
+				t_map_put({KeyType, t_any()}, AccType);
+			      false ->
+				AccType
+			    end;
+			  false ->
+			    AccType
+			end,
+		      {AccType1, t_sup(KeyType, ShadowedKeys)}
+		  end,
+		%% Accumulate shadowed keys left-to-right
+		{ResType, _} = lists:foldl(FoldFun, {t_map(), t_none()},
+					   lists:zip(Pairs, Entries)),
+		ResType
+	    end,
+	  ArgType = ?mk_fun_var(ArgFun, [KeyVar || {KeyVar, _} <- Pairs]),
+	  {state__store_conj_lists([MapVar, ArgVar], sub,
+				   [MapType, ArgType], State3), MapVar}
+      end;
     values ->
       %% We can get into trouble when unifying products that have the
       %% same element appearing several times. Handle these cases by

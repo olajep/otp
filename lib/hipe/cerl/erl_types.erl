@@ -141,6 +141,7 @@
 	 t_is_maybe_improper_list/1, t_is_maybe_improper_list/2,
 	 t_is_reference/1, t_is_reference/2,
 	 t_is_remote/1,
+	 t_is_singleton/1,
 	 t_is_singleton/2,
 	 t_is_string/1,
 	 t_is_subtype/2,
@@ -154,7 +155,7 @@
 	 t_list_termination/1, t_list_termination/2,
 	 t_map/0,
 	 t_map/1,
-	 t_map_entries/2,
+	 t_map_entries/2, t_map_entries/1,
 	 t_map_put/2,
 	 t_matchstate/0,
 	 t_matchstate/2,
@@ -1633,6 +1634,11 @@ t_is_map(Type, Opaques) ->
 
 is_map1(?map(_)) -> true;
 is_map1(_) -> false.
+
+-spec t_map_entries(erl_type()) -> [{erl_type(), erl_type()}].
+
+t_map_entries(M) ->
+  t_map_entries(M, 'universe').
 
 -spec t_map_entries(erl_type(), opaques()) -> [{erl_type(), erl_type()}].
 
