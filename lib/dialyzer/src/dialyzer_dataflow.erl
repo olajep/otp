@@ -333,8 +333,6 @@ traverse(Tree, Map, State) ->
       handle_tuple(Tree, Map, State);
     map ->
       handle_map(Tree, Map, State);
-    map_pair ->
-      handle_map_pair(Tree, Map, State);
     values ->
       Elements = cerl:values_es(Tree),
       {State1, Map1, EsType} = traverse_list(Elements, Map, State),
@@ -1093,15 +1091,42 @@ handle_try(Tree, Map, State) ->
 %%----------------------------------------
 
 handle_map(Tree,Map,State) ->
-    Pairs = cerl:map_es(Tree),
-    {State1, Map1, TypePairs} = traverse_list(Pairs,Map,State),
-    {State1, Map1, t_map(TypePairs)}.
+  Pairs = cerl:map_es(Tree),
+  Arg = cerl:map_arg(Tree),
+  {State1, Map1, ArgType} = traverse(Arg, Map, State),
+  ArgType1 = t_inf(t_map(), ArgType),
+  case t_is_none_or_unit(ArgType1) of
+    true ->
+      {State1, Map1, ArgType1};
+    false ->
+      {State2, Map2, TypePairs, ExactKeys} =
+	traverse_map_pairs(Pairs, Map1, State1, t_none(), [], []),
+      Map3 =
+	case bind_pat_vars([Arg], [t_map([{K, t_any()} || K <- ExactKeys])],
+			   [], Map2, State2) of
+	  {error, _, _, _, _} -> Map2;
+	  {SM, [_]} -> SM
+	end,
+      ResType = lists:foldl(fun erl_types:t_map_put/2, ArgType1, TypePairs),
+      {State2, Map3, ResType}
+  end.
 
-handle_map_pair(Tree,Map,State) ->
-  Key = cerl:map_pair_key(Tree),
-  Val = cerl:map_pair_val(Tree),
+traverse_map_pairs([], Map, State, _ShadowKeys, PairAcc, KeyAcc) ->
+  {State, Map, lists:reverse(PairAcc), KeyAcc};
+traverse_map_pairs([Pair|Pairs], Map, State, ShadowKeys, PairAcc, KeyAcc) ->
+  Key = cerl:map_pair_key(Pair),
+  Val = cerl:map_pair_val(Pair),
+  Op = cerl:map_pair_op(Pair),
   {State1, Map1, [K,V]} = traverse_list([Key,Val],Map,State),
-  {State1, Map1, {K,V}}.
+  KeyAcc1 =
+    case cerl:is_literal(Op) andalso cerl:concrete(Op) =:= exact andalso
+      t_is_singleton(K, State#state.opaques) andalso
+      t_is_none(t_inf(ShadowKeys, K)) of
+      true -> [K|KeyAcc];
+      false -> KeyAcc
+  end,
+  traverse_map_pairs(Pairs, Map1, State1, t_sup(K, ShadowKeys), [{K,V}|PairAcc],
+		     KeyAcc1).
 
 %%----------------------------------------
 
