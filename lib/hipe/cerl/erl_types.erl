@@ -3577,8 +3577,13 @@ t_subtract(?product(Elements1) = T1, ?product(Elements2)) ->
 	_ -> T1
       end
   end;
-t_subtract(?map(_) = T, _) ->  % XXX: very crude; will probably need refinement
-  T;
+t_subtract(?map(EL1) = T1, ?map(EL2)) ->
+  case map_subtract(EL1, EL2) of
+    mismatch -> T1;
+    complete -> ?none; %% T1 is a subtype of T2
+    {K, _V} = Tuple ->
+      ?map(lists:keyreplace(K, 1, EL1, Tuple))
+  end;
 t_subtract(?product(P1), _) ->
   ?product(P1);
 t_subtract(T, ?product(_)) ->
@@ -3599,6 +3604,24 @@ opaque_subtract(?opaque(Set1), T2) ->
   case List of
     [] -> ?none;
     _ -> ?opaque(ordsets:from_list(List))
+  end.
+
+-spec map_subtract([Pair], [Pair]) -> Pair | mismatch | complete
+					when Pair :: {erl_type(), erl_type()}.
+
+map_subtract(_EL1, []) -> complete;
+map_subtract(EL1, [{K,V2}|EL2]) ->
+  case lists:keyfind(K, 1, EL1) of
+    false -> mismatch;
+    {K, V1} ->
+      case t_subtract(V1, V2) of
+	?none -> map_subtract(EL1, EL2);
+	Partial ->
+	  case map_subtract(EL1, EL2) of
+	    complete -> {K, Partial};
+	    _ -> mismatch
+	  end
+      end
   end.
 
 -spec t_subtract_lists([erl_type()], [erl_type()]) -> [erl_type()].

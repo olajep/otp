@@ -1146,8 +1146,35 @@ get_safe_underapprox_1([Pat|Left], Acc, Map) ->
       Type = t_tuple(Ts),
       get_safe_underapprox_1(Left, [Type|Acc], Map1);
     map ->
-      %% TODO: Can maybe do something here
-      throw(dont_know);
+      %% Some assertions in case the syntax gets more premissive in the future
+      true = #{} =:= cerl:concrete(cerl:map_arg(Pat)),
+      true = lists:all(fun(P) ->
+			   cerl:is_literal(Op = cerl:map_pair_op(P)) andalso
+			     exact =:= cerl:concrete(Op)
+		       end, cerl:map_es(Pat)),
+      KeyTrees = lists:map(fun cerl:map_pair_key/1, cerl:map_es(Pat)),
+      ValTrees = lists:map(fun cerl:map_pair_val/1, cerl:map_es(Pat)),
+      %% Keys must not be underapproximated. Overapproximations are safe.
+      Keys = get_safe_overapprox(KeyTrees),
+      {Vals, Map1} = get_safe_underapprox_1(ValTrees, [], Map),
+      case lists:all(fun erl_types:t_is_singleton/1, Keys) of
+	false -> throw(dont_know);
+	true -> ok
+      end,
+      SortedPairs = lists:sort(lists:zip(Keys, Vals)),
+      %% We need to deal with duplicates ourselves
+      SquashDuplicates =
+	fun SquashDuplicates([{K,First},{K,Second}|List]) ->
+	    case t_is_none(Inf = t_inf(First, Second)) of
+	      true -> throw(dont_know);
+	      false -> [{K, Inf}|SquashDuplicates(List)]
+	    end;
+	    SquashDuplicates([Good|Rest]) ->
+	    [Good|SquashDuplicates(Rest)];
+	    SquashDuplicates([]) -> []
+	end,
+      Type = t_map(SquashDuplicates(SortedPairs)),
+      get_safe_underapprox_1(Left, [Type|Acc], Map1);
     values ->
       Es = cerl:values_es(Pat),
       {Ts, Map1} = get_safe_underapprox_1(Es, [], Map),
@@ -1161,6 +1188,15 @@ get_safe_underapprox_1([Pat|Left], Acc, Map) ->
   end;
 get_safe_underapprox_1([], Acc, Map) ->
   {lists:reverse(Acc), Map}.
+
+get_safe_overapprox(Pats) ->
+  lists:map(fun get_safe_overapprox_1/1, Pats).
+
+get_safe_overapprox_1(Pat) ->
+  case cerl:is_literal(Lit = cerl:fold_literal(Pat)) of
+    true  -> t_from_term(cerl:concrete(Lit));
+    false -> t_any()
+  end.
 
 %%----------------------------------------
 %% Guards
