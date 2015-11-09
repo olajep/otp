@@ -117,7 +117,11 @@
 		    t_tuple_size/2,
 		    t_tuple_subtypes/2,
 		    t_is_map/2,
-		    t_map/0
+		    t_is_singleton/2,
+		    t_map/0,
+		    t_map/1,
+		    t_map_entries/2,
+		    t_map_put/2
 		   ]).
 
 -ifdef(DO_ERL_BIF_TYPES_TEST).
@@ -1682,8 +1686,8 @@ type(lists, zipwith3, 4, Xs, Opaques) ->
 type(maps, get, 2, Xs, Opaques) ->
   strict(maps, get, 2, Xs,
 	 fun ([Key, Map]) ->
-	     MapEntries = erl_types:t_map_entries(Map, Opaques),
-	     case (erl_types:t_is_singleton(Key, Opaques)
+	     MapEntries = t_map_entries(Map, Opaques),
+	     case (t_is_singleton(Key, Opaques)
 		   andalso lists:keyfind(Key, 1, MapEntries)) of
 	       false -> t_any();
 	       {_, ValType} -> ValType
@@ -1692,17 +1696,25 @@ type(maps, get, 2, Xs, Opaques) ->
 type(maps, is_key, 2, Xs, Opaques) ->
   strict(maps, is_key, 2, Xs,
 	 fun ([Key, Map]) ->
-	     MapEntries = erl_types:t_map_entries(Map, Opaques),
-	     case (erl_types:t_is_singleton(Key, Opaques)
+	     MapEntries = t_map_entries(Map, Opaques),
+	     case (t_is_singleton(Key, Opaques)
 		   andalso lists:keyfind(Key, 1, MapEntries)) of
 	       false -> t_boolean();
-	       _Found -> erl_types:t_from_term(true)
+	       _Found -> t_from_term(true)
 	     end
+	 end, Opaques);
+type(maps, merge, 2, Xs, Opaques) ->
+  strict(maps, merge, 2, Xs,
+	 fun ([Map1, Map2]) ->
+	     Map1Entries = t_map_entries(Map1, Opaques),
+	     Weakened = t_map([{K, t_any()} || {K,_} <- Map1Entries]),
+	     lists:foldl(fun erl_types:t_map_put/2, Weakened,
+			 t_map_entries(Map2, Opaques))
 	 end, Opaques);
 type(maps, Put, 3, Xs, Opaques) when Put =:= put; Put =:= update ->
   strict(maps, Put, 3, Xs,
 	 fun ([Key, Value, Map]) ->
-	     erl_types:t_map_put({Key, Value}, Map)
+	     t_map_put({Key, Value}, Map)
 	 end, Opaques);
 
 %%-- string -------------------------------------------------------------------
@@ -2672,6 +2684,8 @@ arg_types(maps, get, 2) ->
   [t_any(), t_map()];
 arg_types(maps, is_key, 2) ->
   [t_any(), t_map()];
+arg_types(maps, merge, 2) ->
+  [t_map(), t_map()];
 arg_types(maps, put, 3) ->
   [t_any(), t_any(), t_map()];
 arg_types(maps, update, 3) ->
