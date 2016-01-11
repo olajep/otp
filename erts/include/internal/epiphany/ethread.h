@@ -100,7 +100,7 @@ ethr_native_atomic32_read(ethr_native_atomic32_t *var)
  * provide that.
  *
  * We assume that all accesses that all accesses that take the same route
- * through the same mesh network (of which there are three; one for on-code
+ * through the same mesh network (of which there are three; one for on-core
  * loads, one for on-core stores, and one for off core accesses) are strictly
  * ordered. In other words, we assume that memory accesses cannot "overtake"
  * each other on the same mesh network, and that any endpoint applies memory
@@ -109,6 +109,9 @@ ethr_native_atomic32_read(ethr_native_atomic32_t *var)
  * We also assume that loads are ordered before any succeeding accesses. This is
  * sane presuming the architecture is strictly in-order and does not speculate
  * loads or stores.
+ *
+ * We also assume a load of a previously written value will not return that
+ * value until it is visible to all other cores.
  *
  * Lastly, we assume all available off-core memory is on the east bus (which is
  * the case on the currently available Parallella boards).
