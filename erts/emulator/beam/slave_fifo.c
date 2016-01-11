@@ -60,7 +60,7 @@ erts_fifo_write(struct erl_fifo *fifo, const void* buf, size_t count)
     size_t to_write = count;
     ASSERT(fifo->buffer <= captured_start && captured_start <= buffer_end);
     ASSERT(fifo->buffer <= captured_end   && captured_end   <= buffer_end);
-    ETHR_MEMBAR(ETHR_LoadLoad); /* fifo->start => *fifo->buffer */
+    ETHR_MEMBAR(ETHR_LoadStore); /* fifo->start => *fifo->buffer */
 
     if (captured_end < captured_start && captured_end + to_write >= captured_start)
 	to_write = captured_start - captured_end - 1;
@@ -75,7 +75,7 @@ erts_fifo_write(struct erl_fifo *fifo, const void* buf, size_t count)
     if (captured_end == fifo->buffer + fifo->size)
 	captured_end = fifo->buffer;
 
-    ETHR_MEMBAR(ETHR_LoadStore); /* *fifo->buffer => fifo->end */
+    ETHR_MEMBAR(ETHR_StoreStore); /* *fifo->buffer => fifo->end */
     fifo->end = captured_end;
     return to_write;
 }
@@ -99,6 +99,7 @@ erts_fifo_read(struct erl_fifo *fifo, void* buf, size_t count)
     size_t to_read = count;
     ASSERT(fifo->buffer <= captured_start && captured_start <= buffer_end);
     ASSERT(fifo->buffer <= captured_end   && captured_end   <= buffer_end);
+    ETHR_MEMBAR(ETHR_LoadLoad); /* fifo->end => *fifo->buffer */
 
     if (captured_start > captured_end) {
 	to_read = MIN(to_read, buffer_end - captured_start);
@@ -110,6 +111,8 @@ erts_fifo_read(struct erl_fifo *fifo, void* buf, size_t count)
     captured_start += to_read;
     if (captured_start == buffer_end)
 	captured_start = fifo->buffer;
+
+    ETHR_MEMBAR(ETHR_LoadStore); /* *fifo->buffer => fifo->start */
     fifo->start = captured_start;
     return to_read;
 }
@@ -126,6 +129,7 @@ erts_fifo_peek(struct erl_fifo *fifo, void* buf, size_t count)
 	size_t to_read = count;
 	ASSERT(fifo->buffer <= captured_start && captured_start <= buffer_end);
 	ASSERT(fifo->buffer <= captured_end   && captured_end   <= buffer_end);
+	ETHR_MEMBAR(ETHR_LoadLoad); /* fifo->end => *fifo->buffer */
 
 	if (captured_start > captured_end) {
 	    to_read = MIN(to_read, buffer_end - captured_start);
@@ -148,10 +152,14 @@ erts_fifo_skip(struct erl_fifo *fifo, size_t count)
     void *captured_start = fifo->start;
     const void *buffer_end = fifo->buffer + fifo->size;
     ASSERT(fifo->size > count);
+
     while (erts_fifo_available(fifo) < count);
+
     captured_start += count;
     if (captured_start > buffer_end)
 	captured_start = fifo->buffer + (captured_start - buffer_end);
+
+    ETHR_MEMBAR(ETHR_LoadStore); /* *fifo->end => fifo->start */
     fifo->start = captured_start;
 }
 
