@@ -45,8 +45,10 @@
 suite() -> [{ct_hooks,[ts_install_cth]}].
 
 all() -> 
-    [%% bs_add, %% mostly relevant to BEAM
-     otp_7422, zero_width, bad_append,
+    [bad_append,
+     zero_width,
+     otp_7422,
+     bs_add, %% mostly relevant to BEAM
 
      test1, test2, test3, test4, test5, testf, not_used,
      in_guard, mem_leak, coerce_to_float, bjorn,
@@ -482,6 +484,9 @@ mem_leak(N, B) ->
     ?TRACE_FMT(?CLR_LINE "~p ", [N]),
     ?line big_bin(B, <<23>>),
     ?line {'EXIT',{badarg,_}} = (catch big_bin(B, bad)),
+    %% We don't put enough pressure on the heap with HiPE, leading to us running
+    %% out of memory before the garbage collector kicks in.
+    garbage_collect(),
     mem_leak(N-1, B).
 
 big_bin(B1, B2) ->
@@ -626,7 +631,7 @@ copy_writable_binary_1(_) ->
     ?line Bin0 = <<(id(<<>>))/binary,0,1,2,3,4,5,6,7>>,
     ?line SubBin = make_sub_bin(Bin0),
     ?line id(<<42,34,55,Bin0/binary>>),		%Make reallocation likelier.
-    ?line Pid = spawn(fun() ->
+    ?line Pid = epiphany:spawn(fun() ->
 			      copy_writable_binary_holder(Bin0, SubBin)
 		      end),
     ?line Tab = ets:new(holder, []),
@@ -779,7 +784,7 @@ bs_add(Config) when is_list(Config) ->
     DoTest = fun() ->
 		     exit(Mod:bs_add(SmallestBig, -SmallestBig))
 	     end,
-    ?line {Pid,Mref} = spawn_monitor(DoTest),
+    ?line {Pid,Mref} = epiphany:spawn_monitor(DoTest),
     receive
 	{'DOWN',Mref,process,Pid,Res} -> ok
     end,
@@ -806,7 +811,7 @@ otp_7422(Config) when is_list(Config) ->
 
 otp_7422_int(N) when N < 512 ->
     T = erlang:make_tuple(N, []),
-    spawn_link(fun() ->
+    epiphany:spawn_link(fun() ->
 		       id(T),
 		       %% A size of field 0 would write one byte beyond
 		       %% the current position in the binary. It could
@@ -820,7 +825,7 @@ otp_7422_int(_) -> ok.
 otp_7422_bin(N) when N < 512 ->
     T = erlang:make_tuple(N, []),
     Z = id(<<>>),
-    spawn_link(fun() ->
+    epiphany:spawn_link(fun() ->
 		       id(T),
 		       id(<<Z:(id(0))/bits>>)
 	       end),
