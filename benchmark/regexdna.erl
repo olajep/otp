@@ -77,10 +77,7 @@ work(Master, Patterns) ->
 				  end,
     [L1, L2, L3] = L = [size(X) || X <- [B1, B2, B3]],
     Size = lists:sum(L),
-    Spawn = case try epiphany:state() catch error:undef -> offline end of
-		online  -> fun epiphany:spawn_link/1;
-		offline -> fun erlang:spawn_link/1
-	    end,
+    {Spawn, _Count} = colib:spawn_and_count(),
     PIDS = [{Spawn(matcher(S, B2, B3, MR)),
 	     printer(Pat)}
 	    || {Pat, {ok, MR}} <- Patterns],

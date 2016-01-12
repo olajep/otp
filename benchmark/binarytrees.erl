@@ -78,7 +78,7 @@ depth(D,M) ->
 
 sumLoop(0,_,Sum) -> Sum;
 sumLoop(N,D,Sum) ->
-   sumLoop(N-1,D, Sum + itemCheck(bottomUp(N,D)) + itemCheck(bottomUp(-1*N,D))).
+   sumLoop(N-1,D, Sum + itemCheck(bottomUp(N,D)) + itemCheck(bottomUp(-N,D))).
 
 bottomUp(I,0) -> {I, nil, nil};
 bottomUp(I,D) -> {I, bottomUp(2*I-1,D-1), bottomUp(2*I,D-1)}.

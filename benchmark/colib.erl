@@ -1,6 +1,7 @@
 -module(colib).
 
--export([pmap/2, pmap/3, pforeach/2, spawn_and_count/0]).
+-export([pmap/2, pmap/3, %% pforeach/2,
+	 spawn_and_count/0]).
 
 pmap(Fun, List) ->
     Collector = self(),
@@ -19,6 +20,7 @@ pmap(Fun, [A], List) -> pmap(fun (E) -> Fun(E, A) end, List);
 pmap(Fun, Extra, List) ->
     pmap(fun(E) -> erlang:apply(Fun, [E|Extra]) end, List).
 
+%% Does not wait for completion
 pforeach(Fun, Jobs) ->
     Self = self(),
     {Spawn, Count} = spawn_and_count(),

@@ -62,13 +62,11 @@ main(N) when N > 0 ->
 divide(N, N, _L, _C) -> ok;
 divide(N, MaxN, [H|T] = List, Chunk) ->
     Self = self(),
+    {Spawn, _Count} = colib:spawn_and_count(),
     Fun = fun() ->
 	      work(N, List, N * Chunk, (N + 1) * Chunk, MaxN, 0, 0, Self)
 	  end,
-    case epiphany:state() of
-	online  -> epiphany:spawn(Fun);
-	offline -> erlang  :spawn(Fun)
-    end,
+    Spawn(Fun),
     divide(N + 1, MaxN, T ++ [H], Chunk).
 
 join(0, MaxFlips, Checksum) -> {MaxFlips, Checksum};

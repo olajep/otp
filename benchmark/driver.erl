@@ -65,15 +65,7 @@ scaling(IoDev, Benchmark, Pregen, Cores) ->
 prepare(Benchmark) ->
     {Pregen, Modules0} = Benchmark:prepare(),
     Modules = [Benchmark, epiphany, epiphany_server | Modules0],
-    Spawn =
-    case epiphany:state() of
-	offline ->
-	    lists:foreach(fun code:ensure_loaded/1, Modules),
-	    fun erlang:spawn/1;
-	online ->
-	    lists:foreach(fun code:ensure_loaded_epiphany/1, Modules),
-	    fun epiphany:spawn/1
-    end,
+    {Spawn, _Count} = colib:spawn_and_count(),
     %% Roundtrip to ensure everything is ready before we start measuring
     Self = self(),
     Spawn(fun() -> Self ! ready end),

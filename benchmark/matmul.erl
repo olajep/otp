@@ -73,13 +73,7 @@ merge_row(Row, Acc) ->
 
 -spec fork(integer()) -> [pid()].
 fork(N) ->
-    Spawn = case epiphany:state() of
-		offline ->
-		    io:fwrite(standard_error, "Falling back to CPU~n", []),
-		    fun erlang:spawn_link/1;
-		_ ->
-		    fun epiphany:spawn_link/1
-	    end,
+    {Spawn, _Count} = colib:spawn_and_count(),
     [Spawn(fun worker_loop/0) || _ <- lists:seq(1, N)].
 
 join(Workers) ->

@@ -59,13 +59,7 @@ main([Arg], NoWorkers) ->
 
 workserver_entry(Fun, Jobs, NoWorkers) ->
     Self = self(),
-    Spawn = case epiphany:state() of
-		offline ->
-		    io:fwrite(standard_error, "Falling back to CPU~n", []),
-		    fun erlang:spawn_link/1;
-		_ ->
-		    fun epiphany:spawn_link/1
-	    end,
+    {Spawn, _Count} = colib:spawn_and_count(),
     Workers = [Spawn(fun()-> worker(Fun, Self) end)
 	       || _ <- lists:seq(1,NoWorkers)],
     workserver(Workers, Jobs).
