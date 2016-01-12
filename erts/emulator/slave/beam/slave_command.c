@@ -30,6 +30,21 @@
 /* Set by the master */
 EPIPHANY_SRAM_DATA struct slave_command_buffers *volatile slave_command_buffers;
 
+struct slave_timer_state slave_pause_timers(void)
+{
+    struct slave_timer_state ret;
+    ret.config = e_reg_read(E_REG_CONFIG);
+    e_ctimer_stop(E_CTIMER_0);
+    e_ctimer_stop(E_CTIMER_1);
+    return ret;
+}
+
+void slave_resume_timers(struct slave_timer_state state)
+{
+    e_ctimer_start(E_CTIMER_0, (state.config >> 4) & 0xf);
+    e_ctimer_start(E_CTIMER_1, (state.config >> 8) & 0xf);
+}
+
 static void
 await_command_buffers(void)
 {
@@ -72,12 +87,14 @@ erts_master_send_command(enum master_command code, const void *data, size_t size
 void
 erts_master_syscall(enum slave_syscall no, void *arg)
 {
+    struct slave_timer_state ts = slave_pause_timers();
     ASSERT(epiphany_in_dram(arg));
     ASSERT(no > 0);
     await_command_buffers();
     slave_command_buffers->syscall_arg = arg;
     slave_command_buffers->syscall = no;
     while(slave_command_buffers->syscall != 0);
+    slave_resume_timers(ts);
 }
 
 int

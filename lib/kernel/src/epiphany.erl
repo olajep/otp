@@ -25,6 +25,8 @@
 -export([internal_spawn/3, boot/0, count/0, prepare_loading/2, module_loaded/1,
 	 host/0, state/0, make_stub_module/3]).
 
+-export([timers/2]).
+
 -export([load_module/2, load_module/1, spawn/3, spawn/1, spawn_monitor/3,
 	 spawn_monitor/1, spawn_link/3, spawn_link/1, spawn_opt/4,
 	 spawn_opt/2]).
@@ -82,6 +84,15 @@ state() ->
       Beam :: binary(),
       Info :: {list(), list()}.
 make_stub_module(_, _, _) ->
+    erlang:nif_error(undefined).
+
+%% timers/2
+-spec timers(Zero, One) -> {non_neg_integer(), non_neg_integer()} when
+      Zero :: off | clk | idle | ialu_inst | fpu_inst | dual_unst | e1_stalls | ra_stalls
+	    | ext_fetch_stalls | ext_load_stalls,
+      One :: off | clk | idle | ialu_inst | fpu_inst | dual_unst | e1_stalls | ra_stalls
+	    | ext_fetch_stalls | ext_load_stalls.
+timers(_, _) ->
     erlang:nif_error(undefined).
 
 %% load_module/2

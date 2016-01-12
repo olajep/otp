@@ -42,6 +42,7 @@
 
 #ifdef ERTS_SLAVE
 #  include "epiphany.h" /* For epiphany_workgroup_size() */
+#  include "big.h"
 #endif
 
 #ifdef ERTS_SLAVE_EMU_ENABLED
@@ -252,3 +253,97 @@ BIF_RETTYPE epiphany_make_stub_module_3(BIF_ALIST_3)
     BIF_ERROR(BIF_P, EXC_NOTSUP);
 #endif
 }
+
+#ifdef ERTS_SLAVE
+static int term_to_timer_config(Eterm term, e_ctimer_config_t *out)
+{
+    if      (ERTS_IS_ATOM_STR("off",       term)) *out = E_CTIMER_OFF;
+    else if (ERTS_IS_ATOM_STR("clk",       term)) *out = E_CTIMER_CLK;
+    else if (ERTS_IS_ATOM_STR("ialu_inst", term)) *out = E_CTIMER_IALU_INST;
+    else if (ERTS_IS_ATOM_STR("fpu_inst",  term)) *out = E_CTIMER_FPU_INST;
+    else if (ERTS_IS_ATOM_STR("dual_inst", term)) *out = E_CTIMER_DUAL_INST;
+    else if (ERTS_IS_ATOM_STR("e1_stalls", term)) *out = E_CTIMER_E1_STALLS;
+    else if (ERTS_IS_ATOM_STR("ra_stalls", term)) *out = E_CTIMER_RA_STALLS;
+    else if (ERTS_IS_ATOM_STR("ext_fetch_stalls", term))
+	*out = E_CTIMER_EXT_FETCH_STALLS;
+    else if (ERTS_IS_ATOM_STR("ext_load_stalls", term))
+	*out = E_CTIMER_EXT_LOAD_STALLS;
+    else {
+	*out = 0;
+	return 0;
+    }
+    return 1;
+}
+
+static EPIPHANY_SRAM_DATA unsigned high_zero, high_one;
+
+static void EPIPHANY_SRAM_FUNC __attribute__((interrupt))
+timer_zero_wrap_handler(int __attribute__((unused)) _unused)
+{
+    /* We will spill all caller-save registers to stack if we call anything */
+    asm("movts ctimer0, %0" : /* No output */ : "r"(E_CTIMER_MAX));
+    high_zero++;
+}
+
+static void EPIPHANY_SRAM_FUNC __attribute__((interrupt))
+timer_one_wrap_handler(int __attribute__((unused)) _unused)
+{
+    /* We will spill all caller-save registers to stack if we call anything */
+    asm("movts ctimer1, %0" : /* No output */ : "r"(E_CTIMER_MAX));
+    high_one++;
+}
+
+BIF_RETTYPE epiphany_timers_2(BIF_ALIST_2)
+{
+    e_ctimer_config_t conf_zero, conf_one;
+    unsigned low_zero, low_one;
+    /* Uint64   val_zero, val_one; */
+    Eterm res_zero, res_one, ret, *hp;
+
+    if (!term_to_timer_config(BIF_ARG_1, &conf_zero)
+	|| !term_to_timer_config(BIF_ARG_2, &conf_one))
+	BIF_ERROR(BIF_P, BADARG);
+
+    /* Stop and fetch old timer values */
+    low_zero = E_CTIMER_MAX - e_ctimer_stop(E_CTIMER_0);
+    low_one  = E_CTIMER_MAX - e_ctimer_stop(E_CTIMER_1);
+
+    /* Build return value */
+    res_zero = erts_make_integer(low_zero, BIF_P);
+    if (high_zero)
+	res_zero = erts_mixed_plus
+	    (BIF_P, res_zero,
+	     erts_mixed_times(BIF_P, erts_make_integer(E_CTIMER_MAX, BIF_P),
+			      erts_make_integer(high_zero, BIF_P)));
+    res_one = erts_make_integer(low_one, BIF_P);
+    if (high_one)
+	res_one = erts_mixed_plus
+	    (BIF_P, res_one,
+	     erts_mixed_times(BIF_P, erts_make_integer(E_CTIMER_MAX, BIF_P),
+			      erts_make_integer(high_one, BIF_P)));
+    hp = HAlloc(BIF_P, 3);
+    ret = TUPLE2(hp, res_zero, res_one);
+
+    /* Reset high bits */
+    high_zero = high_one = 0;
+
+    /* Reset values, configure interrupt handlers, and restart with new config */
+    e_ctimer_set(E_CTIMER_0, E_CTIMER_MAX);
+    e_ctimer_set(E_CTIMER_1, E_CTIMER_MAX);
+    if (conf_zero != E_CTIMER_OFF) {
+	e_irq_attach(E_TIMER0_INT, timer_zero_wrap_handler);
+	e_ctimer_start(E_CTIMER_0, conf_zero);
+    }
+    if (conf_one  != E_CTIMER_OFF) {
+	e_irq_attach(E_TIMER1_INT, timer_one_wrap_handler);
+	e_ctimer_start(E_CTIMER_1, conf_one);
+    }
+
+    return ret;
+}
+#else /* ERTS_SLAVE */
+BIF_RETTYPE epiphany_timers_2(BIF_ALIST_2)
+{
+    BIF_ERROR(BIF_P, EXC_NOTSUP);
+}
+#endif

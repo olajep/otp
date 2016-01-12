@@ -127,5 +127,10 @@ void erts_start_schedulers() {
 
 EPIPHANY_SRAM_FUNC static void __attribute__((interrupt))
 handl(int __attribute__((unused)) crap) {
-    erts_printf("Interrupted! IPEND=%x\n", e_reg_read(E_REG_IPEND));
+    unsigned lr;
+    asm("mov %0, lr" : "=r"(lr) : );
+    erts_printf("Interrupted! IPEND=%x, IRET=%#x, lr=%#x\n",
+		e_reg_read(E_REG_IPEND),
+		e_reg_read(E_REG_IRET),
+		lr);
 };

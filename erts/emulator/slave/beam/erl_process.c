@@ -1128,6 +1128,15 @@ Process *schedule(Process *p, int calls)
 	ASSERT(esdp->current_process == p);
 #endif
 	p->reds += calls;
+
+	/* Wait for a message, timeout, etc to resume */
+	if (!(state & (ERTS_PSFLG_ACTIVE|ERTS_PSFLG_FREE|ERTS_PSFLG_PENDING_EXIT))) {
+	    /* We pause bookkeeping here so that busywaiting time is not included */
+	    struct slave_timer_state ts = slave_pause_timers();
+	    while (erts_dispatch_slave_commands(p) == 0);
+	    erts_smp_atomic32_read_bor_nob(&p->state, ERTS_PSFLG_ACTIVE);
+	    slave_resume_timers(ts);
+	}
 	while (erts_dispatch_slave_commands(p) != 0);
 	if (state & ERTS_PSFLG_FREE) {
 	    ready_arg = erts_alloc(ERTS_ALC_T_TMP,
@@ -1173,7 +1182,9 @@ Process *schedule(Process *p, int calls)
 	/* Lock the main lock so lc is happy */
 	erts_smp_proc_lock(p, ERTS_PROC_LOCK_MAIN);
 #endif
-	erts_smp_atomic32_set_nob(&p->state, erts_smp_atomic32_read_nob(&p->state) | ERTS_PSFLG_RUNNING);
+	erts_smp_atomic32_set_nob(&p->state, erts_smp_atomic32_read_nob(&p->state)
+				  | ERTS_PSFLG_RUNNING
+				  | ERTS_PSFLG_ACTIVE);
 	erts_free(ERTS_ALC_T_TMP, ready_arg);
 	return p;
     }

@@ -5,9 +5,9 @@ BENCH_MODS=binarytrees $(SCALE_MODS) fannkuchredux
 	 # beam/erl_port_task.c:1533:erts_port_task_schedule(): Internal error:
 	 # Missing run-queue
 BENCH_OBJS=$(addsuffix .beam,$(BENCH_MODS))
-OBJS=driver.beam $(BENCH_OBJS)
+OBJS=driver.beam colib.beam $(BENCH_OBJS)
 
-EXTRA_OPT_OBJS=lists.beam epiphany.beam epiphany_server.beam colib.beam
+EXTRA_OPT_OBJS=lists.beam epiphany.beam epiphany_server.beam
 # re.beam
 
 ERL_TOP=$(shell readlink -f ..)
@@ -37,6 +37,8 @@ SCALE_ARM=$(ERL) -noshell -s driver scaling
 
 all: beam.txt hipe.txt arm_beam.txt arm_hipe.txt scale_beam.txt scale_hipe.txt \
 	arm_scale_beam.txt arm_scale_hipe.txt
+
+.DELETE_ON_ERROR:
 
 beam.txt: $(addprefix beam/,$(OBJS))
 	$(gen_verbose)$(TEST) $@ $(BENCH_MODS) -pa beam

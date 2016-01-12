@@ -232,7 +232,8 @@ void erts_slave_serve_timer(struct slave *slave,
 			    struct master_command_timer *cmd);
 
 int erts_dispatch_slave_commands(void);
-#else
+
+#else /* !ERTS_SLAVE */
 
 void erts_master_send_command(enum master_command code, const void *data,
 			      size_t size);
@@ -252,6 +253,13 @@ void slave_serve_timeout(Process *c_p, struct slave_command_timeout *cmd);
  * called from contexts where this is acceptable.
  */
 int erts_dispatch_slave_commands(Process *c_p);
-#endif
+
+struct slave_timer_state {
+    unsigned config;
+};
+struct slave_timer_state slave_pause_timers(void);
+void slave_resume_timers(struct slave_timer_state state);
+
+#endif /* !ERTS_SLAVE */
 
 #endif /* ERL_SLAVE_COMMAND_H__ */
