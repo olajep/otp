@@ -5,10 +5,11 @@
 -define(SAMPLES, 10).
 -define(US_PER_S, 1000000).
 
--define(STATS_FORMAT, "\t~p\t~p\t~p\t~p").
--define(STATS_HEADERS, [time, reds, fetch_stall, load_stall]).
--define(STATS_PATTERN, {Time, Reds, Zero, One}).
--define(STATS_FMTARGS, [Time, Reds, Zero, One]).
+-define(STATS_FORMAT, "\t~p\t~p\t~p\t~p\t~p\t~p\t~p\t~p").
+-define(STATS_HEADERS, [time, time_sd, reds, reds_sd,
+			fetch_stall, fs_sd, load_stall, ls_sd]).
+-define(STATS_PATTERN, {Time, TimeSd, Reds, RedsSd, Zero, ZeroSd, One, OneSd}).
+-define(STATS_FMTARGS, [Time, TimeSd, Reds, RedsSd, Zero, ZeroSd, One, OneSd]).
 
 run([Outfile|Benchmarks]) ->
     case epiphany:state() of
@@ -86,30 +87,47 @@ prepare(Benchmark) ->
     Pregen.
 
 bench(Benchmark, Args, Samples) ->
-    colib:select_timers(clk, ext_fetch_stalls),
-    {FirstTime, FirstReds, Clk1, FetchStall}
-	= bench(Benchmark, Args, 0, 0, 0, 0, Samples div 2),
-    colib:select_timers(clk, ext_load_stalls),
-    {SecondTime, SecondReds, Clk2, LoadStall}
-	= bench(Benchmark, Args, 0, 0, 0, 0, (Samples+1) div 2),
-    {((FirstTime + SecondTime) / ?US_PER_S) / Samples,
-     (FirstReds + SecondReds) / Samples,
-     case Clk1 of 0 -> nan; _ -> FetchStall / Clk1 end,
-     case Clk2 of 0 -> nan; _ -> LoadStall  / Clk2 end}.
+    {Times, Reds, FetchStalls, LoadStalls}
+	= bench(Benchmark, Args, [], [], [], [], Samples),
+    {avg(Times) / ?US_PER_S,
+     stdev(Times) / ?US_PER_S,
+     avg(Reds),
+     stdev(Reds),
+     case FetchStalls of nan -> nan; _ -> avg(FetchStalls) end,
+     case FetchStalls of nan -> nan; _ -> stdev(FetchStalls) end,
+     case LoadStalls  of nan -> nan; _ -> avg(LoadStalls) end,
+     case LoadStalls  of nan -> nan; _ -> stdev(LoadStalls) end}.
 
-bench(_Benchmark, _Args, TimeSum, RedSum, ZeroSum, OneSum, 0) ->
-    {TimeSum,
-     RedSum,
-     ZeroSum,
-     OneSum};
-bench(Benchmark, Args, TimeSum, RedSum, ZeroSum, OneSum, Samples) when Samples > 0 ->
+avg(List) -> lists:sum(List) / length(List).
+
+stdev(List) ->
+    Len = length(List),
+    Mean = lists:sum(List) / Len,
+    math:sqrt(lists:sum([(X-Mean)*(X-Mean) || X<-List])
+	      / (Len - 1)).
+
+bench(_Benchmark, _Args, Times, Reds, FetchStalls, LoadStalls, 0) ->
+    {Times, Reds, FetchStalls, LoadStalls};
+bench(Benchmark, Args, Times, Reds, FetchStalls0, LoadStalls0,
+      Samples) when Samples > 0 ->
+    case Samples rem 2 of
+	1 -> colib:select_timers(clk, ext_fetch_stalls);
+	0 -> colib:select_timers(clk, ext_load_stalls)
+    end,
     timer:sleep(50),
     _ = colib:poll_stats(),
     {Time, _} = timer:tc(Benchmark, bench, Args),
-    {Zero, One, Reds} = colib:poll_stats(),
+    {Zero, One, Red} = colib:poll_stats(),
+    Quotient = case Zero of 0 -> nan; _ -> One / Zero end,
     io:format("~p samples of ~p remaining: ~p s, reds: ~p, T0: ~p, T1: ~p\n",
 	      [Samples - 1,
 	       Benchmark, Time / ?US_PER_S,
-	       Reds, Zero, One]),
-    bench(Benchmark, Args, TimeSum + Time, RedSum + Reds, ZeroSum + Zero, OneSum + One,
-	  Samples - 1).
+	       Red, Zero, One]),
+    {FetchStalls, LoadStalls} =
+	case Samples rem 2 of
+	    _ when Quotient =:= nan -> {nan, nan};
+	    1 -> {[Quotient | FetchStalls0], LoadStalls0};
+	    0 -> {FetchStalls0, [Quotient | LoadStalls0]}
+	end,
+    bench(Benchmark, Args, [Time | Times], [Red | Reds], FetchStalls,
+	  LoadStalls, Samples - 1).
