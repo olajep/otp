@@ -1,10 +1,11 @@
-TS_MODS=pdict_SUITE maps_SUITE map_SUITE basic_binary_SUITE bs_match_tail_SUITE
-TS_MODS+=bs_bincomp_SUITE bs_match_bin_SUITE
+PLAIN_TS_MODS=pdict_SUITE maps_SUITE map_SUITE basic_binary_SUITE bs_match_tail_SUITE
+PLAIN_TS_MODS+=bs_bincomp_SUITE bs_match_bin_SUITE
 
+TS_MODS=$(PLAIN_TS_MODS)
 ifeq ($(findstring beam,$(MAKECMDGOALS)),beam)
 # These suites are known to be broken with HiPE
-TS_MODS+=binary_SUITE bs_utf_SUITE bs_match_misc_SUITE bs_match_int_SUITE
-TS_MODS+=bs_construct_SUITE
+PLAIN_TS_MODS+=binary_SUITE bs_utf_SUITE bs_match_misc_SUITE bs_match_int_SUITE
+PLAIN_TS_MODS+=bs_construct_SUITE
 else
 # bs_SUITE is a HiPE suite; it compiles all its tests at runtime.
 TS_MODS+=bs_SUITE
@@ -54,6 +55,11 @@ test: $(addprefix beam/,$(OBJS)) $(addprefix debug/,$(OBJS))
 fast: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS))
 	TARGET=$(TARGET) SLAVE_TARGET=$(SLAVE_TARGET) \
 		./run $(FLAGS) --fast $(TS_MODS)
+
+# Like fast, but skips the suites that run HiPE during the test
+faster: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS))
+	TARGET=$(TARGET) SLAVE_TARGET=$(SLAVE_TARGET) \
+		./run $(FLAGS) --fast $(PLAIN_TS_MODS)
 
 beam: $(addprefix beam/,$(OBJS))
 	TARGET=$(TARGET) SLAVE_TARGET=$(SLAVE_TARGET) \
