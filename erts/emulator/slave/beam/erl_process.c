@@ -1133,7 +1133,8 @@ Process *schedule(Process *p, int calls)
 	if (!(state & (ERTS_PSFLG_ACTIVE|ERTS_PSFLG_FREE|ERTS_PSFLG_PENDING_EXIT))) {
 	    /* We pause bookkeeping here so that busywaiting time is not included */
 	    struct slave_timer_state ts = slave_pause_timers();
-	    while (erts_dispatch_slave_commands(p) == 0);
+	    if (erts_dispatch_slave_commands(p) == 0)
+		epiphany_sleep_us(100);
 	    erts_smp_atomic32_read_bor_nob(&p->state, ERTS_PSFLG_ACTIVE);
 	    slave_resume_timers(ts);
 	}

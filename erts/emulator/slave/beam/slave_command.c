@@ -93,7 +93,10 @@ erts_master_syscall(enum slave_syscall no, void *arg)
     await_command_buffers();
     slave_command_buffers->syscall_arg = arg;
     slave_command_buffers->syscall = no;
-    while(slave_command_buffers->syscall != 0);
+    while(slave_command_buffers->syscall != 0) {
+	if (no == SLAVE_SYSCALL_READY)
+	    epiphany_sleep_us(500);
+    }
     slave_resume_timers(ts);
 }
 

@@ -63,6 +63,53 @@ epiphany_workgroup_size(void)
     return rows * cols;
 }
 
+/*
+ * While we've failed construct a sleep that uses IDLE without crashing, we can
+ * at least put the waiting loop in local memory. The timer access is inlined
+ * with inline assembly since the library function is stored in shared memory
+ * and won't inline.
+ *
+ * The 'noinline' attribute is required to prevent this code from being inlined
+ * in epiphany_sleep_us, which would put it in shared memory.
+ */
+static void EPIPHANY_SRAM_FUNC __attribute__((noinline))
+epiphany_sleep_inner(void)
+{
+    unsigned value;
+    do {
+	asm volatile("movfs %0, ctimer0" : "=r"(value));
+    } while(value);
+}
+
+/* Typical operating frequency is 600MHz */
+#define EPIPHANY_CYCLES_PER_MICROSEC 600
+
+void epiphany_sleep_us(unsigned microseconds)
+{
+    unsigned old_value;
+    ASSERT(microseconds > 0);
+    ASSERT(microseconds < UINT_MAX / EPIPHANY_CYCLES_PER_MICROSEC);
+
+    old_value = e_ctimer_stop(E_CTIMER_0);
+
+    e_irq_mask(E_TIMER0_INT, E_TRUE);
+    e_ctimer_set(E_CTIMER_0, EPIPHANY_CYCLES_PER_MICROSEC * microseconds);
+    e_ctimer_start(E_CTIMER_0, E_CTIMER_CLK);
+
+    epiphany_sleep_inner();
+
+    e_ctimer_stop(E_CTIMER_0);
+
+    /*
+     * Clear the interrupt, which will have triggered when the timer hit 0,
+     * but is still waiting since it's masked.
+     */
+    asm("movts ilatcl, %0" : : "r"(1 << (E_TIMER0_INT - E_SYNC)));
+    e_irq_mask(E_TIMER0_INT, E_FALSE);
+    e_ctimer_set(E_CTIMER_0, old_value);
+
+    return;
+}
 
 void
 epiphany_workgroup_origin(unsigned *row, unsigned *col)

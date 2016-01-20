@@ -41,4 +41,7 @@ int epiphany_sane_address(void *);
 
 void epiphany_dram_fence(void);
 
+/* Stops timer0, but preserves its value */
+void epiphany_sleep_us(unsigned microseconds);
+
 #endif /* defined(_SYS_EPIPHANY_H) */
