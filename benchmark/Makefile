@@ -33,6 +33,15 @@ SCALE=env SLAVE_BINARY=$(SLAVE) $(ERL) -noshell -s driver scaling
 TEST_ARM =$(ERL) -noshell -s driver run
 SCALE_ARM=$(ERL) -noshell -s driver scaling
 
+# Hipe targets whatever emulator is running it, so we need to build the debug
+# files with debug erlc. An alternative would be to build a HiPE cross-compiler
+# (not very easy without modifying the existing build scripts)
+ERL_DEBUG=env ROOTDIR=$(ERL_TOP) BINDIR=$(BINDIR) EMU=beam.debug $(BINDIR)/erlexec
+ERLC_DEBUG=${ERL_DEBUG} +sbtu +A0 -noinput -mode minimal -boot start_clean
+ERLC_DEBUG+=-s erl_compile compile_cmdline -extra
+SLAVE_DEBUG=$(ERL_TOP)/bin/epiphany-unknown-elf/slave.debug.smp.srec
+TEST_DEBUG=env SLAVE_BINARY=$(SLAVE_DEBUG) $(ERL_DEBUG) -noshell -s driver run
+
 .PHONY: all compile clean
 
 all: beam.txt hipe.txt arm_beam.txt arm_hipe.txt scale_beam.txt scale_hipe.txt \
@@ -45,6 +54,9 @@ beam.txt: $(addprefix beam/,$(OBJS))
 
 hipe.txt: $(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS))
 	$(gen_verbose)$(TEST) $@ $(BENCH_MODS) -pa opt
+
+debug_hipe.txt: $(addprefix debug/,$(OBJS) $(EXTRA_OPT_OBJS))
+	$(gen_verbose)$(TEST_DEBUG) $@ $(BENCH_MODS) -pa debug
 
 arm_beam.txt: $(addprefix beam/,$(OBJS))
 	$(gen_verbose)$(TEST_ARM) $@ $(BENCH_MODS) -pa beam
@@ -66,9 +78,12 @@ arm_scale_hipe.txt: $(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS))
 
 compile: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS))
 
+compile_debug: $(addprefix debug/,$(OBJS) $(EXTRA_OPT_OBJS))
+
 clean:
 	rm -f $(OBJS) $(addprefix beam/,$(OBJS)) \
-		$(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS))
+		$(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS)) \
+		$(addprefix debug/,$(OBJS) $(EXTRA_OPT_OBJS))
 
 beam/%.beam: %.erl
 	$(erlc_verbose)cd beam && $(ERLC) ../$<
@@ -90,3 +105,21 @@ opt/%.beam: $(ERL_TOP)/lib/stdlib/ebin/%.beam
 	$(erlc_verbose)cd opt && \
 		$(ERLC) +native $(notdir $<) && \
 		$(ERLC) +native +'{hipe,{target,epiphany}}' $(notdir $<)
+
+debug/%.beam: beam/%.beam
+	$(V_at)cp $< $@
+	$(erlc_verbose)cd debug && \
+		$(ERLC_DEBUG) +native $(notdir $<) && \
+		$(ERLC_DEBUG) +native +'{hipe,{target,epiphany}}' $(notdir $<)
+
+debug/%.beam: $(ERL_TOP)/lib/kernel/ebin/%.beam
+	$(V_at)cp $< $@
+	$(erlc_verbose)cd debug && \
+		$(ERLC_DEBUG) +native $(notdir $<) && \
+		$(ERLC_DEBUG) +native +'{hipe,{target,epiphany}}' $(notdir $<)
+
+debug/%.beam: $(ERL_TOP)/lib/stdlib/ebin/%.beam
+	$(V_at)cp $< $@
+	$(erlc_verbose)cd debug && \
+		$(ERLC_DEBUG) +native $(notdir $<) && \
+		$(ERLC_DEBUG) +native +'{hipe,{target,epiphany}}' $(notdir $<)
