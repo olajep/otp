@@ -5,11 +5,14 @@
 -define(SAMPLES, 10).
 -define(US_PER_S, 1000000).
 
--define(STATS_FORMAT, "\t~p\t~p\t~p\t~p\t~p\t~p\t~p\t~p").
+-define(STATS_FORMAT, "\t~p\t~p\t~p\t~p\t~p\t~p\t~p\t~p\t~p\t~p").
 -define(STATS_HEADERS, [time, time_sd, reds, reds_sd,
+			cycles, cycles_sd,
 			fetch_stall, fs_sd, load_stall, ls_sd]).
--define(STATS_PATTERN, {Time, TimeSd, Reds, RedsSd, Zero, ZeroSd, One, OneSd}).
--define(STATS_FMTARGS, [Time, TimeSd, Reds, RedsSd, Zero, ZeroSd, One, OneSd]).
+-define(STATS_PATTERN, {Time, TimeSd, Reds, RedsSd, Cycles, CyclesSd,
+			Zero, ZeroSd, One, OneSd}).
+-define(STATS_FMTARGS, [Time, TimeSd, Reds, RedsSd, Cycles, CyclesSd,
+			Zero, ZeroSd, One, OneSd]).
 
 run([Outfile|Benchmarks]) ->
     case epiphany:state() of
@@ -87,12 +90,14 @@ prepare(Benchmark) ->
     Pregen.
 
 bench(Benchmark, Args, Samples) ->
-    {Times, Reds, FetchStalls, LoadStalls}
-	= bench(Benchmark, Args, [], [], [], [], Samples),
+    {Times, Reds, Cycles, FetchStalls, LoadStalls}
+	= bench(Benchmark, Args, [], [], [], [], [], Samples),
     {avg(Times) / ?US_PER_S,
      stdev(Times) / ?US_PER_S,
      avg(Reds),
      stdev(Reds),
+     avg(Cycles),
+     stdev(Cycles),
      case FetchStalls of nan -> nan; _ -> avg(FetchStalls) end,
      case FetchStalls of nan -> nan; _ -> stdev(FetchStalls) end,
      case LoadStalls  of nan -> nan; _ -> avg(LoadStalls) end,
@@ -106,9 +111,9 @@ stdev(List) ->
     math:sqrt(lists:sum([(X-Mean)*(X-Mean) || X<-List])
 	      / (Len - 1)).
 
-bench(_Benchmark, _Args, Times, Reds, FetchStalls, LoadStalls, 0) ->
-    {Times, Reds, FetchStalls, LoadStalls};
-bench(Benchmark, Args, Times, Reds, FetchStalls0, LoadStalls0,
+bench(_Benchmark, _Args, Times, Reds, Cycles, FetchStalls, LoadStalls, 0) ->
+    {Times, Reds, Cycles, FetchStalls, LoadStalls};
+bench(Benchmark, Args, Times, Reds, Cycles, FetchStalls0, LoadStalls0,
       Samples) when Samples > 0 ->
     case Samples rem 2 of
 	1 -> colib:select_timers(clk, ext_fetch_stalls);
@@ -129,5 +134,5 @@ bench(Benchmark, Args, Times, Reds, FetchStalls0, LoadStalls0,
 	    1 -> {[Quotient | FetchStalls0], LoadStalls0};
 	    0 -> {FetchStalls0, [Quotient | LoadStalls0]}
 	end,
-    bench(Benchmark, Args, [Time | Times], [Red | Reds], FetchStalls,
-	  LoadStalls, Samples - 1).
+    bench(Benchmark, Args, [Time | Times], [Red | Reds], [Zero | Cycles],
+	  FetchStalls, LoadStalls, Samples - 1).
