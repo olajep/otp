@@ -50,31 +50,31 @@ all: beam.txt hipe.txt arm_beam.txt arm_hipe.txt scale_beam.txt scale_hipe.txt \
 .DELETE_ON_ERROR:
 
 beam.txt: $(addprefix beam/,$(OBJS))
-	$(gen_verbose)$(TEST) $@ $(BENCH_MODS) -pa beam
+	$(gen_verbose)$(TEST) $@ $(BENCH_MODS) -pa beam 2>&1 | tee $@.log
 
 hipe.txt: $(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS))
-	$(gen_verbose)$(TEST) $@ $(BENCH_MODS) -pa opt
+	$(gen_verbose)$(TEST) $@ $(BENCH_MODS) -pa opt 2>&1 | tee $@.log
 
 debug_hipe.txt: $(addprefix debug/,$(OBJS) $(EXTRA_OPT_OBJS))
-	$(gen_verbose)$(TEST_DEBUG) $@ $(BENCH_MODS) -pa debug
+	$(gen_verbose)$(TEST_DEBUG) $@ $(BENCH_MODS) -pa debug 2>&1 | tee $@.log
 
 arm_beam.txt: $(addprefix beam/,$(OBJS))
-	$(gen_verbose)$(TEST_ARM) $@ $(BENCH_MODS) -pa beam
+	$(gen_verbose)$(TEST_ARM) $@ $(BENCH_MODS) -pa beam 2>&1 | tee $@.log
 
 arm_hipe.txt: $(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS))
-	$(gen_verbose)$(TEST_ARM) $@ $(BENCH_MODS) -pa opt
+	$(gen_verbose)$(TEST_ARM) $@ $(BENCH_MODS) -pa opt 2>&1 | tee $@.log
 
 scale_beam.txt: $(addprefix beam/,$(OBJS))
-	$(gen_verbose)$(SCALE) $@ $(SCALE_MODS) -pa beam
+	$(gen_verbose)$(SCALE) $@ $(SCALE_MODS) -pa beam 2>&1 | tee $@.log
 
 scale_hipe.txt: $(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS))
-	$(gen_verbose)$(SCALE) $@ $(SCALE_MODS) -pa opt
+	$(gen_verbose)$(SCALE) $@ $(SCALE_MODS) -pa opt 2>&1 | tee $@.log
 
 arm_scale_beam.txt: $(addprefix beam/,$(OBJS))
-	$(gen_verbose)$(SCALE_ARM) $@ $(SCALE_MODS) -pa beam
+	$(gen_verbose)$(SCALE_ARM) $@ $(SCALE_MODS) -pa beam 2>&1 | tee $@.log
 
 arm_scale_hipe.txt: $(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS))
-	$(gen_verbose)$(SCALE_ARM) $@ $(SCALE_MODS) -pa opt
+	$(gen_verbose)$(SCALE_ARM) $@ $(SCALE_MODS) -pa opt 2>&1 | tee $@.log
 
 compile: $(addprefix beam/,$(OBJS)) $(addprefix opt/,$(OBJS) $(EXTRA_OPT_OBJS))
 

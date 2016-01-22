@@ -103,8 +103,11 @@ bench(Benchmark, Args, Samples) ->
      case LoadStalls  of nan -> nan; _ -> avg(LoadStalls) end,
      case LoadStalls  of nan -> nan; _ -> stdev(LoadStalls) end}.
 
+avg([]) -> nan;
 avg(List) -> lists:sum(List) / length(List).
 
+stdev([]) -> nan;
+stdev([_]) -> nan;
 stdev(List) ->
     Len = length(List),
     Mean = lists:sum(List) / Len,
