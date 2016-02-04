@@ -17,11 +17,11 @@ OBJS=regressions.beam unit.beam matmul.beam fannkuchredux.beam mandelbrot.beam \
 	matchstate_align.beam \
 	ts_epi.beam $(TS_OBJS)
 
+ERL_TOP=$(shell readlink -f ..)
+
 include ../make/target.mk
 include ../make/output.mk
 include ../erts/emulator/slave/info.mk
-
-ERL_TOP=$(shell readlink -f ..)
 
 ifeq ("$(wildcard $(ERL_TOP)/bin/$(TARGET))","")
 ifneq ("$(wildcard $(ERL_TOP)/bin/arm-unknown-linux-gnueabihf)","")

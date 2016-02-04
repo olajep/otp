@@ -49,7 +49,7 @@ process on the Epiphany.
 There are some tests included. These can be run on the release build (that we
 compiled above) with the following command:
 
-    make ERL_TOP=$(PWD) -j4 -C tests fast
+    make -j4 -C tests fast
 
 Copyright and License
 ---------------------
