@@ -1,16 +1,22 @@
-Erlang/OTP
-==========
+Erlang on Adapteva's Parallella
+===============================
+
+This is a modified version of the Erlang runtime system that can run Erlang on
+the Epiphany co-processor, most commonly found on the [Parallella] [2]
+single-board computer.
 
 **Erlang** is a programming language used to build massively scalable soft
-real-time systems with requirements on high availability. Some of its
-uses are in telecom, banking, e-commerce, computer telephony and
-instant messaging. Erlang's runtime system has built-in support for
-concurrency, distribution and fault tolerance.
+real-time systems with requirements on high availability. Some of its uses are
+in telecom, banking, e-commerce, computer telephony and instant messaging.
+Erlang's runtime system has built-in support for concurrency, distribution and
+fault tolerance.
 
 **OTP** is set of Erlang libraries and design principles providing
 middle-ware to develop these systems. It includes its own distributed
 database, applications to interface towards other languages, debugging
 and release handling tools.
+
+Please see the [erlang/otp] [3] repository for upstream Erlang/OTP.
 
 ERTS and BEAM
 -------------
@@ -23,43 +29,27 @@ standard libraries amongst others are included.
 
 More information can be found at [erlang.org] [1].
 
-Building and Installing
------------------------
+Building and Running
+--------------------
+Building from a git clone is quite simple:
 
-Information on building and installing Erlang/OTP can be found
-in the [$ERL_TOP/HOWTO/INSTALL.md] [5] document.
+    ./otp_build autoconf
+    ./configure --enable-slave-emulator --enable-hipe
+    make -j4
 
-Contributing to Erlang/OTP
---------------------------
+You will get the `erl` binary in `bin/erl`. Start it up, and you will see
+`[slave:0]` in the ERTS system version line. This means that you are not using
+the Epiphany. Only one process may use it at a time. To do so, use:
 
-Here are the [instructions for submitting patches] [2].
+    env SLAVE_BINARY=bin/epiphany-unknown-elf/slave.smp bin/erl
 
-In short:
+It should now show `[slave:16]` instead. Use `epiphany:spawn/1` to run an Erlang
+process on the Epiphany.
 
-*   We prefer to receive proposed updates via email on the
-    [`erlang-patches`] [3] mailing list or through a pull request.
+There are some tests included. These can be run on the release build (that we
+compiled above) with the following command:
 
-*   Pull requests will be handled once everyday and there will be 
-    essential testing before we will take a decision on the outcome
-    of the request. If the essential testings fails, the pull request
-    will be closed and you will have to fix the problem and submit another
-    pull request when this is done.
-
-*   We merge all proposed updates to the `pu` (*proposed updates*) branch,
-    typically within one working day.
-
-*   At least once a day, the contents of the `pu` branch will be built on
-    several platforms (Linux, Solaris, Mac OS X, Windows, and so on) and
-    automatic test suites will be run. We will email you if any problems are
-    found.
-
-*   If a proposed change builds and passes the tests, it will be reviewed
-    by one or more members of the Erlang/OTP team at Ericsson. The reviewer
-    may suggest improvements that are needed before the change can be accepted
-    and merged.
-
-*   Once or twice a week, a status email called ["What's cooking in Erlang/OTP"] [4]
-    will be sent to the [`erlang-patches`] [3] mailing list.
+    make ERL_TOP=$(PWD) -j4 -C tests fast
 
 Copyright and License
 ---------------------
@@ -84,7 +74,5 @@ Copyright and License
 
 
    [1]: http://www.erlang.org
-   [2]: http://wiki.github.com/erlang/otp/submitting-patches
-   [3]: http://www.erlang.org/static/doc/mailinglist.html
-   [4]: http://erlang.github.com/otp/
-   [5]: HOWTO/INSTALL.md
+   [2]: https://www.parallella.org/
+   [3]: https://github.com/erlang/otp
