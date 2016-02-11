@@ -217,7 +217,8 @@
          lift_list_to_pos_empty/1, lift_list_to_pos_empty/2,
          is_opaque_type/2,
 	 is_erl_type/1,
-	 atom_to_string/1
+	 atom_to_string/1,
+	 orddict_combine/3
 	]).
 
 %%-define(DO_ERL_TYPES_TEST, true).
@@ -1615,7 +1616,7 @@ lift_list_to_pos_empty(?list(Content, Termination, _)) ->
 -spec t_map() -> erl_type().
 
 t_map() ->
-  ?map([]).
+  ?map(orddict:new()).
 
 -spec t_map([{erl_type(), erl_type()}]) -> erl_type().
 
@@ -1648,6 +1649,34 @@ t_map_entries(M, Opaques) ->
 map_entries(?map(E)) ->
   E.
 
+%% Merges two orddicts, essentially, but with a more expressive merge function
+%% than orddict:merge/3
+%% Fun is invoked with ({K, AV}, none), (none, {K, BV}) or ({K, AV}, {K, BV})
+%% and may return either {K, term()} or none
+-spec orddict_combine(fun(({K, term()} | none, {K, term()} | none)
+			  -> {K, term()} | none),
+		      orddict:orddict(), orddict:orddict())
+		     -> orddict:orddict().
+
+orddict_combine(Fun, [A={K,_}|As], [B={K,_}|Bs]) ->
+  orddict_combine_call_fun(Fun, As, Bs, A, B, K);
+orddict_combine(Fun, [A={AK,_}|As], [{BK,_}|_]=Bs) when AK < BK ->
+  orddict_combine_call_fun(Fun, As, Bs, A, none, AK);
+orddict_combine(Fun, As, [B={BK,_}|Bs]) -> %% AK > BK or As=[]
+  orddict_combine_call_fun(Fun, As, Bs, none, B, BK);
+orddict_combine(Fun, [A={AK,_}|As], []) ->
+  orddict_combine_call_fun(Fun, As, [], A, none, AK);
+orddict_combine(_, [], []) ->
+  [].
+
+%% K is for validation. If we're really crazy for performance, we could trust
+%% Fun to not return anything invalid
+orddict_combine_call_fun(Fun, As, Bs, A, B, K) ->
+  case Fun(A, B) of
+    none -> orddict_combine(Fun, As, Bs);
+    M={K,_} -> [M|orddict_combine(Fun, As, Bs)]
+  end.
+
 -spec t_map_put({erl_type(), erl_type()}, erl_type()) -> erl_type().
 
 t_map_put(_, ?none) -> ?none;
@@ -1657,12 +1686,14 @@ t_map_put({Key, Value}, ?map(Pairs)) ->
     false ->
       case t_is_singleton(Key) of
 	true ->
-	  ?map(lists:keystore(Key, 1, Pairs, {Key, Value}));
+	  ?map(orddict:store(Key, Value, Pairs));
 	false ->
-	  ?map([{K, case t_is_none(t_inf(K, Key)) of
-		      true -> V;
-		      false -> t_sup(V, Value)
-		    end} || {K, V} <- Pairs])
+	  ?map(orddict:map(fun(K,V) ->
+			       case t_is_none(t_inf(K, Key)) of
+				 true -> V;
+				 false -> t_sup(V, Value)
+			       end
+			   end, Pairs))
       end
   end.
 
@@ -1929,7 +1960,8 @@ t_has_var(?tuple(Elements, _, _)) ->
 t_has_var(?tuple_set(_) = T) ->
   t_has_var_list(t_tuple_subtypes(T));
 t_has_var(?map(_)= Map) ->
-  t_has_var_list(map_keys(Map)) orelse t_has_var_list(map_values(Map));
+  %% t_has_var_list(map_keys(Map)) orelse
+    t_has_var_list(map_values(Map));
 t_has_var(?opaque(Set)) ->
   %% Assume variables in 'args' are also present i 'struct'
   t_has_var_list([O#opaque.struct || O <- set_to_list(Set)]);
@@ -1964,8 +1996,8 @@ t_collect_vars(?tuple(Types, _, _), Acc) ->
   t_collect_vars_list(Types, Acc);
 t_collect_vars(?tuple_set(_) = TS, Acc) ->
   t_collect_vars_list(t_tuple_subtypes(TS), Acc);
-t_collect_vars(?map(_) = Map, Acc0) ->
-  Acc = t_collect_vars_list(map_keys(Map), Acc0),
+t_collect_vars(?map(_) = Map, Acc) ->
+  %% Acc = t_collect_vars_list(map_keys(Map), Acc0),
   t_collect_vars_list(map_values(Map), Acc);
 t_collect_vars(?opaque(Set), Acc) ->
   %% Assume variables in 'args' are also present i 'struct'
@@ -2295,9 +2327,10 @@ t_sup(?tuple_set(List1), T2 = ?tuple(_, Arity, _)) ->
 t_sup(?tuple(_, Arity, _) = T1, ?tuple_set(List2)) ->
   sup_tuple_sets([{Arity, [T1]}], List2);
 t_sup(?map(A), ?map(B)) ->
-  t_map([{K, t_sup(V1, V2)} ||
-	  {K, V1} <- A,
-	  {_, V2} <- [lists:keyfind(K, 1, B)]]);
+  ?map(orddict_combine(
+	 fun({K, V1}, {K, V2}) -> {K, t_sup(V1, V2)};
+	    (_, _) -> none
+	 end, A, B));
 t_sup(T1, T2) ->
   ?union(U1) = force_union(T1),
   ?union(U2) = force_union(T2),
@@ -2538,18 +2571,19 @@ t_inf(?identifier(Set1), ?identifier(Set2), _Opaques) ->
     Set -> ?identifier(Set)
   end;
 t_inf(?map(A), ?map(B), _Opaques) ->
-  %% First handle the case of the same key existing in both maps. If the
-  %% infinimum of their values is ?none, the entire map infinimum is ?none.
-  CombinedEntries = [{K, t_inf(V1, V2)} ||
-		      {K, V1} <- A, is_singleton_type(K),
-		      {_, V2} <- [lists:keyfind(K, 1, B)]],
-  case lists:any(fun({_, T}) -> T =:= ?none end,
-		 CombinedEntries) of
-    true  -> t_none();
-    false ->
-      EntriesFromB = [E || E = {K, _} <- B, (lists:keyfind(K, 1, A) =:= false)],
-      EntriesFromA = [E || E = {K, _} <- A, (lists:keyfind(K, 1, B) =:= false)],
-      t_map(CombinedEntries ++ EntriesFromB ++ EntriesFromA)
+  try ?map(orddict_combine(
+	     fun({K, V1}, {K, V2}) ->
+		 %% First handle the case of the same key existing in both
+		 %% maps. If the infinimum of their values is ?none, the entire
+		 %% map infinimum is ?none.
+		 case t_inf(V1, V2) of
+		   ?none -> throw(none);
+		   V -> {K, V}
+		 end;
+		(E, none) -> E;
+		(none, E) -> E
+	     end, A, B))
+  catch throw:none -> t_none()
   end;
 t_inf(?matchstate(Pres1, Slots1), ?matchstate(Pres2, Slots2), _Opaques) ->
   ?matchstate(t_inf(Pres1, Pres2), t_inf(Slots1, Slots2));
@@ -3060,8 +3094,9 @@ t_subst_dict(?tuple(Elements, _Arity, _Tag), Dict) ->
 t_subst_dict(?tuple_set(_) = TS, Dict) ->
   t_sup([t_subst_dict(T, Dict) || T <- t_tuple_subtypes(TS)]);
 t_subst_dict(?map(Pairs), Dict) ->
-  ?map([{t_subst_dict(K, Dict), t_subst_dict(V, Dict)} ||
-         {K, V} <- Pairs]);
+  %% What are the semantics if a *key* is substituted? 
+  t_map([{t_subst_dict(K, Dict), t_subst_dict(V, Dict)} ||
+	  {K, V} <- Pairs]);
 t_subst_dict(?opaque(Es), Dict) ->
   List = [Opaque#opaque{args = [t_subst_dict(Arg, Dict) || Arg <- Args],
                         struct = t_subst_dict(S, Dict)} ||
@@ -3112,8 +3147,8 @@ t_subst_aux(?tuple(Elements, _Arity, _Tag), VarMap) ->
 t_subst_aux(?tuple_set(_) = TS, VarMap) ->
   t_sup([t_subst_aux(T, VarMap) || T <- t_tuple_subtypes(TS)]);
 t_subst_aux(?map(Pairs), VarMap) ->
-  ?map([{t_subst_aux(K, VarMap), t_subst_aux(V, VarMap)} ||
-         {K, V} <- Pairs]);
+  t_map([{t_subst_aux(K, VarMap), t_subst_aux(V, VarMap)} ||
+	  {K, V} <- Pairs]);
 t_subst_aux(?opaque(Es), VarMap) ->
    List = [Opaque#opaque{args = [t_subst_aux(Arg, VarMap) || Arg <- Args],
                          struct = t_subst_aux(S, VarMap)} ||
@@ -3212,15 +3247,16 @@ t_unify(?map(A0), ?map(B0), VarMap) ->
   %% We only handle the case of the same key existing in both maps by
   %% aligning the keys and unifying the values.
   {KeysInBoth, ValsInBoth} =
-    lists:unzip([{K, {V1, V2}} ||
-		  {K, V1} <- A1, is_singleton_type(K),
-		  {_, V2} <- [lists:keyfind(K, 1, B1)]]),
+    lists:unzip(orddict_combine(
+		  fun({K, V1}, {K, V2}) -> {K, {V1, V2}};
+		     (_, _) -> none
+		  end, A1, B1)),
   {BothValsLeft, BothValsRight} = lists:unzip(ValsInBoth),
   {UnifiedValues, NewVarMap} =
     unify_lists(BothValsLeft, BothValsRight, VarMap),
   CombinedEntries = lists:zip(KeysInBoth, UnifiedValues),
   %% Non-precise (not known to be singleton) keys are discarded.
-  {t_map(CombinedEntries), NewVarMap};
+  {?map(CombinedEntries), NewVarMap};
 t_unify(?opaque(_) = T1, ?opaque(_) = T2, VarMap) ->
   t_unify(t_opaque_structure(T1), t_opaque_structure(T2), VarMap);
 t_unify(T1, ?opaque(_) = T2, VarMap) ->
@@ -3581,8 +3617,8 @@ t_subtract(?map(EL1) = T1, ?map(EL2)) ->
   case map_subtract(EL1, EL2) of
     mismatch -> T1;
     complete -> ?none; %% T1 is a subtype of T2
-    {K, _V} = Tuple ->
-      ?map(lists:keyreplace(K, 1, EL1, Tuple))
+    {K, V} ->
+      ?map(orddict:store(K, V, EL1))
   end;
 t_subtract(?product(P1), _) ->
   ?product(P1);
@@ -3609,19 +3645,23 @@ opaque_subtract(?opaque(Set1), T2) ->
 -spec map_subtract([Pair], [Pair]) -> Pair | mismatch | complete
 					when Pair :: {erl_type(), erl_type()}.
 
-map_subtract(_EL1, []) -> complete;
-map_subtract(EL1, [{K,V2}|EL2]) ->
-  case lists:keyfind(K, 1, EL1) of
-    false -> mismatch;
-    {K, V1} ->
-      case t_subtract(V1, V2) of
-	?none -> map_subtract(EL1, EL2);
-	Partial ->
-	  case map_subtract(EL1, EL2) of
-	    complete -> {K, Partial};
-	    _ -> mismatch
-	  end
+map_subtract(EL1, EL2) ->
+  try
+    Pairs = orddict_combine(
+	      fun(none, _) -> throw(mismatch);
+		 (_, none) -> none;
+		 ({K, V1}, {K, V2}) ->
+		  case t_subtract(V1, V2) of
+		    ?none -> none;
+		    Partial -> {K, Partial}
+		  end
+	      end, EL1, EL2),
+      case Pairs of
+	[] -> complete;
+	[Pair] -> Pair;
+	_ -> mismatch
       end
+  catch throw:mismatch -> mismatch
   end.
 
 -spec t_subtract_lists([erl_type()], [erl_type()]) -> [erl_type()].
