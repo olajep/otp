@@ -72,7 +72,7 @@
 	 t_tuple/0, t_tuple/1, t_tuple_args/1, t_tuple_args/2,
          t_tuple_subtypes/2,
 	 t_unit/0, t_unopaque/2,
-	 t_map/0, t_map/1, t_map_entries/2,
+	 t_map/0, t_map/1, t_map_mand_entries/2,
 	 t_is_singleton/2
      ]).
 
@@ -1461,7 +1461,9 @@ bind_pat_vars([Pat|PatLeft], [Type|TypeLeft], Acc, Map, State, Rev) ->
   {NewMap, TypeOut} =
     case cerl:type(Pat) of
       alias ->
-	AliasPat = cerl:alias_pat(Pat),
+	%% Map patterns are more allowing than the type of their literal. We
+	%% must unfold AliasPat if it is a literal.
+	AliasPat = dialyzer_utils:refold_pattern(cerl:alias_pat(Pat)),
 	Var = cerl:alias_var(Pat),
 	Map1 = enter_subst(Var, AliasPat, Map),
 	{Map2, [PatType]} = bind_pat_vars([AliasPat], [Type], [],
@@ -1502,11 +1504,20 @@ bind_pat_vars([Pat|PatLeft], [Type|TypeLeft], Acc, Map, State, Rev) ->
 	    {Map1, t_cons(HdType, TlType)}
 	end;
       literal ->
-	Literal = literal_type(Pat),
-	case t_is_none(t_inf(Literal, Type, Opaques)) of
+	Pat0 = dialyzer_utils:refold_pattern(Pat),
+	case cerl:is_literal(Pat0) of
 	  true ->
-	    bind_opaque_pats(Literal, Type, Pat, State);
-	  false -> {Map, Literal}
+	    Literal = literal_type(Pat),
+	    case t_is_none(t_inf(Literal, Type, Opaques)) of
+	      true ->
+		bind_opaque_pats(Literal, Type, Pat, State);
+	      false -> {Map, Literal}
+	    end;
+	  false ->
+	    %% Retry with the unfolded pattern
+	    {Map1, [PatType]}
+	      = bind_pat_vars([Pat0], [Type], [], Map, State, Rev),
+	    {Map1, PatType}
 	end;
       map ->
 	MapT = t_inf(Type, t_map(), Opaques),
@@ -1514,9 +1525,12 @@ bind_pat_vars([Pat|PatLeft], [Type|TypeLeft], Acc, Map, State, Rev) ->
 	  true ->
 	    bind_opaque_pats(t_map(), Type, Pat, State);
 	  false ->
-	    MapTEntries = t_map_entries(MapT, Opaques),
+	    %% TODO:
+	    MapTEntries = t_map_mand_entries(MapT, Opaques),
 	    FoldFun =
 	      fun(Pair, {MapAcc, ListAcc}) ->
+		  %% Only exact (:=) can appear in patterns
+		  exact = cerl:concrete(cerl:map_pair_op(Pair)),
 		  Key = cerl:map_pair_key(Pair),
 		  KeyType =
 		    case cerl:type(Key) of

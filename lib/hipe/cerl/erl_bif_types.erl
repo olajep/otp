@@ -51,6 +51,7 @@
 		    t_cons/2,
 		    t_cons_hd/1,
 		    t_cons_tl/1,
+		    t_do_overlap/3,
 		    t_fixnum/0,
 		    t_non_neg_fixnum/0,
 		    t_pos_fixnum/0,
@@ -120,7 +121,10 @@
 		    t_is_singleton/2,
 		    t_map/0,
 		    t_map/1,
-		    t_map_entries/2,
+		    t_map_mand_entries/2,
+		    t_map_opt_entries/2,
+		    t_map_def_key/2,
+		    t_map_def_val/2,
 		    t_map_put/2
 		   ]).
 
@@ -1686,30 +1690,65 @@ type(lists, zipwith3, 4, Xs, Opaques) ->
 type(maps, get, 2, Xs, Opaques) ->
   strict(maps, get, 2, Xs,
 	 fun ([Key, Map]) ->
-	     MapEntries = t_map_entries(Map, Opaques),
-	     case (t_is_singleton(Key, Opaques)
-		   andalso lists:keyfind(Key, 1, MapEntries)) of
-	       false -> t_any();
-	       {_, ValType} -> ValType
+	     Mand = t_map_mand_entries(Map, Opaques),
+	     Opt = t_map_opt_entries(Map, Opaques),
+	     DefRes =
+	       case t_do_overlap(t_map_def_key(Map, Opaques), Key, Opaques) of
+		 false -> t_none();
+		 true -> t_map_def_val(Map, Opaques)
+	       end,
+	     case t_is_singleton(Key, Opaques) of
+	       false ->
+		 Fun = fun({K, V}, Res) ->
+			   case t_do_overlap(K, Key, Opaques) of
+			     false -> Res;
+			     true -> t_sup(Res, V)
+			   end
+		       end,
+		 lists:foldl(Fun, lists:foldl(Fun, DefRes, Mand), Opt);
+	       true ->
+		 case lists:keyfind(Key, 1, Opt ++ Mand) of
+		   false -> DefRes;
+		   {_, ValType} -> ValType
+		 end
 	     end
 	 end, Opaques);
 type(maps, is_key, 2, Xs, Opaques) ->
   strict(maps, is_key, 2, Xs,
 	 fun ([Key, Map]) ->
-	     MapEntries = t_map_entries(Map, Opaques),
-	     case (t_is_singleton(Key, Opaques)
-		   andalso lists:keyfind(Key, 1, MapEntries)) of
-	       false -> t_boolean();
-	       _Found -> t_from_term(true)
+	     Mand = t_map_mand_entries(Map, Opaques),
+	     DefK = t_map_def_key(Map, Opaques),
+	     case (t_is_singleton(Key, Opaques)) of
+	       true ->
+		 case orddict:is_key(Key, Mand) of
+		   false ->
+		     case t_do_overlap(DefK, Key, Opaques)
+		       orelse orddict:is_key(Key, Mand)
+		     of
+		       true -> t_boolean();
+		       false -> t_from_term(false)
+		     end;
+		   _Found -> t_from_term(true)
+		 end;
+	       false ->
+		 Pred = fun({K,_}) -> t_do_overlap(K, Key, Opaques) end,
+		 case t_do_overlap(DefK, Key, Opaques)
+		   orelse lists:any(Pred, Mand)
+		   orelse lists:any(Pred, t_map_mand_entries(Map, Opaques))
+		 of
+		   true -> t_boolean();
+		   false -> t_from_term(false)
+		 end
 	     end
 	 end, Opaques);
 type(maps, merge, 2, Xs, Opaques) ->
   strict(maps, merge, 2, Xs,
 	 fun ([Map1, Map2]) ->
-	     Map1Entries = t_map_entries(Map1, Opaques),
+	     %% TODO:
+	     Map1Entries = t_map_mand_entries(Map1, Opaques),
 	     Weakened = t_map([{K, t_any()} || {K,_} <- Map1Entries]),
 	     lists:foldl(fun erl_types:t_map_put/2, Weakened,
-			 t_map_entries(Map2, Opaques))
+			 t_map_mand_entries(Map2, Opaques))
 	 end, Opaques);
 type(maps, Put, 3, Xs, Opaques) when Put =:= put; Put =:= update ->
   strict(maps, Put, 3, Xs,

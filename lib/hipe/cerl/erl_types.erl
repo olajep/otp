@@ -69,7 +69,8 @@
 	 t_cons_hd/1, t_cons_hd/2,
 	 t_cons_tl/1, t_cons_tl/2,
          t_contains_opaque/1, t_contains_opaque/2,
-         t_decorate_with_opaque/3,
+	 t_decorate_with_opaque/3,
+	 t_do_overlap/2, t_do_overlap/3,
 	 t_elements/1,
 	 t_find_opaque_mismatch/3,
          t_find_unknown_opaque/3,
@@ -155,7 +156,11 @@
 	 t_list_termination/1, t_list_termination/2,
 	 t_map/0,
 	 t_map/1,
-	 t_map_entries/2, t_map_entries/1,
+	 t_map/4,
+	 t_map_mand_entries/2, t_map_mand_entries/1,
+	 t_map_opt_entries/2, t_map_opt_entries/1,
+	 t_map_def_key/2, t_map_def_key/1,
+	 t_map_def_val/2, t_map_def_val/1,
 	 t_map_put/2,
 	 t_matchstate/0,
 	 t_matchstate/2,
@@ -217,8 +222,7 @@
          lift_list_to_pos_empty/1, lift_list_to_pos_empty/2,
          is_opaque_type/2,
 	 is_erl_type/1,
-	 atom_to_string/1,
-	 orddict_combine/3
+	 atom_to_string/1
 	]).
 
 %%-define(DO_ERL_TYPES_TEST, true).
@@ -353,7 +357,8 @@
 -define(nonempty_list(Types, Term),?list(Types, Term, ?nonempty_qual)).
 -define(number(Set, Qualifier),    #c{tag=?number_tag, elements=Set, 
 				      qualifier=Qualifier}).
--define(map(Pairs),                #c{tag=?map_tag, elements=Pairs}).
+-define(map(Mand,Opt,DefKey,DefVal),
+	#c{tag=?map_tag, elements={Mand,Opt,DefKey,DefVal}}).
 -define(opaque(Optypes),           #c{tag=?opaque_tag, elements=Optypes}).
 -define(product(Types),            #c{tag=?product_tag, elements=Types}).
 -define(remote(RemTypes),          #c{tag=?remote_tag, elements=RemTypes}).
@@ -498,9 +503,8 @@ t_contains_opaque(?int_range(_From, _To), _Opaques) -> false;
 t_contains_opaque(?int_set(_Set), _Opaques) -> false;
 t_contains_opaque(?list(Type, Tail, _), Opaques) ->
   t_contains_opaque(Type, Opaques) orelse t_contains_opaque(Tail, Opaques);
-t_contains_opaque(?map(_) = Map, Opaques) ->
-  list_contains_opaque(map_values(Map), Opaques) orelse
-  list_contains_opaque(map_keys(Map), Opaques);
+t_contains_opaque(?map(_, _, _, _) = Map, Opaques) ->
+  list_contains_opaque(map_all_types(Map), Opaques);
 t_contains_opaque(?matchstate(_P, _Slots), _Opaques) -> false;
 t_contains_opaque(?nil, _Opaques) -> false;
 t_contains_opaque(?number(_Set, _Tag), _Opaques) -> false;
@@ -1610,18 +1614,46 @@ lift_list_to_pos_empty(?list(Content, Termination, _)) ->
 %%-----------------------------------------------------------------------------
 %% Maps
 %%
-%% The entries ?map(E) are only those that are known, any other entries might
-%% exist as well.
+%% Representation:
+%%  ?map(Mandatory, Optional, DefaultKey, DefaultValue)
+%%
+%% Mandatory and Optional are orddicts of types (t_map_dict()). DefaultKey and
+%% DefaultValue are plain types.
+%%
+%% A map M belongs to this type iff
+%%   For each pair {KT, VT} in Mandatory, there exists a pair {K, V} in M such
+%%     that K \in KT and V \in VT.
+%%   For each pair {KT, VT} in Optional, either there exists no key K in M s.t.
+%%     K in KT, or there exists a pair {K, V} in M such that K \in KT and V \in VT.
+%%   For each remaining pair {K, V} in M (where remaining means that there is no
+%%     key KT in Mandatory or Optional s.t. K \in KT), K \in DefaultKey and
+%%     V \in DefaultValue.
+%%
+%% Invariants: The keys in Mandatory and Optional are singleton types, and are
+%% mutually exclusive. The values must not be none or unit. DefaultKey must be
+%% the empty type iff DefaultValue is the empty type.
+%%
+%% As indicated by the use of the orddict type, Mandatory and Optional must be
+%% sorted and not contain any duplicate keys. This ensures that equal map types
+%% are represented by equal terms.
+
+-type t_map_pair() :: {erl_type(), erl_type()}.
+-type t_map_dict() :: orddict:orddict(erl_type(), erl_type()).
 
 -spec t_map() -> erl_type().
 
 t_map() ->
-  ?map(orddict:new()).
+  t_map(orddict:new(), orddict:new(), t_any(), t_any()).
 
--spec t_map([{erl_type(), erl_type()}]) -> erl_type().
+-spec t_map([t_map_pair()]) -> erl_type().
 
 t_map(L) ->
   lists:foldl(fun t_map_put/2, t_map(), L).
+
+-spec t_map(t_map_dict(), t_map_dict(), erl_type(), erl_type()) -> erl_type().
+
+t_map(Mand, Opt, DefK, DefV) ->
+  ?map(Mand, Opt, DefK, DefV).
 
 -spec t_is_map(erl_type()) -> boolean().
 
@@ -1633,21 +1665,60 @@ t_is_map(Type) ->
 t_is_map(Type, Opaques) ->
   do_opaque(Type, Opaques, fun is_map1/1).
 
-is_map1(?map(_)) -> true;
+is_map1(?map(_, _, _, _)) -> true;
 is_map1(_) -> false.
 
--spec t_map_entries(erl_type()) -> [{erl_type(), erl_type()}].
+-spec t_map_mand_entries(erl_type()) -> t_map_dict().
 
-t_map_entries(M) ->
-  t_map_entries(M, 'universe').
+t_map_mand_entries(M) ->
+  t_map_mand_entries(M, 'universe').
 
--spec t_map_entries(erl_type(), opaques()) -> [{erl_type(), erl_type()}].
+-spec t_map_mand_entries(erl_type(), opaques()) -> t_map_dict().
 
-t_map_entries(M, Opaques) ->
-  do_opaque(M, Opaques, fun map_entries/1).
+t_map_mand_entries(M, Opaques) ->
+  do_opaque(M, Opaques, fun map_mand_entries/1).
 
-map_entries(?map(E)) ->
-  E.
+map_mand_entries(?map(Mand,_,_,_)) ->
+  Mand.
+
+-spec t_map_opt_entries(erl_type()) -> t_map_dict().
+
+t_map_opt_entries(M) ->
+  t_map_opt_entries(M, 'universe').
+
+-spec t_map_opt_entries(erl_type(), opaques()) -> t_map_dict().
+
+t_map_opt_entries(M, Opaques) ->
+  do_opaque(M, Opaques, fun map_opt_entries/1).
+
+map_opt_entries(?map(_,Opt,_,_)) ->
+  Opt.
+
+-spec t_map_def_key(erl_type()) -> erl_type().
+
+t_map_def_key(M) ->
+  t_map_def_key(M, 'universe').
+
+-spec t_map_def_key(erl_type(), opaques()) -> erl_type().
+
+t_map_def_key(M, Opaques) ->
+  do_opaque(M, Opaques, fun map_def_key/1).
+
+map_def_key(?map(_,_,DefK,_)) ->
+  DefK.
+
+-spec t_map_def_val(erl_type()) -> erl_type().
+
+t_map_def_val(M) ->
+  t_map_def_val(M, 'universe').
+
+-spec t_map_def_val(erl_type(), opaques()) -> erl_type().
+
+t_map_def_val(M, Opaques) ->
+  do_opaque(M, Opaques, fun map_def_val/1).
+
+map_def_val(?map(_,_,_,DefV)) ->
+  DefV.
 
 %% Merges two orddicts, essentially, but with a more expressive merge function
 %% than orddict:merge/3
@@ -1658,42 +1729,74 @@ map_entries(?map(E)) ->
 		      orddict:orddict(), orddict:orddict())
 		     -> orddict:orddict().
 
-orddict_combine(Fun, [A={K,_}|As], [B={K,_}|Bs]) ->
-  orddict_combine_call_fun(Fun, As, Bs, A, B, K);
-orddict_combine(Fun, [A={AK,_}|As], [{BK,_}|_]=Bs) when AK < BK ->
-  orddict_combine_call_fun(Fun, As, Bs, A, none, AK);
-orddict_combine(Fun, As, [B={BK,_}|Bs]) -> %% AK > BK or As=[]
-  orddict_combine_call_fun(Fun, As, Bs, none, B, BK);
-orddict_combine(Fun, [A={AK,_}|As], []) ->
-  orddict_combine_call_fun(Fun, As, [], A, none, AK);
+orddict_combine(F, [A={K,_}|As], [B={K,_}|Bs]) ->
+  orddict_combine_call_fun(F, As, Bs, A, B, K);
+orddict_combine(F, [A={AK,_}|As], [{BK,_}|_]=Bs) when AK < BK ->
+  orddict_combine_call_fun(F, As, Bs, A, none, AK);
+orddict_combine(F, As, [B={BK,_}|Bs]) -> %% AK > BK or As=[]
+  orddict_combine_call_fun(F, As, Bs, none, B, BK);
+orddict_combine(F, [A={AK,_}|As], []) ->
+  orddict_combine_call_fun(F, As, [], A, none, AK);
 orddict_combine(_, [], []) ->
   [].
 
 %% K is for validation. If we're really crazy for performance, we could trust
-%% Fun to not return anything invalid
-orddict_combine_call_fun(Fun, As, Bs, A, B, K) ->
-  case Fun(A, B) of
-    none -> orddict_combine(Fun, As, Bs);
-    M={K,_} -> [M|orddict_combine(Fun, As, Bs)]
+%% F to not return anything invalid
+orddict_combine_call_fun(F, As, Bs, A, B, K) ->
+  case F(A, B) of
+    none -> orddict_combine(F, As, Bs);
+    M={K,_} -> [M|orddict_combine(F, As, Bs)]
+  end.
+
+orddict_combine_foldr(F, Acc, [A={K,_}|As], [B={K,_}|Bs]) ->
+  F(A, B, orddict_combine_foldr(F, Acc, As, Bs));
+orddict_combine_foldr(F, Acc, [A={AK,_}|As], [{BK,_}|_]=Bs) when AK < BK ->
+  F(A, none, orddict_combine_foldr(F, Acc, As, Bs));
+orddict_combine_foldr(F, Acc, As, [B|Bs]) -> %% AK > BK or As=[]
+  F(none, B, orddict_combine_foldr(F, Acc, As, Bs));
+orddict_combine_foldr(F, Acc, [A|As], []) ->
+  F(A, none, orddict_combine_foldr(F, Acc, As, []));
+orddict_combine_foldr(_, Acc, [], []) -> Acc.
+
+%% orddict_combine_foldr, but takes a list of orddicts, instead of two
+%% Passes K and number of hits as arguments, for convenience
+orddict_manyfoldr(F, Acc, Lists0) ->
+  case [K || [{K,_}|_] <- Lists0] of
+    [] -> Acc;
+    Heads ->
+      Min = lists:min(Heads),
+      {Lists2, Arg} = lists:foldr(fun([E={K,_}|T], {Lists1, Arg0})
+				      when K=:=Min -> {[T|Lists1], [E|Arg0]};
+				     (L, {Lists1, Arg0}) ->
+				      {[L|Lists1], [none|Arg0]}
+				  end, {[], []}, Lists0),
+      F(Min, length([E||E <- Arg, E =/= none]), Arg,
+	orddict_manyfoldr(F, Acc, Lists2))
   end.
 
 -spec t_map_put({erl_type(), erl_type()}, erl_type()) -> erl_type().
 
 t_map_put(_, ?none) -> ?none;
-t_map_put({Key, Value}, ?map(Pairs)) ->
+t_map_put({Key, Value}, _M=?map(Mand,Opt,DefK,DefV)) ->
   case t_is_none_or_unit(Key) orelse t_is_none_or_unit(Value) of
     true -> ?none;
     false ->
       case t_is_singleton(Key) of
 	true ->
-	  ?map(orddict:store(Key, Value, Pairs));
+	  t_map(orddict:store(Key, Value, Mand),
+		orddict:erase(Key, Opt),
+		DefK, DefV);
 	false ->
-	  ?map(orddict:map(fun(K,V) ->
-			       case t_is_none(t_inf(K, Key)) of
-				 true -> V;
-				 false -> t_sup(V, Value)
-			       end
-			   end, Pairs))
+	  Fun = fun(K,V) ->
+		    case t_is_none(t_inf(K, Key)) of
+		      true -> V;
+		      false -> t_sup(V, Value)
+		    end
+		end,
+	  t_map(orddict:map(Fun, Mand),
+		orddict:map(Fun, Opt),
+		t_sup(DefK, Key),
+		t_sup(DefV, Value))
       end
   end.
 
@@ -1959,9 +2062,10 @@ t_has_var(?tuple(Elements, _, _)) ->
   t_has_var_list(Elements);
 t_has_var(?tuple_set(_) = T) ->
   t_has_var_list(t_tuple_subtypes(T));
-t_has_var(?map(_)= Map) ->
-  %% t_has_var_list(map_keys(Map)) orelse
-    t_has_var_list(map_values(Map));
+t_has_var(?map(_, _, DefK, _)= Map) ->
+  %% t_has_var_list(map_all_keys(Map)) orelse
+  t_has_var_list(map_all_values(Map)) orelse
+    t_has_var(DefK);
 t_has_var(?opaque(Set)) ->
   %% Assume variables in 'args' are also present i 'struct'
   t_has_var_list([O#opaque.struct || O <- set_to_list(Set)]);
@@ -1996,9 +2100,10 @@ t_collect_vars(?tuple(Types, _, _), Acc) ->
   t_collect_vars_list(Types, Acc);
 t_collect_vars(?tuple_set(_) = TS, Acc) ->
   t_collect_vars_list(t_tuple_subtypes(TS), Acc);
-t_collect_vars(?map(_) = Map, Acc) ->
+t_collect_vars(?map(_, _, DefK, _) = Map, Acc0) ->
   %% Acc = t_collect_vars_list(map_keys(Map), Acc0),
-  t_collect_vars_list(map_values(Map), Acc);
+  Acc = t_collect_vars_list(map_all_values(Map), Acc0),
+  t_collect_vars(DefK, Acc);
 t_collect_vars(?opaque(Set), Acc) ->
   %% Assume variables in 'args' are also present i 'struct'
   t_collect_vars_list([O#opaque.struct || O <- set_to_list(Set)], Acc);
@@ -2034,7 +2139,11 @@ t_from_term(T) when is_function(T) ->
   t_fun(Arity, t_any());
 t_from_term(T) when is_integer(T) ->   t_integer(T);
 t_from_term(T) when is_map(T) ->
-  t_map([{t_from_term(K), t_from_term(V)} || {K, V} <- maps:to_list(T)]);
+  Pairs = [{t_from_term(K), t_from_term(V)} || {K, V} <- maps:to_list(T)],
+  {Stons, Rest} = lists:partition(fun({K,_}) -> t_is_singleton(K) end, Pairs),
+  {DefK, DefV} = lists:foldl(fun({K,V},{AK,AV}) -> {t_sup(K,AK), t_sup(V,AV)} end,
+			     {t_none(), t_none()}, Rest),
+  t_map(lists:keysort(1, Stons), orddict:new(), DefK, DefV);
 t_from_term(T) when is_pid(T) ->       t_pid();
 t_from_term(T) when is_port(T) ->      t_port();
 t_from_term(T) when is_reference(T) -> t_reference();
@@ -2326,11 +2435,21 @@ t_sup(?tuple_set(List1), T2 = ?tuple(_, Arity, _)) ->
   sup_tuple_sets(List1, [{Arity, [T2]}]);
 t_sup(?tuple(_, Arity, _) = T1, ?tuple_set(List2)) ->
   sup_tuple_sets([{Arity, [T1]}], List2);
-t_sup(?map(A), ?map(B)) ->
-  ?map(orddict_combine(
-	 fun({K, V1}, {K, V2}) -> {K, t_sup(V1, V2)};
-	    (_, _) -> none
-	 end, A, B));
+t_sup(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV)) ->
+  MergeFun = fun({K, V1}, {K, V2}, {Kept0, DisK, DisV}) ->
+		 {[{K, t_sup(V1, V2)}|Kept0], DisK, DisV};
+		(none, {K,V}, {Kept0, DisK, DisV}) ->
+		 {Kept0, t_sup(DisK,K), t_sup(DisV,V)};
+		({K,V}, none, {Kept0, DisK, DisV}) ->
+		 {Kept0, t_sup(DisK,K), t_sup(DisV,V)}
+	     end,
+  {NewMand, NewDefK0, NewDefV0}
+    = orddict_combine_foldr(MergeFun,
+			    {[], t_sup(ADefK, BDefK), t_sup(ADefV, BDefV)},
+			    AMand, BMand),
+  {NewOpt, NewDefK, NewDefV}
+    = orddict_combine_foldr(MergeFun, {[], NewDefK0, NewDefV0}, AOpt, BOpt),
+  t_map(NewMand, NewOpt, NewDefK, NewDefV);
 t_sup(T1, T2) ->
   ?union(U1) = force_union(T1),
   ?union(U2) = force_union(T2),
@@ -2450,7 +2569,7 @@ force_union(T = ?nil) ->              ?list_union(T);
 force_union(T = ?number(_, _)) ->     ?number_union(T);
 force_union(T = ?opaque(_)) ->        ?opaque_union(T);
 force_union(T = ?remote(_)) ->        ?remote_union(T);
-force_union(T = ?map(_)) ->           ?map_union(T);
+force_union(T = ?map(_,_,_,_)) ->     ?map_union(T);
 force_union(T = ?tuple(_, _, _)) ->   ?tuple_union(T);
 force_union(T = ?tuple_set(_)) ->     ?tuple_union(T);
 force_union(T = ?matchstate(_, _)) -> ?matchstate_union(T);
@@ -2487,7 +2606,7 @@ t_elements(?number(_, _) = T) ->
   end;
 t_elements(?opaque(_) = T) ->
   do_elements(T);
-t_elements(?map(_) = T) -> [T];
+t_elements(?map(_,_,_,_) = T) -> [T];
 t_elements(?tuple(_, _, _) = T) -> [T];
 t_elements(?tuple_set(_) = TS) ->
   case t_tuple_subtypes(TS) of
@@ -2570,19 +2689,81 @@ t_inf(?identifier(Set1), ?identifier(Set2), _Opaques) ->
     ?none -> ?none;
     Set -> ?identifier(Set)
   end;
-t_inf(?map(A), ?map(B), _Opaques) ->
-  try ?map(orddict_combine(
-	     fun({K, V1}, {K, V2}) ->
-		 %% First handle the case of the same key existing in both
-		 %% maps. If the infinimum of their values is ?none, the entire
-		 %% map infinimum is ?none.
-		 case t_inf(V1, V2) of
-		   ?none -> throw(none);
-		   V -> {K, V}
-		 end;
-		(E, none) -> E;
-		(none, E) -> E
-	     end, A, B))
+t_inf(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), _Opaques) ->
+  try
+    {Mand, Opt}
+      = orddict_manyfoldr(
+	  fun(K, _, [{K,V1}, {K,V2}, none, none], {Mand0, Opt0}) ->
+	      %% First handle the case of the same mandatory key existing in
+	      %% both maps. If the infinimum of their values is ?none, the
+	      %% entire map infinimum is ?none.
+	      case t_inf(V1, V2) of
+		?none -> throw(none);
+		V -> {[{K, V}|Mand0], Opt0}
+	      end;
+	     (K, _, [none, none, {K,V1}, {K,V2}], {Mand0, Opt0}) ->
+	      %% For optional keys in both maps, when the infinimum is none, we
+	      %% have essentially concluded that K must not be a key in the map.
+	      %% XXX: Actually subtract it from DefK
+	      case t_inf(V1, V2) of
+		?none -> {Mand0, Opt0};
+		V -> {Mand0, [{K, V}|Opt0]}
+	      end;
+	     (K, 2, Args, {Mand0, Opt0}) ->
+	      {{K,V1}, {K,V2}} = case Args of
+				   [E1, none, none, E2] -> {E1, E2};
+				   [none, E1, E2, none] -> {E1, E2}
+				 end,
+	      %% When a key is optional in one map, but mandatory in another, it
+	      %% becomes mandatory in the infinumum
+	      case t_inf(V1, V2) of
+		?none -> throw(none);
+		V -> {[{K, V}|Mand0], Opt0}
+	      end;
+
+	     %% For mandatory keys in one of the maps, they need to overlap with
+	     %% the default kvs of the other, or the infinimum is none
+	     (K, 1, [{K,V}, none, none, none], {Mand0, Opt0}) ->
+	      case t_is_none(KI = t_inf(K, BDefK))
+		or t_is_none(VI = t_inf(V, BDefV))
+	      of
+		true -> throw(none);
+		false -> {[{KI,VI}|Mand0], Opt0}
+	      end;
+	     (K, 1, [none, {K,V}, none, none], {Mand0, Opt0}) ->
+	      case t_is_none(KI = t_inf(K, ADefK))
+		or t_is_none(VI = t_inf(V, ADefV))
+	      of
+		true -> throw(none);
+		false -> {[{KI,VI}|Mand0], Opt0}
+	      end;
+
+	     %% Verify that E matches Def[KV], discard and subtract from DefK
+	     %% otherwise
+	     (K, 1, [none, none, {K,V}, none], {Mand0, Opt0}) ->
+	      case t_is_none(KI = t_inf(K, BDefK))
+		or t_is_none(VI = t_inf(V, BDefV))
+	      of
+		%% TODO: Actually discard
+		true -> {Mand0, Opt0};
+		false -> {Mand0, [{KI,VI}|Opt0]}
+	      end;
+	     (K, 1, [none, none, none, {K,V}], {Mand0, Opt0}) ->
+	      case t_is_none(KI = t_inf(K, ADefK))
+		or t_is_none(VI = t_inf(V, ADefV))
+	      of
+		%% TODO: Actually discard
+		true -> {Mand0, Opt0};
+		false -> {Mand0, [{KI,VI}|Opt0]}
+	      end
+	  end, {[], []}, [AMand, BMand, AOpt, BOpt]),
+    {DefK, DefV}
+      = case {t_inf(ADefK, BDefK), t_inf(ADefV, BDefV)} of
+	  {DefK0, DefV0} when DefK0 =/= ?none, DefV0 =/= ?none ->
+	    {DefK0, DefV0};
+	  _ -> {?none, ?none}
+	end,
+    t_map(Mand, Opt, DefK, DefV)
   catch throw:none -> t_none()
   end;
 t_inf(?matchstate(Pres1, Slots1), ?matchstate(Pres2, Slots2), _Opaques) ->
@@ -3093,10 +3274,11 @@ t_subst_dict(?tuple(Elements, _Arity, _Tag), Dict) ->
   t_tuple([t_subst_dict(E, Dict) || E <- Elements]);
 t_subst_dict(?tuple_set(_) = TS, Dict) ->
   t_sup([t_subst_dict(T, Dict) || T <- t_tuple_subtypes(TS)]);
-t_subst_dict(?map(Pairs), Dict) ->
+t_subst_dict(?map(Mand, Opt, DefK, DefV), Dict) ->
   %% What are the semantics if a *key* is substituted? 
-  t_map([{t_subst_dict(K, Dict), t_subst_dict(V, Dict)} ||
-	  {K, V} <- Pairs]);
+  t_map([{K=t_subst_dict(K, Dict), t_subst_dict(V, Dict)} || {K, V} <- Mand],
+	[{K=t_subst_dict(K, Dict), t_subst_dict(V, Dict)} || {K, V} <- Opt],
+	t_subst_dict(DefK, Dict), t_subst_dict(DefV, Dict));
 t_subst_dict(?opaque(Es), Dict) ->
   List = [Opaque#opaque{args = [t_subst_dict(Arg, Dict) || Arg <- Args],
                         struct = t_subst_dict(S, Dict)} ||
@@ -3146,9 +3328,10 @@ t_subst_aux(?tuple(Elements, _Arity, _Tag), VarMap) ->
   t_tuple([t_subst_aux(E, VarMap) || E <- Elements]);
 t_subst_aux(?tuple_set(_) = TS, VarMap) ->
   t_sup([t_subst_aux(T, VarMap) || T <- t_tuple_subtypes(TS)]);
-t_subst_aux(?map(Pairs), VarMap) ->
-  t_map([{t_subst_aux(K, VarMap), t_subst_aux(V, VarMap)} ||
-	  {K, V} <- Pairs]);
+t_subst_aux(?map(Mand, Opt, DefK, DefV), VarMap) ->
+  t_map([{K=t_subst_aux(K, VarMap), t_subst_aux(V, VarMap)} || {K, V} <- Mand],
+	[{K=t_subst_aux(K, VarMap), t_subst_aux(V, VarMap)} || {K, V} <- Opt],
+	t_subst_aux(DefK, VarMap), t_subst_aux(DefV, VarMap));
 t_subst_aux(?opaque(Es), VarMap) ->
    List = [Opaque#opaque{args = [t_subst_aux(Arg, VarMap) || Arg <- Args],
                          struct = t_subst_aux(S, VarMap)} ||
@@ -3240,23 +3423,31 @@ t_unify(?tuple_set(List1) = T1, ?tuple_set(List2) = T2, VarMap) ->
     {Tuples, NewVarMap} -> {t_sup(Tuples), NewVarMap}
   catch _:_ -> throw({mismatch, T1, T2})
   end;
-t_unify(?map(A0), ?map(B0), VarMap) ->
-  SubstMap = fun(K) -> t_subst_kv(K, VarMap) end,
-  A1 = lists:keymap(SubstMap, 1, A0),
-  B1 = lists:keymap(SubstMap, 1, B0),
-  %% We only handle the case of the same key existing in both maps by
-  %% aligning the keys and unifying the values.
-  {KeysInBoth, ValsInBoth} =
-    lists:unzip(orddict_combine(
-		  fun({K, V1}, {K, V2}) -> {K, {V1, V2}};
-		     (_, _) -> none
-		  end, A1, B1)),
-  {BothValsLeft, BothValsRight} = lists:unzip(ValsInBoth),
-  {UnifiedValues, NewVarMap} =
-    unify_lists(BothValsLeft, BothValsRight, VarMap),
-  CombinedEntries = lists:zip(KeysInBoth, UnifiedValues),
-  %% Non-precise (not known to be singleton) keys are discarded.
-  {?map(CombinedEntries), NewVarMap};
+t_unify(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), VarMap0) ->
+  SubstMap = fun(K) -> t_subst_kv(K, VarMap0) end,
+  AMand = lists:keymap(SubstMap, 1, AMand),
+  AOpt  = lists:keymap(SubstMap, 1, AOpt),
+  BMand = lists:keymap(SubstMap, 1, BMand),
+  BOpt  = lists:keymap(SubstMap, 1, BOpt),
+  %% XXX: Should we not be producing new VarMaps?!
+  Unify = fun(AL, BL, VarMap1) ->
+	      %% We only handle the case of the same key existing in both maps
+	      %% by aligning the keys and unifying the values.
+	      {KeysInBoth, ValsInBoth} =
+		lists:unzip(orddict_combine(
+			      fun({K, V1}, {K, V2}) -> {K, {V1, V2}};
+				 (_, _) -> none
+			      end, AL, BL)),
+	      {BothValsLeft, BothValsRight} = lists:unzip(ValsInBoth),
+	      {UnifiedValues, VarMap2} =
+		unify_lists(BothValsLeft, BothValsRight, VarMap1),
+	      {lists:zip(KeysInBoth, UnifiedValues), VarMap2}
+	  end,
+  {Mand, VarMap3} = Unify(AMand, BMand, VarMap0),
+  {Opt,  VarMap4} = Unify(AOpt,  BOpt,  VarMap3),
+  {DefK, VarMap5} = t_unify(ADefK, BDefK, VarMap4),
+  {DefV, VarMap6} = t_unify(ADefV, BDefV, VarMap5),
+  {t_map(Mand, Opt, DefK, DefV), VarMap6};
 t_unify(?opaque(_) = T1, ?opaque(_) = T2, VarMap) ->
   t_unify(t_opaque_structure(T1), t_opaque_structure(T2), VarMap);
 t_unify(T1, ?opaque(_) = T2, VarMap) ->
@@ -3613,13 +3804,16 @@ t_subtract(?product(Elements1) = T1, ?product(Elements2)) ->
 	_ -> T1
       end
   end;
-t_subtract(?map(EL1) = T1, ?map(EL2)) ->
-  case map_subtract(EL1, EL2) of
-    mismatch -> T1;
-    complete -> ?none; %% T1 is a subtype of T2
+t_subtract(?map(AMand, [], ?any, ?any) = A, ?map(BMand, [], ?any, ?any)) ->
+  case map_subtract(AMand, BMand) of
+    mismatch -> A;
+    complete -> ?none; %% A is a subtype of B
     {K, V} ->
-      ?map(orddict:store(K, V, EL1))
+      t_map(orddict:store(K, V, AMand), [], ?any, ?any)
   end;
+t_subtract(?map(_, _, _, _) = A, ?map(_, _, _, _)) ->
+  %% TODO: The complex subtract cases
+  A;
 t_subtract(?product(P1), _) ->
   ?product(P1);
 t_subtract(T, ?product(_)) ->
@@ -3772,6 +3966,17 @@ subtype_is_equal(T1, T2) ->
 t_is_instance(ConcreteType, Type) ->
   t_is_subtype(ConcreteType, t_unopaque(Type)).
 
+
+-spec t_do_overlap(erl_type(), erl_type()) -> boolean().
+
+t_do_overlap(TypeA, TypeB) ->
+  t_do_overlap(TypeA, TypeB, 'universe').
+
+-spec t_do_overlap(erl_type(), erl_type(), opaques()) -> boolean().
+
+t_do_overlap(TypeA, TypeB, Opaques) ->
+  not (t_is_none_or_unit(t_inf(TypeA, TypeB, Opaques))).
+
 -spec t_unopaque(erl_type()) -> erl_type().
 
 t_unopaque(T) ->
@@ -3859,6 +4064,17 @@ t_limit_k(?opaque(Es), K) ->
             Opaque#opaque{struct = NewS}
           end || #opaque{struct = S} = Opaque <- set_to_list(Es)],
   ?opaque(ordsets:from_list(List));
+t_limit_k(?map(Mand0, Opt0, DefK0, DefV0), K) ->
+  Fun = fun({EK, EV}, {Exact, DefK1, DefV1}) ->
+	    LV = t_limit_k(EV, K - 1),
+	    case t_limit_k(EK, K - 1) of
+	      EK -> {[{EK,LV}|Exact], DefK1, DefV1};
+	      LK -> {Exact, t_sup(LK, DefK1), t_sup(LV, DefV1)}
+	    end
+	end,
+  {Mand, DefK2, DefV2} = lists:foldr(Fun, {[], DefK0, DefV0}, Mand0),
+  {Opt,  DefK3, DefV3} = lists:foldr(Fun, {[], DefK2, DefV2}, Opt0),
+  t_map(Mand, Opt, t_limit_k(DefK3, K - 1), t_limit_k(DefV3, K - 1));
 t_limit_k(T, _K) -> T.
 
 %%============================================================================
@@ -4084,8 +4300,22 @@ t_to_string(?remote(Set), RecDict) ->
 	       || #remote{mod = Mod, name = Name, args = Args} <-
 		    set_to_list(Set)],
 	      " | ");
-t_to_string(?map(Pairs), RecDict) ->
-    "#{" ++ map_pairs_to_string(Pairs,RecDict) ++ "}";
+t_to_string(?map(Mand,Opt0,DefK,DefV), RecDict) ->
+  {Opt, ExtraEl} =
+    case {DefK, DefV} of
+      {?none, ?none} -> {Opt0, []};
+      {?any, ?any} -> {Opt0, ["..."]};
+      Pair -> {Opt0 ++ [Pair], []}
+    end,
+  Tos = fun(T) -> case T of
+		    ?none -> "_";
+		    _ -> t_to_string(T, RecDict)
+		  end end,
+  StrMand = [{Tos(K),Tos(V)}||{K,V}<-Mand],
+  StrOpt  = [{Tos(K),Tos(V)}||{K,V}<-Opt],
+  "#{" ++ string:join([K ++ ":=" ++ V||{K,V}<-StrMand]
+		      ++ [K ++ "=>" ++ V||{K,V}<-StrOpt]
+		      ++ ExtraEl, ", ") ++ "}";
 t_to_string(?tuple(?any, ?any, ?any), _RecDict) -> "tuple()";
 t_to_string(?tuple(Elements, _Arity, ?any), RecDict) ->   
   "{" ++ comma_sequence(Elements, RecDict) ++ "}";
@@ -4104,12 +4334,6 @@ t_to_string(?var(Id), _RecDict) when is_atom(Id) ->
   flat_format("~s", [atom_to_list(Id)]);
 t_to_string(?var(Id), _RecDict) when is_integer(Id) ->
   flat_format("var(~w)", [Id]).
-
-
-map_pairs_to_string([],_) -> [];
-map_pairs_to_string(Pairs,RecDict) ->
-    StrPairs = [{t_to_string(K,RecDict),t_to_string(V,RecDict)}||{K,V}<-Pairs],
-    string:join([K ++ "=>" ++ V||{K,V}<-StrPairs], ", ").
 
 
 record_to_string(Tag, [_|Fields], FieldNames, RecDict) ->
@@ -5002,11 +5226,26 @@ do_opaque(?union(List) = Type, Opaques, Pred) ->
 do_opaque(Type, _Opaques, Pred) ->
   Pred(Type).
 
-map_keys(?map(Pairs)) ->
-  [K || {K, _} <- Pairs].
+map_mand_keys(?map(Mand, _, _, _)) ->
+  [K || {K, _} <- Mand].
 
-map_values(?map(Pairs)) ->
-  [V || {_, V} <- Pairs].
+map_mand_values(?map(Mand, _, _, _)) ->
+  [V || {_, V} <- Mand].
+
+map_opt_keys(?map(_, Opt, _, _)) ->
+  [K || {K, _} <- Opt].
+
+map_opt_values(?map(_, Opt, _, _)) ->
+  [V || {_, V} <- Opt].
+
+map_all_values(M=?map(_,_,_,DefV)) ->
+  [DefV|map_mand_values(M) ++ map_opt_values(M)].
+
+map_all_keys(M=?map(_,_,DefK,_)) ->
+  [DefK|map_mand_keys(M) ++ map_opt_keys(M)].
+
+map_all_types(M) ->
+  map_all_keys(M) ++ map_all_values(M).
 
 %% Tests if a type has exactly one possible value.
 -spec t_is_singleton(erl_type()) -> boolean().
@@ -5031,6 +5270,8 @@ is_singleton_type(?tuple(Types, Arity, _)) when is_integer(Arity) ->
   lists:all(fun is_singleton_type/1, Types);
 is_singleton_type(?tuple_set([{Arity, [OnlyTuple]}])) when is_integer(Arity) ->
   is_singleton_type(OnlyTuple);
+is_singleton_type(?map(Mand, [], ?none, ?none)) ->
+  lists:all(fun({_,V})->is_singleton_type(V)end, Mand);
 is_singleton_type(_) ->
   false.
 
@@ -5056,7 +5297,10 @@ singleton_type_to_term(?tuple(Types, Arity, _)) when is_integer(Arity) ->
   lists:map(fun singleton_type_to_term/1, Types);
 singleton_type_to_term(?tuple_set([{Arity, [OnlyTuple]}]))
   when is_integer(Arity) ->
-  singleton_type_to_term(OnlyTuple).
+  singleton_type_to_term(OnlyTuple);
+singleton_type_to_term(?map(Mand, [], ?none, ?none)) ->
+  maps:from_list([{singleton_type_to_term(K), singleton_type_to_term(V)}
+		  || {K,V} <- Mand]).
 
 %% -----------------------------------
 %% Set
