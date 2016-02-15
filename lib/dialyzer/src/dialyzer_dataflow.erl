@@ -1100,14 +1100,17 @@ handle_map(Tree,Map,State) ->
     false ->
       {State2, Map2, TypePairs, ExactKeys} =
 	traverse_map_pairs(Pairs, Map1, State1, t_none(), [], []),
-      Map3 =
-	case bind_pat_vars([Arg], [t_map([{K, t_any()} || K <- ExactKeys])],
-			   [], Map2, State2) of
-	  {error, _, _, _, _} -> Map2;
-	  {SM, [_]} -> SM
-	end,
-      ResType = lists:foldl(fun erl_types:t_map_put/2, ArgType1, TypePairs),
-      {State2, Map3, ResType}
+      case bind_pat_vars([Arg], [t_map([{K, t_any()} || K <- ExactKeys])],
+			 [], Map2, State2) of
+	{error, _, _, _, _} ->
+	  {State2, Map2, t_none()};
+	{Map3, [BoundArgType]} ->
+	  ArgType2 = t_inf(ArgType1, BoundArgType),
+	  ResType = lists:foldl(fun({KV,assoc},Acc) -> erl_types:t_map_put(KV,Acc);
+				   ({KV,exact},Acc) -> erl_types:t_map_update(KV,Acc)
+				end, ArgType2, TypePairs),
+	  {State2, Map3, ResType}
+      end
   end.
 
 traverse_map_pairs([], Map, State, _ShadowKeys, PairAcc, KeyAcc) ->
@@ -1124,8 +1127,8 @@ traverse_map_pairs([Pair|Pairs], Map, State, ShadowKeys, PairAcc, KeyAcc) ->
       true -> [K|KeyAcc];
       false -> KeyAcc
   end,
-  traverse_map_pairs(Pairs, Map1, State1, t_sup(K, ShadowKeys), [{K,V}|PairAcc],
-		     KeyAcc1).
+  traverse_map_pairs(Pairs, Map1, State1, t_sup(K, ShadowKeys),
+		     [{{K,V},cerl:concrete(Op)}|PairAcc], KeyAcc1).
 
 %%----------------------------------------
 

@@ -70,7 +70,6 @@
 	 t_cons_tl/1, t_cons_tl/2,
          t_contains_opaque/1, t_contains_opaque/2,
 	 t_decorate_with_opaque/3,
-	 t_do_overlap/2, t_do_overlap/3,
 	 t_elements/1,
 	 t_find_opaque_mismatch/3,
          t_find_unknown_opaque/3,
@@ -162,6 +161,8 @@
 	 t_map_def_key/2, t_map_def_key/1,
 	 t_map_def_val/2, t_map_def_val/1,
 	 t_map_get/2, t_map_get/3,
+	 t_map_is_key/2, t_map_is_key/3,
+	 t_map_update/2, t_map_update/3,
 	 t_map_put/2, t_map_put/3,
 	 t_matchstate/0,
 	 t_matchstate/2,
@@ -1806,6 +1807,20 @@ t_map_put({Key, Value}, _M=?map(Mand,Opt,DefK,DefV), Opaques) ->
       end
   end.
 
+-spec t_map_update({erl_type(), erl_type()}, erl_type()) -> erl_type().
+
+t_map_update(KV, Map) ->
+  t_map_update(KV, Map, 'universe').
+
+-spec t_map_update({erl_type(), erl_type()}, erl_type(), opaques()) -> erl_type().
+
+t_map_update(_, ?none, _) -> ?none;
+t_map_update(KV={Key, _}, M, Opaques) ->
+  case t_is_subtype(t_atom('true'), t_map_is_key(Key, M)) of
+    false -> ?none;
+    true -> t_map_put(KV, M, Opaques)
+  end.
+
 -spec t_map_get(erl_type(), erl_type()) -> erl_type().
 
 t_map_get(Key, Map) ->
@@ -1833,6 +1848,39 @@ t_map_get(Key, ?map(Mand, Opt, DefK, DefV), Opaques) ->
       case lists:keyfind(Key, 1, Opt ++ Mand) of
 	false -> DefRes;
 	{_, ValType} -> ValType
+      end
+  end.
+
+
+-spec t_map_is_key(erl_type(), erl_type()) -> erl_type().
+
+t_map_is_key(Key, Map) ->
+  t_map_is_key(Key, Map, 'universe').
+
+-spec t_map_is_key(erl_type(), erl_type(), opaques()) -> erl_type().
+
+t_map_is_key(_, ?none, _) -> ?none;
+t_map_is_key(Key, ?map(Mand, Opt, DefK, _DefV), Opaques) ->
+  case (t_is_singleton(Key, Opaques)) of
+    true ->
+      case orddict:is_key(Key, Mand) of
+	false ->
+	  case t_do_overlap(DefK, Key, Opaques)
+	    orelse orddict:is_key(Key, Opt)
+	  of
+	    true -> t_boolean();
+	    false -> t_atom(false)
+	  end;
+	_Found -> t_atom(true)
+      end;
+    false ->
+      Pred = fun({K,_}) -> t_do_overlap(K, Key, Opaques) end,
+      case t_do_overlap(DefK, Key, Opaques)
+	orelse lists:any(Pred, Mand)
+	orelse lists:any(Pred, Opt)
+      of
+	true -> t_boolean();
+	false -> t_atom(false)
       end
   end.
 
@@ -2471,20 +2519,29 @@ t_sup(?tuple_set(List1), T2 = ?tuple(_, Arity, _)) ->
   sup_tuple_sets(List1, [{Arity, [T2]}]);
 t_sup(?tuple(_, Arity, _) = T1, ?tuple_set(List2)) ->
   sup_tuple_sets([{Arity, [T1]}], List2);
-t_sup(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV)) ->
-  MergeFun = fun({K, V1}, {K, V2}, {Kept0, DisK, DisV}) ->
-		 {[{K, t_sup(V1, V2)}|Kept0], DisK, DisV};
-		(none, {K,V}, {Kept0, DisK, DisV}) ->
-		 {Kept0, t_sup(DisK,K), t_sup(DisV,V)};
-		({K,V}, none, {Kept0, DisK, DisV}) ->
-		 {Kept0, t_sup(DisK,K), t_sup(DisV,V)}
+t_sup(A=?map(AMand, AOpt, ADefK, ADefV), B=?map(BMand, BOpt, BDefK, BDefV)) ->
+  MergeFun = fun({K, V1}, {K, V2}, {Kept0, DisK, DisV, XtraO}) ->
+		 {[{K, t_sup(V1, V2)}|Kept0], DisK, DisV, XtraO};
+		(E1, E2, {Kept0, DisK, DisV, XtraO}) ->
+		 %% If a key is mandatory in one map, but not possible in the
+		 %% other, we transform it to an optional
+		 IsKeyInOther = case {E1, E2} of
+				  {none, E={K,V}} -> t_map_is_key(K, A);
+				  {E={K,V}, none} -> t_map_is_key(K, B)
+				end,
+		 case t_is_equal(t_atom(false), IsKeyInOther) of
+		   true  -> {Kept0, DisK, DisV, [E|XtraO]};
+		   false -> {Kept0, t_sup(DisK,K), t_sup(DisV,V), XtraO}
+		 end
 	     end,
-  {NewMand, NewDefK0, NewDefV0}
+  {NewMand, NewDefK0, NewDefV0, XtraO0}
     = orddict_combine_foldr(MergeFun,
-			    {[], t_sup(ADefK, BDefK), t_sup(ADefV, BDefV)},
+			    {[], t_sup(ADefK, BDefK), t_sup(ADefV, BDefV), []},
 			    AMand, BMand),
-  {NewOpt, NewDefK, NewDefV}
-    = orddict_combine_foldr(MergeFun, {[], NewDefK0, NewDefV0}, AOpt, BOpt),
+  {NewOpt0, NewDefK, NewDefV, XtraO1}
+    = orddict_combine_foldr(MergeFun, {[], NewDefK0, NewDefV0, []}, AOpt, BOpt),
+  XtraO2 = orddict:merge(fun(_,_,_) -> throw(cant_happen) end, XtraO0, XtraO1),
+  NewOpt = orddict:merge(fun(_,_,_) -> throw(cant_happen) end, NewOpt0, XtraO2),
   t_map(NewMand, NewOpt, NewDefK, NewDefV);
 t_sup(T1, T2) ->
   ?union(U1) = force_union(T1),
@@ -2729,7 +2786,7 @@ t_inf(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), _Opaques
   try
     {Mand, Opt}
       = orddict_manyfoldr(
-	  fun(K, _, [{K,V1}, {K,V2}, none, none], {Mand0, Opt0}) ->
+	  fun(K, 2, [{K,V1}, {K,V2}, none, none], {Mand0, Opt0}) ->
 	      %% First handle the case of the same mandatory key existing in
 	      %% both maps. If the infinimum of their values is ?none, the
 	      %% entire map infinimum is ?none.
@@ -2737,14 +2794,10 @@ t_inf(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), _Opaques
 		?none -> throw(none);
 		V -> {[{K, V}|Mand0], Opt0}
 	      end;
-	     (K, _, [none, none, {K,V1}, {K,V2}], {Mand0, Opt0}) ->
+	     (K, 2, [none, none, {K,V1}, {K,V2}], {Mand0, Opt0}) ->
 	      %% For optional keys in both maps, when the infinimum is none, we
 	      %% have essentially concluded that K must not be a key in the map.
-	      %% XXX: Actually subtract it from DefK
-	      case t_inf(V1, V2) of
-		?none -> {Mand0, Opt0};
-		V -> {Mand0, [{K, V}|Opt0]}
-	      end;
+	      {Mand0, [{K, t_inf(V1, V2)}|Opt0]};
 	     (K, 2, Args, {Mand0, Opt0}) ->
 	      {{K,V1}, {K,V2}} = case Args of
 				   [E1, none, none, E2] -> {E1, E2};
@@ -2756,40 +2809,25 @@ t_inf(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), _Opaques
 		?none -> throw(none);
 		V -> {[{K, V}|Mand0], Opt0}
 	      end;
-
 	     %% For mandatory keys in one of the maps, they need to overlap with
 	     %% the default kvs of the other, or the infinimum is none
-	     (K, 1, [{K,V}, none, none, none], {Mand0, Opt0}) ->
-	      case t_is_none(KI = t_inf(K, BDefK))
-		or t_is_none(VI = t_inf(V, BDefV))
-	      of
+	     (K, 1, [E1, E2, none, none], {Mand0, Opt0}) ->
+	      {KI, VI} = case {E1, E2} of
+			   {{K,V},none} -> {t_inf(K,BDefK), t_inf(V,BDefV)};
+			   {none,{K,V}} -> {t_inf(K,ADefK), t_inf(V,ADefV)}
+			 end,
+	      case t_is_none(KI) orelse t_is_none(VI) of
 		true -> throw(none);
 		false -> {[{KI,VI}|Mand0], Opt0}
 	      end;
-	     (K, 1, [none, {K,V}, none, none], {Mand0, Opt0}) ->
-	      case t_is_none(KI = t_inf(K, ADefK))
-		or t_is_none(VI = t_inf(V, ADefV))
-	      of
-		true -> throw(none);
-		false -> {[{KI,VI}|Mand0], Opt0}
-	      end;
-
-	     %% Verify that E matches Def[KV], discard and subtract from DefK
-	     %% otherwise
-	     (K, 1, [none, none, {K,V}, none], {Mand0, Opt0}) ->
-	      case t_is_none(KI = t_inf(K, BDefK))
-		or t_is_none(VI = t_inf(V, BDefV))
-	      of
-		%% TODO: Actually discard
-		true -> {Mand0, Opt0};
-		false -> {Mand0, [{KI,VI}|Opt0]}
-	      end;
-	     (K, 1, [none, none, none, {K,V}], {Mand0, Opt0}) ->
-	      case t_is_none(KI = t_inf(K, ADefK))
-		or t_is_none(VI = t_inf(V, ADefV))
-	      of
-		%% TODO: Actually discard
-		true -> {Mand0, Opt0};
+	     %% Verify that K matches DefK, discard otherwise
+	     (K, 1, [none, none, E1, E2], {Mand0, Opt0}) ->
+	      {KI, VI} = case {E1, E2} of
+			   {{K,V},none} -> {t_inf(K,BDefK), t_inf(V,BDefV)};
+			   {none,{K,V}} -> {t_inf(K,ADefK), t_inf(V,ADefV)}
+			 end,
+	      case t_is_none(KI) of
+		true  -> {Mand0, Opt0};
 		false -> {Mand0, [{KI,VI}|Opt0]}
 	      end
 	  end, {[], []}, [AMand, BMand, AOpt, BOpt]),
@@ -4014,11 +4052,6 @@ subtype_is_equal(T1, T2) ->
 t_is_instance(ConcreteType, Type) ->
   t_is_subtype(ConcreteType, t_unopaque(Type)).
 
-
--spec t_do_overlap(erl_type(), erl_type()) -> boolean().
-
-t_do_overlap(TypeA, TypeB) ->
-  t_do_overlap(TypeA, TypeB, 'universe').
 
 -spec t_do_overlap(erl_type(), erl_type(), opaques()) -> boolean().
 
