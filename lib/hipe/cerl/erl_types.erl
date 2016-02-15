@@ -1654,8 +1654,16 @@ t_map(L) ->
 
 -spec t_map(t_map_dict(), t_map_dict(), erl_type(), erl_type()) -> erl_type().
 
-t_map(Mand, Opt, DefK, DefV) ->
+t_map(Mand, Opt0, DefK, DefV) ->
+  Opt = normalise_map_optionals(Opt0, DefK, DefV),
   ?map(Mand, Opt, DefK, DefV).
+
+normalise_map_optionals([], _, _) -> [];
+normalise_map_optionals([E={K,V}|T], DefK, DefV) ->
+  case t_is_equal(V, DefV) andalso t_is_subtype(K, DefK) of
+    true -> normalise_map_optionals(T, DefK, DefV);
+    false -> [E|normalise_map_optionals(T, DefK, DefV)]
+  end.
 
 -spec t_is_map(erl_type()) -> boolean().
 
@@ -1865,11 +1873,10 @@ t_map_is_key(Key, ?map(Mand, Opt, DefK, _DefV), Opaques) ->
     true ->
       case orddict:is_key(Key, Mand) of
 	false ->
-	  case t_do_overlap(DefK, Key, Opaques)
-	    orelse orddict:is_key(Key, Opt)
-	  of
-	    true -> t_boolean();
-	    false -> t_atom(false)
+	  case {t_do_overlap(DefK, Key, Opaques), orddict:find(Key, Opt)} of
+	    {_, {ok, ?none}} -> t_atom(false);
+	    {false, error} -> t_atom(false);
+	    {_, _} -> t_boolean()
 	  end;
 	_Found -> t_atom(true)
       end;
@@ -3887,7 +3894,10 @@ t_subtract(?map(AMand, AOpt, ADefK=?any, ADefV=?any) = A, ?map(BMand, [], ?any, 
 	    true ->
 	      case t_subtract(ADefV, V0) of
 		ADefV -> A;
-		V -> t_map(AMand, [{K, V}|AOpt], ADefK, ADefV)
+		V ->
+		  AOpt1 = orddict:update(K, fun(OldV) -> t_inf(OldV, V) end,
+					 V, AOpt),
+		  t_map(AMand, AOpt1, ADefK, ADefV)
 	      end;
 	    false -> A
 	  end;
