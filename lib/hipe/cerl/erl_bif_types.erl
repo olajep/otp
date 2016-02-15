@@ -124,8 +124,8 @@
 		    t_map_mand_entries/2,
 		    t_map_opt_entries/2,
 		    t_map_def_key/2,
-		    t_map_def_val/2,
-		    t_map_put/2
+		    t_map_get/3,
+		    t_map_put/3
 		   ]).
 
 -ifdef(DO_ERL_BIF_TYPES_TEST).
@@ -1690,40 +1690,20 @@ type(lists, zipwith3, 4, Xs, Opaques) ->
 type(maps, get, 2, Xs, Opaques) ->
   strict(maps, get, 2, Xs,
 	 fun ([Key, Map]) ->
-	     Mand = t_map_mand_entries(Map, Opaques),
-	     Opt = t_map_opt_entries(Map, Opaques),
-	     DefRes =
-	       case t_do_overlap(t_map_def_key(Map, Opaques), Key, Opaques) of
-		 false -> t_none();
-		 true -> t_map_def_val(Map, Opaques)
-	       end,
-	     case t_is_singleton(Key, Opaques) of
-	       false ->
-		 Fun = fun({K, V}, Res) ->
-			   case t_do_overlap(K, Key, Opaques) of
-			     false -> Res;
-			     true -> t_sup(Res, V)
-			   end
-		       end,
-		 lists:foldl(Fun, lists:foldl(Fun, DefRes, Mand), Opt);
-	       true ->
-		 case lists:keyfind(Key, 1, Opt ++ Mand) of
-		   false -> DefRes;
-		   {_, ValType} -> ValType
-		 end
-	     end
+	     t_map_get(Key, Map, Opaques)
 	 end, Opaques);
 type(maps, is_key, 2, Xs, Opaques) ->
   strict(maps, is_key, 2, Xs,
 	 fun ([Key, Map]) ->
 	     Mand = t_map_mand_entries(Map, Opaques),
+	     Opt = t_map_opt_entries(Map, Opaques),
 	     DefK = t_map_def_key(Map, Opaques),
 	     case (t_is_singleton(Key, Opaques)) of
 	       true ->
 		 case orddict:is_key(Key, Mand) of
 		   false ->
 		     case t_do_overlap(DefK, Key, Opaques)
-		       orelse orddict:is_key(Key, Mand)
+		       orelse orddict:is_key(Key, Opt)
 		     of
 		       true -> t_boolean();
 		       false -> t_from_term(false)
@@ -1734,7 +1714,7 @@ type(maps, is_key, 2, Xs, Opaques) ->
 		 Pred = fun({K,_}) -> t_do_overlap(K, Key, Opaques) end,
 		 case t_do_overlap(DefK, Key, Opaques)
 		   orelse lists:any(Pred, Mand)
-		   orelse lists:any(Pred, t_map_mand_entries(Map, Opaques))
+		   orelse lists:any(Pred, Opt)
 		 of
 		   true -> t_boolean();
 		   false -> t_from_term(false)
@@ -1753,7 +1733,7 @@ type(maps, merge, 2, Xs, Opaques) ->
 type(maps, Put, 3, Xs, Opaques) when Put =:= put; Put =:= update ->
   strict(maps, Put, 3, Xs,
 	 fun ([Key, Value, Map]) ->
-	     t_map_put({Key, Value}, Map)
+	     t_map_put({Key, Value}, Map, Opaques)
 	 end, Opaques);
 
 %%-- string -------------------------------------------------------------------

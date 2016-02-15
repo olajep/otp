@@ -72,8 +72,7 @@
 	 t_tuple/0, t_tuple/1, t_tuple_args/1, t_tuple_args/2,
          t_tuple_subtypes/2,
 	 t_unit/0, t_unopaque/2,
-	 t_map/0, t_map/1, t_map_mand_entries/2,
-	 t_is_singleton/2
+	 t_map/0, t_map/1, t_is_singleton/2
      ]).
 
 %%-define(DEBUG, true).
@@ -1525,8 +1524,6 @@ bind_pat_vars([Pat|PatLeft], [Type|TypeLeft], Acc, Map, State, Rev) ->
 	  true ->
 	    bind_opaque_pats(t_map(), Type, Pat, State);
 	  false ->
-	    %% TODO:
-	    MapTEntries = t_map_mand_entries(MapT, Opaques),
 	    FoldFun =
 	      fun(Pair, {MapAcc, ListAcc}) ->
 		  %% Only exact (:=) can appear in patterns
@@ -1542,19 +1539,13 @@ bind_pat_vars([Pat|PatLeft], [Type|TypeLeft], Acc, Map, State, Rev) ->
 		      literal ->
 			literal_type(Key)
 		    end,
+		  Bind = erl_types:t_map_get(KeyType, MapT),
+		  {MapAcc1, [ValType]} =
+		    bind_pat_vars([cerl:map_pair_val(Pair)],
+				  [Bind], [], MapAcc, State, Rev),
 		  case t_is_singleton(KeyType, Opaques) of
-		    true ->
-		      Bind = proplists:get_value(KeyType, MapTEntries, t_any()),
-		      {MapAcc1, [ValType]} =
-			bind_pat_vars([cerl:map_pair_val(Pair)],
-				      [Bind], [], MapAcc, State, Rev),
-		      {MapAcc1, [{KeyType, ValType}|ListAcc]};
-		    false ->
-		      %% Visit the tree anyway
-		      {MapAcc1, [_ValType]} =
-			bind_pat_vars([cerl:map_pair_val(Pair)],
-				      [t_any()], [], MapAcc, State, Rev),
-		      {MapAcc1, ListAcc}
+		    true  -> {MapAcc1, [{KeyType, ValType}|ListAcc]};
+		    false -> {MapAcc1, ListAcc}
 		  end
 	      end,
 	    {Map1, Pairs} = lists:foldl(FoldFun, {Map, []}, cerl:map_es(Pat)),

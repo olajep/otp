@@ -47,7 +47,7 @@
 	 t_is_any/1, t_is_atom/1, t_is_any_atom/2, t_is_cons/1,
 	 t_is_float/1, t_is_fun/1,
 	 t_is_integer/1, t_non_neg_integer/0,
-	 t_is_list/1, t_is_map/1, t_is_nil/1, t_is_none/1, t_is_number/1,
+	 t_is_list/1, t_is_nil/1, t_is_none/1, t_is_number/1,
 	 t_is_singleton/1,
 
          t_limit/2, t_list/0, t_list/1,
@@ -58,8 +58,7 @@
 	 t_timeout/0, t_tuple/0, t_tuple/1,
          t_var/1, t_var_name/1,
 	 t_none/0, t_unit/0,
-	 t_map/0, t_map/1, t_map_mand_entries/1, t_map_opt_entries/1,
-	 t_map_def_key/1, t_map_def_val/1, t_map_put/2, t_do_overlap/2
+	 t_map/0, t_map/1, t_map_get/2, t_map_put/2
      ]).
 
 -include("dialyzer.hrl").
@@ -532,31 +531,20 @@ traverse(Tree, DefinedVars, State) ->
 		  case t_is_singleton(KeyType) of
 		    false -> t_any();
 		    true ->
-		      case t_is_map(MT = lookup_type(MapVar, Map)) of
-			true ->
+		      MT = t_inf(lookup_type(MapVar, Map), t_map()),
+		      case t_is_none(MT) of
+			true -> t_none();
+			false ->
 			  DisjointFromKeyType =
 			    fun(ShadowKey) ->
 				t_is_none(t_inf(lookup_type(ShadowKey, Map),
 						KeyType))
 			    end,
 			  case lists:all(DisjointFromKeyType, ShadowKeys) of
-			    true ->
-			      proplists:get_value(
-				KeyType, t_map_mand_entries(MT)
-				++ t_map_opt_entries(MT),
-				case t_do_overlap(t_map_def_key(MT), KeyType) of
-				  true -> t_map_def_val(MT);
-				  false -> t_none()
-				end);
-			    false ->
-			      %% A later association might shadow this one
-			      t_any()
-			  end;
-
-			false ->
-			  %% TODO: should I be t_none? We know this
-			  %% expression will not return.
-			  t_any()
+			    true -> t_map_get(KeyType, MT);
+			    %% A later association might shadow this one
+			    false -> t_any()
+			  end
 		      end
 		  end
 	      end,

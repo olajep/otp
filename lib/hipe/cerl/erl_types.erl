@@ -161,7 +161,8 @@
 	 t_map_opt_entries/2, t_map_opt_entries/1,
 	 t_map_def_key/2, t_map_def_key/1,
 	 t_map_def_val/2, t_map_def_val/1,
-	 t_map_put/2,
+	 t_map_get/2, t_map_get/3,
+	 t_map_put/2, t_map_put/3,
 	 t_matchstate/0,
 	 t_matchstate/2,
 	 t_matchstate_present/1,
@@ -1776,8 +1777,13 @@ orddict_manyfoldr(F, Acc, Lists0) ->
 
 -spec t_map_put({erl_type(), erl_type()}, erl_type()) -> erl_type().
 
-t_map_put(_, ?none) -> ?none;
-t_map_put({Key, Value}, _M=?map(Mand,Opt,DefK,DefV)) ->
+t_map_put(KV, Map) ->
+  t_map_put(KV, Map, 'universe').
+
+-spec t_map_put({erl_type(), erl_type()}, erl_type(), opaques()) -> erl_type().
+
+t_map_put(_, ?none, _) -> ?none;
+t_map_put({Key, Value}, _M=?map(Mand,Opt,DefK,DefV), Opaques) ->
   case t_is_none_or_unit(Key) orelse t_is_none_or_unit(Value) of
     true -> ?none;
     false ->
@@ -1788,7 +1794,7 @@ t_map_put({Key, Value}, _M=?map(Mand,Opt,DefK,DefV)) ->
 		DefK, DefV);
 	false ->
 	  Fun = fun(K,V) ->
-		    case t_is_none(t_inf(K, Key)) of
+		    case t_is_none(t_inf(K, Key, Opaques)) of
 		      true -> V;
 		      false -> t_sup(V, Value)
 		    end
@@ -1797,6 +1803,36 @@ t_map_put({Key, Value}, _M=?map(Mand,Opt,DefK,DefV)) ->
 		orddict:map(Fun, Opt),
 		t_sup(DefK, Key),
 		t_sup(DefV, Value))
+      end
+  end.
+
+-spec t_map_get(erl_type(), erl_type()) -> erl_type().
+
+t_map_get(Key, Map) ->
+  t_map_get(Key, Map, 'universe').
+
+-spec t_map_get(erl_type(), erl_type(), opaques()) -> erl_type().
+
+t_map_get(_, ?none, _) -> ?none;
+t_map_get(Key, ?map(Mand, Opt, DefK, DefV), Opaques) ->
+  DefRes =
+    case t_do_overlap(DefK, Key, Opaques) of
+      false -> t_none();
+      true -> DefV
+    end,
+  case t_is_singleton(Key, Opaques) of
+    false ->
+      Fun = fun({K, V}, Res) ->
+		case t_do_overlap(K, Key, Opaques) of
+		  false -> Res;
+		  true -> t_sup(Res, V)
+		end
+	    end,
+      lists:foldl(Fun, lists:foldl(Fun, DefRes, Mand), Opt);
+    true ->
+      case lists:keyfind(Key, 1, Opt ++ Mand) of
+	false -> DefRes;
+	{_, ValType} -> ValType
       end
   end.
 
@@ -3804,12 +3840,24 @@ t_subtract(?product(Elements1) = T1, ?product(Elements2)) ->
 	_ -> T1
       end
   end;
-t_subtract(?map(AMand, [], ?any, ?any) = A, ?map(BMand, [], ?any, ?any)) ->
+t_subtract(?map(AMand, AOpt, ADefK=?any, ADefV=?any) = A, ?map(BMand, [], ?any, ?any)) ->
   case map_subtract(AMand, BMand) of
-    mismatch -> A;
+    mismatch ->
+      case BMand of
+	[{K, V0}] ->
+	  case t_is_subtype(K, ADefK) of
+	    true ->
+	      case t_subtract(ADefV, V0) of
+		ADefV -> A;
+		V -> t_map(AMand, [{K, V}|AOpt], ADefK, ADefV)
+	      end;
+	    false -> A
+	  end;
+	_ -> A
+      end;
     complete -> ?none; %% A is a subtype of B
     {K, V} ->
-      t_map(orddict:store(K, V, AMand), [], ?any, ?any)
+      t_map(orddict:store(K, V, AMand), AOpt, ?any, ?any)
   end;
 t_subtract(?map(_, _, _, _) = A, ?map(_, _, _, _)) ->
   %% TODO: The complex subtract cases
@@ -4308,7 +4356,7 @@ t_to_string(?map(Mand,Opt0,DefK,DefV), RecDict) ->
       Pair -> {Opt0 ++ [Pair], []}
     end,
   Tos = fun(T) -> case T of
-		    ?none -> "_";
+		    ?any -> "_";
 		    _ -> t_to_string(T, RecDict)
 		  end end,
   StrMand = [{Tos(K),Tos(V)}||{K,V}<-Mand],
