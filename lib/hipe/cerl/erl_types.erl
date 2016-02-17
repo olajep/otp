@@ -1631,9 +1631,15 @@ lift_list_to_pos_empty(?list(Content, Termination, _)) ->
 %%     key KT in Mandatory or Optional s.t. K \in KT), K \in DefaultKey and
 %%     V \in DefaultValue.
 %%
-%% Invariants: The keys in Mandatory and Optional are singleton types, and are
-%% mutually exclusive. The values must not be none or unit. DefaultKey must be
-%% the empty type iff DefaultValue is the empty type.
+%% Invariants:
+%%  * The keys in Mandatory and Optional are singleton types, and are
+%%    mutually exclusive.
+%%  * The values of Mandatory must not be none or unit.
+%%  * The values of Optional must not be unit.
+%%  * Optional must contain no pair {K,V} s.t. K is a subtype of DefaultKey and
+%%    V is equal to DefaultKey.
+%%  * DefaultKey must be the empty type iff DefaultValue is the empty type.
+%%  * DefaultKey must not be a singleton type.
 %%
 %% As indicated by the use of the orddict type, Mandatory and Optional must be
 %% sorted and not contain any duplicate keys. This ensures that equal map types
@@ -1654,8 +1660,14 @@ t_map(L) ->
 
 -spec t_map(t_map_dict(), t_map_dict(), erl_type(), erl_type()) -> erl_type().
 
-t_map(Mand, Opt0, DefK, DefV) ->
-  Opt = normalise_map_optionals(Opt0, DefK, DefV),
+t_map(Mand, Opt0, DefK0, DefV0) ->
+  {Opt1, DefK, DefV}
+    = case t_is_singleton(DefK0) of
+	  true -> {orddict:update(DefK0, fun(V) -> V end, DefV0, Opt0),
+		   ?none, ?none};
+	  false -> {Opt0, DefK0, DefV0}
+	end,
+  Opt = normalise_map_optionals(Opt1, DefK, DefV),
   ?map(Mand, Opt, DefK, DefV).
 
 normalise_map_optionals([], _, _) -> [];
