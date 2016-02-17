@@ -120,6 +120,8 @@ slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     X(epiphany_internal_spawn, 3)		\
     X(erts_debug_get_internal_state, 1)		\
     X(erts_debug_set_internal_state, 2)		\
+    X(erts_internal_port_control, 3)		\
+    X(erts_internal_port_command, 3)		\
     X(ets_insert, 2)				\
     X(ets_lookup, 2)				\
     X(ets_new, 2)				\
@@ -147,6 +149,7 @@ slave_syscall_bif(Uint bif_no, Process *p, Eterm args[], int arity)
     X(now, 0)					\
     X(open_port, 2)				\
     X(os_getenv, 1)				\
+    X(port_get_data, 1)				\
     X(process_flag, 2)				\
     X(process_flag, 3)				\
     X(process_info, 2)				\
