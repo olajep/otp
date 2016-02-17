@@ -119,9 +119,13 @@
 		    t_is_map/2,
 		    t_map/0,
 		    t_map/1,
-		    t_map_mand_entries/2,
+		    t_map/4,
+		    t_map_def_key/2,
+		    t_map_def_val/2,
 		    t_map_get/3,
 		    t_map_is_key/3,
+		    t_map_mand_entries/2,
+		    t_map_opt_entries/2,
 		    t_map_put/3,
 		    t_map_update/3
 		   ]).
@@ -1685,6 +1689,17 @@ type(lists, zipwith3, 4, Xs, Opaques) ->
                                         t_nil()) end, Opaques);
 
 %%-- maps ---------------------------------------------------------------------
+type(maps, from_list, 1, Xs, Opaques) ->
+  strict(maps, from_list, 1, Xs,
+	 fun ([List]) ->
+	     case t_is_nil(List, Opaques) of
+	       true -> t_map([], [], t_none(), t_none());
+	       false ->
+		 T = t_list_elements(List, Opaques),
+		 [K, V] = t_tuple_args(T, Opaques),
+		 t_map([], [], K, V)
+	     end
+	 end, Opaques);
 type(maps, get, 2, Xs, Opaques) ->
   strict(maps, get, 2, Xs,
 	 fun ([Key, Map]) ->
@@ -1708,6 +1723,21 @@ type(maps, put, 3, Xs, Opaques) ->
   strict(maps, put, 3, Xs,
 	 fun ([Key, Value, Map]) ->
 	     t_map_put({Key, Value}, Map, Opaques)
+	 end, Opaques);
+type(maps, to_list, 1, Xs, Opaques) ->
+  strict(maps, to_list, 1, Xs,
+	 fun ([Map]) ->
+	     DefK = t_map_def_key(Map, Opaques),
+	     DefV = t_map_def_val(Map, Opaques),
+	     Mand = t_map_mand_entries(Map, Opaques),
+	     Opt  = t_map_opt_entries(Map, Opaques),
+	     {K, V} = lists:foldl(fun({K,V},{KA,VA}) ->
+				      case t_is_none(V) of
+					true -> {t_subtract(KA,K), VA};
+					false -> {t_sup(K,KA), t_sup(V,VA)}
+				      end
+				  end, {DefK,DefV}, Mand ++ Opt),
+	     t_list(t_tuple([K,V]))
 	 end, Opaques);
 type(maps, update, 3, Xs, Opaques) ->
   strict(maps, update, 3, Xs,
@@ -2678,6 +2708,8 @@ arg_types(lists, zipwith3, 4) ->
   [t_fun([t_any(), t_any(), t_any()], t_any()), t_list(), t_list(), t_list()];
 
 %%------- maps --------------------------------------------------------------
+arg_types(maps, from_list, 1) ->
+  [t_list(t_tuple(2))];
 arg_types(maps, get, 2) ->
   [t_any(), t_map()];
 arg_types(maps, is_key, 2) ->
@@ -2686,6 +2718,8 @@ arg_types(maps, merge, 2) ->
   [t_map(), t_map()];
 arg_types(maps, put, 3) ->
   [t_any(), t_any(), t_map()];
+arg_types(maps, to_list, 1) ->
+  [t_map()];
 arg_types(maps, update, 3) ->
   [t_any(), t_any(), t_map()];
 

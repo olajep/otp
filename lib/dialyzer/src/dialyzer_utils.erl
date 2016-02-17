@@ -867,7 +867,7 @@ seq([], _, _, _) ->
 
 %%------------------------------------------------------------------------------
 
--spec refold_pattern(cerl:tree()) -> cerl:tree().
+-spec refold_pattern(cerl:cerl()) -> cerl:cerl().
 
 refold_pattern(Pat) ->
   %% Avoid the churn of unfolding and refolding
