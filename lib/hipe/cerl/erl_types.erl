@@ -1668,6 +1668,26 @@ t_map(Mand, Opt0, DefK0, DefV0) ->
 	  false -> {Opt0, DefK0, DefV0}
 	end,
   Opt = normalise_map_optionals(Opt1, DefK, DefV),
+  %% Validate invariants of the map representation.
+  %% Since we needed to iterate over the arguments in order to normalise anyway,
+  %% we might as well save us some future pain and do this even without
+  %% define(DEBUG, true).
+  try
+    validate_map_elements(Mand),
+    validate_map_elements(Opt),
+    [] = [error({badarg, none_in_mand})||{_,?none}<-Mand],
+    [] = orddict_combine(
+	   fun(A={K,_},B={K,_}) ->
+	       error({badarg, {overlapping_map_keys,A,B}});
+	      (_, _) -> none
+	   end, Mand, Opt),
+    case {t_is_none_or_unit(DefK), t_is_none_or_unit(DefV)} of
+      {Same, Same} -> ok;
+      _ -> error({badarg, bad_default_keys})
+    end
+  catch error:badarg ->      error(badarg,      [Mand,Opt0,DefK0,DefV0]);
+	error:{badarg, E} -> error({badarg, E}, [Mand,Opt0,DefK0,DefV0])
+  end,
   ?map(Mand, Opt, DefK, DefV).
 
 normalise_map_optionals([], _, _) -> [];
@@ -1676,6 +1696,18 @@ normalise_map_optionals([E={K,V}|T], DefK, DefV) ->
     true -> normalise_map_optionals(T, DefK, DefV);
     false -> [E|normalise_map_optionals(T, DefK, DefV)]
   end.
+
+validate_map_elements([{K1,_}|Rest=[{K2,_}|_]]) ->
+  case t_is_singleton(K1) andalso K1 < K2 of
+    false -> error(badarg);
+    true -> validate_map_elements(Rest)
+  end;
+validate_map_elements([{K,_}]) ->
+  case t_is_singleton(K) of
+    false -> error(badarg);
+    true -> true
+  end;
+validate_map_elements([]) -> true.
 
 -spec t_is_map(erl_type()) -> boolean().
 
