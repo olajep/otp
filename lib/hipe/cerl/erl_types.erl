@@ -4673,21 +4673,36 @@ t_from_form({type, _L, list, [Type]}, TypeNames, ET, S, MR, V, D, L) ->
 t_from_form({type, _L, map, any}, TypeNames, ET, S, MR, V, D, L) ->
   builtin_type(map, t_map(), TypeNames, ET, S, MR, V, D, L);
 t_from_form({type, _L, map, List}, TypeNames, ET, S, MR, V, D, L) ->
-  {Pairs, L5} =
-    fun PairsFromForm(_, L1) when L1 =< 0 -> {[{?any, ?any}], L1};
-	PairsFromForm([], L1) -> {[], L1};
-	PairsFromForm([Pair|Pairs], L1) ->
-	{KF, VF} =
-	  case Pair of
-	    {type, _, map_field_assoc, [KF0, VF0]} -> {KF0, VF0};
-	    {type, _, map_field_exact, [KF0, VF0]} -> {KF0, VF0}
-	  end,
+  {Mand1, Opt1, DefK, DefV, L5} =
+    fun PairsFromForm(_, L1) when L1 =< 0 -> {[], [], ?any, ?any, L1};
+	PairsFromForm([], L1) -> {[], [], ?none, ?none, L1};
+	PairsFromForm([{type, _, Oper, [KF, VF]}|Pairs], L1) ->
 	{Key, L2} = t_from_form(KF, TypeNames, ET, S, MR, V, D - 1, L1),
 	{Val, L3} = t_from_form(VF, TypeNames, ET, S, MR, V, D - 1, L2),
-	{Assocs, L4} = PairsFromForm(Pairs, L3 - 1),
-	{[{Key, Val}|Assocs], L4}
+	{Mand0, Opt0, DefK0, DefV0, L4} = PairsFromForm(Pairs, L3 - 1),
+	case {t_is_singleton(Key), Oper} of
+	  {false, _} -> {Mand0, Opt0, t_sup(DefK0, Key), t_sup(DefV0, Val), L4};
+	  {true, map_field_assoc} -> {Mand0, [{Key,Val}|Opt0], DefK0, DefV0, L4};
+	  {true, map_field_exact} -> {[{Key,Val}|Mand0], Opt0, DefK0, DefV0, L4}
+	end
     end(List, L),
-  {t_map(Pairs), L5};
+  MergeEquals =
+    fun MergeEquals([{K,V1},{K,V2}|T]) -> MergeEquals([{K,t_sup(V1,V2)}|T]);
+	MergeEquals([P|T]) -> [P|MergeEquals(T)];
+	MergeEquals([]) -> []
+    end,
+  Mand2 = MergeEquals(lists:keysort(1, Mand1)),
+  Opt2  = MergeEquals(lists:keysort(1, Opt1)),
+  {Mand, Opt} =
+    orddict_combine_foldr(
+      fun({K,V1},     {K,V2},{Mand3,Opt3}) -> {[{K,t_sup(V1,V2)}|Mand3], Opt3};
+	 (E={_,?none},none,  {Mand3,Opt3}) -> {Mand3, [E|Opt3]};
+	 (E,          none,  {Mand3,Opt3}) -> {[E|Mand3], Opt3};
+	 %% normalise_map_optionals drops unnecessary optional pairs for us, so
+	 %% don't repeat it here
+	 (none,       E,     {Mand3,Opt3}) -> {Mand3, [E|Opt3]}
+      end, {[], []}, Mand2, Opt2),
+  {t_map(Mand, Opt, DefK, DefV), L5};
 t_from_form({type, _L, mfa, []}, _TypeNames, _ET, _S, _MR, _V, _D, L) ->
   {t_mfa(), L};
 t_from_form({type, _L, module, []}, _TypeNames, _ET, _S, _MR, _V, _D, L) ->
