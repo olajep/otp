@@ -3558,31 +3558,42 @@ t_unify(?tuple_set(List1) = T1, ?tuple_set(List2) = T2, VarMap) ->
     {Tuples, NewVarMap} -> {t_sup(Tuples), NewVarMap}
   catch _:_ -> throw({mismatch, T1, T2})
   end;
-t_unify(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), VarMap0) ->
-  SubstMap = fun(K) -> t_subst_kv(K, VarMap0) end,
-  AMand = lists:keymap(SubstMap, 1, AMand),
-  AOpt  = lists:keymap(SubstMap, 1, AOpt),
-  BMand = lists:keymap(SubstMap, 1, BMand),
-  BOpt  = lists:keymap(SubstMap, 1, BOpt),
-  %% XXX: Should we not be producing new VarMaps?!
-  Unify = fun(AL, BL, VarMap1) ->
-	      %% We only handle the case of the same key existing in both maps
-	      %% by aligning the keys and unifying the values.
-	      {KeysInBoth, ValsInBoth} =
-		lists:unzip(orddict_combine(
-			      fun({K, V1}, {K, V2}) -> {K, {V1, V2}};
-				 (_, _) -> false
-			      end, AL, BL)),
-	      {BothValsLeft, BothValsRight} = lists:unzip(ValsInBoth),
-	      {UnifiedValues, VarMap2} =
-		unify_lists(BothValsLeft, BothValsRight, VarMap1),
-	      {lists:zip(KeysInBoth, UnifiedValues), VarMap2}
-	  end,
-  {Mand, VarMap3} = Unify(AMand, BMand, VarMap0),
-  {Opt,  VarMap4} = Unify(AOpt,  BOpt,  VarMap3),
-  {DefK, VarMap5} = t_unify(ADefK, BDefK, VarMap4),
-  {DefV, VarMap6} = t_unify(ADefV, BDefV, VarMap5),
-  {t_map(Mand, Opt, DefK, DefV), VarMap6};
+t_unify(A=?map(AMand, AOpt, ADefK, ADefV), B=?map(BMand, BOpt, BDefK, BDefV), VarMap0) ->
+  {DefK, VarMap1} = t_unify(ADefK, BDefK, VarMap0),
+  {DefV, VarMap2} = t_unify(ADefV, BDefV, VarMap1),
+  {Mand, Opt, VarMap} =
+    orddict_manyfoldr(
+      fun(K, 2, [{K,V1},{K,V2},false,false], {Mand0, Opt0, VarMap3}) ->
+	  %% We know that the keys unify and do not contain variables, or they
+	  %% would not be singletons
+	  {V, VarMap4} = t_unify(V1, V2, VarMap3),
+	  {[{K,V}|Mand0], Opt0, VarMap4};
+	 (K, 2, [false,false,{K,V1},{K,V2}], {Mand0, Opt0, VarMap3}) ->
+	  %% TODO: Should V=?none (known missing keys) be handled special?
+	  {V, VarMap4} = t_unify(V1, V2, VarMap3),
+	  {Mand0, [{K,V}|Opt0], VarMap4};
+	 (K, 2, Args, {Mand0, Opt0, VarMap3}) ->
+	  %% What should be done in this case?
+	  {{K,V1}, {K,V2}} = case Args of
+			       [E1, false, false, E2] -> {E1, E2};
+			       [false, E1, E2, false] -> {E1, E2}
+			     end,
+	  {V, VarMap4} = t_unify(V1, V2, VarMap3),
+	  {[{K,V}|Mand0], Opt0, VarMap4};
+	 (K, 1, [E1, E2, false, false], {Mand0, Opt0, VarMap3}) ->
+	  case {E1, E2} of {{K,V},false} -> ok; {false,{K,V}} -> ok end,
+	  case t_do_overlap(K, DefK) andalso t_do_overlap(V, DefV) of
+	    false -> throw({mismatch, A, B});
+	    true -> {[{K,subst_all_vars_to_any(V)}|Mand0], Opt0, VarMap3}
+	  end;
+	 (K, 1, [false, false, E1, E2], {Mand0, Opt0, VarMap3}) ->
+	  case {E1, E2} of {{K,V},false} -> ok; {false,{K,V}} -> ok end,
+	  case t_do_overlap(K, DefK) andalso t_do_overlap(V, DefV) of
+	    false -> throw({mismatch, A, B});
+	    true -> {[{K,subst_all_vars_to_any(V)}|Mand0], Opt0, VarMap3}
+	  end
+      end, {[], [], VarMap2}, [AMand, BMand, AOpt, BOpt]),
+  {t_map(Mand, Opt, DefK, DefV), VarMap};
 t_unify(?opaque(_) = T1, ?opaque(_) = T2, VarMap) ->
   t_unify(t_opaque_structure(T1), t_opaque_structure(T2), VarMap);
 t_unify(T1, ?opaque(_) = T2, VarMap) ->
@@ -4116,6 +4127,11 @@ subtype_is_equal(T1, T2) ->
 t_is_instance(ConcreteType, Type) ->
   t_is_subtype(ConcreteType, t_unopaque(Type)).
 
+
+-spec t_do_overlap(erl_type(), erl_type()) -> boolean().
+
+t_do_overlap(TypeA, TypeB) ->
+  t_do_overlap(TypeA, TypeB, 'universe').
 
 -spec t_do_overlap(erl_type(), erl_type(), opaques()) -> boolean().
 
