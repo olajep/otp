@@ -1679,7 +1679,7 @@ t_map(Mand, Opt0, DefK0, DefV0) ->
     [] = orddict_combine(
 	   fun(A={K,_},B={K,_}) ->
 	       error({badarg, {overlapping_map_keys,A,B}});
-	      (_, _) -> none
+	      (_, _) -> false
 	   end, Mand, Opt),
     case {t_is_none_or_unit(DefK), t_is_none_or_unit(DefV)} of
       {Same, Same} -> ok;
@@ -1776,57 +1776,67 @@ map_def_val(?map(_,_,_,DefV)) ->
 
 %% Merges two orddicts, essentially, but with a more expressive merge function
 %% than orddict:merge/3
-%% Fun is invoked with ({K, AV}, none), (none, {K, BV}) or ({K, AV}, {K, BV})
-%% and may return either {K, term()} or none
--spec orddict_combine(fun(({K, term()} | none, {K, term()} | none)
-			  -> {K, term()} | none),
-		      orddict:orddict(), orddict:orddict())
-		     -> orddict:orddict().
+%% Fun is invoked with ({K, AV}, false), (false, {K, BV}) or ({K, AV}, {K, BV})
+%% and may return either {K, term()} or false
+-spec orddict_combine(fun(({K, VA} | false, {K, VB} | false)
+			  -> {K, VOut} | false),
+		      orddict:orddict(K, VA), orddict:orddict(K, VB))
+		     -> orddict:orddict(K, VOut).
 
-orddict_combine(F, [A={K,_}|As], [B={K,_}|Bs]) ->
-  orddict_combine_call_fun(F, As, Bs, A, B, K);
-orddict_combine(F, [A={AK,_}|As], [{BK,_}|_]=Bs) when AK < BK ->
-  orddict_combine_call_fun(F, As, Bs, A, none, AK);
-orddict_combine(F, As, [B={BK,_}|Bs]) -> %% AK > BK or As=[]
-  orddict_combine_call_fun(F, As, Bs, none, B, BK);
-orddict_combine(F, [A={AK,_}|As], []) ->
-  orddict_combine_call_fun(F, As, [], A, none, AK);
-orddict_combine(_, [], []) ->
-  [].
-
-%% K is for validation. If we're really crazy for performance, we could trust
-%% F to not return anything invalid
-orddict_combine_call_fun(F, As, Bs, A, B, K) ->
+orddict_combine(_, [], []) -> [];
+orddict_combine(F, As0, Bs0) ->
+  {As2, Bs2, A, B, K} =
+    case {As0, Bs0} of
+      {[A0={K0,_}|As1], [B0={K0,_}|Bs1]} ->             {As1, Bs1, A0,    B0, K0};
+      {[A0={AK,_}|As1], [{BK,_}|_]=Bs0} when AK < BK -> {As1, Bs0, A0, false, AK};
+      {As0,             [B0={BK,_}|Bs1]} ->             {As0, Bs1, false, B0, BK};
+      {[A0={AK,_}|As1], []} ->                          {As1, [],  A0, false, AK}
+    end,
   case F(A, B) of
-    none -> orddict_combine(F, As, Bs);
-    M={K,_} -> [M|orddict_combine(F, As, Bs)]
+    false -> orddict_combine(F, As2, Bs2);
+    M={K,_} -> [M|orddict_combine(F, As2, Bs2)]
   end.
+
+-spec orddict_combine_foldr(fun(({K, VA} | false, {K, VB} | false, Acc) -> Acc),
+			    Acc, orddict:orddict(K, VA), orddict:orddict(K, VB))
+			   -> Acc.
 
 orddict_combine_foldr(F, Acc, [A={K,_}|As], [B={K,_}|Bs]) ->
   F(A, B, orddict_combine_foldr(F, Acc, As, Bs));
 orddict_combine_foldr(F, Acc, [A={AK,_}|As], [{BK,_}|_]=Bs) when AK < BK ->
-  F(A, none, orddict_combine_foldr(F, Acc, As, Bs));
+  F(A, false, orddict_combine_foldr(F, Acc, As, Bs));
 orddict_combine_foldr(F, Acc, As, [B|Bs]) -> %% AK > BK or As=[]
-  F(none, B, orddict_combine_foldr(F, Acc, As, Bs));
+  F(false, B, orddict_combine_foldr(F, Acc, As, Bs));
 orddict_combine_foldr(F, Acc, [A|As], []) ->
-  F(A, none, orddict_combine_foldr(F, Acc, As, []));
+  F(A, false, orddict_combine_foldr(F, Acc, As, []));
 orddict_combine_foldr(_, Acc, [], []) -> Acc.
 
 %% orddict_combine_foldr, but takes a list of orddicts, instead of two
 %% Passes K and number of hits as arguments, for convenience
+
+-spec orddict_manyfoldr(fun((K, non_neg_integer(), [false|{K,V}], Acc) -> Acc),
+			Acc, [orddict:orddict(K,V)]) -> Acc.
+
 orddict_manyfoldr(F, Acc, Lists0) ->
-  case [K || [{K,_}|_] <- Lists0] of
-    [] -> Acc;
-    Heads ->
-      Min = lists:min(Heads),
-      {Lists2, Arg} = lists:foldr(fun([E={K,_}|T], {Lists1, Arg0})
-				      when K=:=Min -> {[T|Lists1], [E|Arg0]};
-				     (L, {Lists1, Arg0}) ->
-				      {[L|Lists1], [none|Arg0]}
-				  end, {[], []}, Lists0),
-      F(Min, length([E||E <- Arg, E =/= none]), Arg,
-	orddict_manyfoldr(F, Acc, Lists2))
+  case orddict_find_min(false, Lists0) of
+    false -> Acc;
+    Min ->
+      {Lists, Arg, Count}
+	= orddict_manyfoldr_collect_args(Lists0, Min, [], [], 0),
+      F(Min, Count, Arg, orddict_manyfoldr(F, Acc, Lists))
   end.
+
+orddict_find_min(Min, []) -> Min;
+orddict_find_min(Min, [[{K,_}|_]|T]) when Min =:= false; Min > K ->
+  orddict_find_min(K, T);
+orddict_find_min(Min, [_|T]) -> orddict_find_min(Min, T).
+
+orddict_manyfoldr_collect_args([], _, Lists, Arg, Count) ->
+  {lists:reverse(Lists), lists:reverse(Arg), Count};
+orddict_manyfoldr_collect_args([[E={Min,_}|T]|Ls], Min, Lists, Arg, Count) ->
+  orddict_manyfoldr_collect_args(Ls, Min, [T|Lists], [E|Arg], Count + 1);
+orddict_manyfoldr_collect_args([L|Ls], Min, Lists, Arg, Count) ->
+  orddict_manyfoldr_collect_args(Ls, Min, [L|Lists], [false|Arg], Count).
 
 -spec t_map_put({erl_type(), erl_type()}, erl_type()) -> erl_type().
 
@@ -2577,8 +2587,8 @@ t_sup(A=?map(AMand, AOpt, ADefK, ADefV), B=?map(BMand, BOpt, BDefK, BDefV)) ->
 		 %% If a key is mandatory in one map, but not possible in the
 		 %% other, we transform it to an optional
 		 IsKeyInOther = case {E1, E2} of
-				  {none, E={K,V}} -> t_map_is_key(K, A);
-				  {E={K,V}, none} -> t_map_is_key(K, B)
+				  {false, E={K,V}} -> t_map_is_key(K, A);
+				  {E={K,V}, false} -> t_map_is_key(K, B)
 				end,
 		 case t_is_equal(t_atom(false), IsKeyInOther) of
 		   true  -> {Kept0, DisK, DisV, [E|XtraO]};
@@ -2837,7 +2847,7 @@ t_inf(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), _Opaques
   try
     {Mand, Opt}
       = orddict_manyfoldr(
-	  fun(K, 2, [{K,V1}, {K,V2}, none, none], {Mand0, Opt0}) ->
+	  fun(K, 2, [{K,V1}, {K,V2}, false, false], {Mand0, Opt0}) ->
 	      %% First handle the case of the same mandatory key existing in
 	      %% both maps. If the infinimum of their values is ?none, the
 	      %% entire map infinimum is ?none.
@@ -2845,14 +2855,14 @@ t_inf(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), _Opaques
 		?none -> throw(none);
 		V -> {[{K, V}|Mand0], Opt0}
 	      end;
-	     (K, 2, [none, none, {K,V1}, {K,V2}], {Mand0, Opt0}) ->
+	     (K, 2, [false, false, {K,V1}, {K,V2}], {Mand0, Opt0}) ->
 	      %% For optional keys in both maps, when the infinimum is none, we
 	      %% have essentially concluded that K must not be a key in the map.
 	      {Mand0, [{K, t_inf(V1, V2)}|Opt0]};
 	     (K, 2, Args, {Mand0, Opt0}) ->
 	      {{K,V1}, {K,V2}} = case Args of
-				   [E1, none, none, E2] -> {E1, E2};
-				   [none, E1, E2, none] -> {E1, E2}
+				   [E1, false, false, E2] -> {E1, E2};
+				   [false, E1, E2, false] -> {E1, E2}
 				 end,
 	      %% When a key is optional in one map, but mandatory in another, it
 	      %% becomes mandatory in the infinumum
@@ -2862,20 +2872,20 @@ t_inf(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), _Opaques
 	      end;
 	     %% For mandatory keys in one of the maps, they need to overlap with
 	     %% the default kvs of the other, or the infinimum is none
-	     (K, 1, [E1, E2, none, none], {Mand0, Opt0}) ->
+	     (K, 1, [E1, E2, false, false], {Mand0, Opt0}) ->
 	      {KI, VI} = case {E1, E2} of
-			   {{K,V},none} -> {t_inf(K,BDefK), t_inf(V,BDefV)};
-			   {none,{K,V}} -> {t_inf(K,ADefK), t_inf(V,ADefV)}
+			   {{K,V},false} -> {t_inf(K,BDefK), t_inf(V,BDefV)};
+			   {false,{K,V}} -> {t_inf(K,ADefK), t_inf(V,ADefV)}
 			 end,
 	      case t_is_none(KI) orelse t_is_none(VI) of
 		true -> throw(none);
 		false -> {[{KI,VI}|Mand0], Opt0}
 	      end;
 	     %% Verify that K matches DefK, discard otherwise
-	     (K, 1, [none, none, E1, E2], {Mand0, Opt0}) ->
+	     (K, 1, [false, false, E1, E2], {Mand0, Opt0}) ->
 	      {KI, VI} = case {E1, E2} of
-			   {{K,V},none} -> {t_inf(K,BDefK), t_inf(V,BDefV)};
-			   {none,{K,V}} -> {t_inf(K,ADefK), t_inf(V,ADefV)}
+			   {{K,V},false} -> {t_inf(K,BDefK), t_inf(V,BDefV)};
+			   {false,{K,V}} -> {t_inf(K,ADefK), t_inf(V,ADefV)}
 			 end,
 	      case t_is_none(KI) of
 		true  -> {Mand0, Opt0};
@@ -3561,7 +3571,7 @@ t_unify(?map(AMand, AOpt, ADefK, ADefV), ?map(BMand, BOpt, BDefK, BDefV), VarMap
 	      {KeysInBoth, ValsInBoth} =
 		lists:unzip(orddict_combine(
 			      fun({K, V1}, {K, V2}) -> {K, {V1, V2}};
-				 (_, _) -> none
+				 (_, _) -> false
 			      end, AL, BL)),
 	      {BothValsLeft, BothValsRight} = lists:unzip(ValsInBoth),
 	      {UnifiedValues, VarMap2} =
@@ -3982,11 +3992,11 @@ opaque_subtract(?opaque(Set1), T2) ->
 map_subtract(EL1, EL2) ->
   try
     Pairs = orddict_combine(
-	      fun(none, _) -> throw(mismatch);
-		 (_, none) -> none;
+	      fun(false, _) -> throw(mismatch);
+		 (_, false) -> false;
 		 ({K, V1}, {K, V2}) ->
 		  case t_subtract(V1, V2) of
-		    ?none -> none;
+		    ?none -> false;
 		    Partial -> {K, Partial}
 		  end
 	      end, EL1, EL2),
@@ -4740,11 +4750,11 @@ t_from_form({type, _L, map, List}, TypeNames, ET, S, MR, V, D, L) ->
   {Mand, Opt} =
     orddict_combine_foldr(
       fun({K,V1},     {K,V2},{Mand3,Opt3}) -> {[{K,t_sup(V1,V2)}|Mand3], Opt3};
-	 (E={_,?none},none,  {Mand3,Opt3}) -> {Mand3, [E|Opt3]};
-	 (E,          none,  {Mand3,Opt3}) -> {[E|Mand3], Opt3};
+	 (E={_,?none},false, {Mand3,Opt3}) -> {Mand3, [E|Opt3]};
+	 (E,          false, {Mand3,Opt3}) -> {[E|Mand3], Opt3};
 	 %% normalise_map_optionals drops unnecessary optional pairs for us, so
 	 %% don't repeat it here
-	 (none,       E,     {Mand3,Opt3}) -> {Mand3, [E|Opt3]}
+	 (false,      E,     {Mand3,Opt3}) -> {Mand3, [E|Opt3]}
       end, {[], []}, Mand2, Opt2),
   {t_map(Mand, Opt, DefK, DefV), L5};
 t_from_form({type, _L, mfa, []}, _TypeNames, _ET, _S, _MR, _V, _D, L) ->
