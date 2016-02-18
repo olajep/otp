@@ -1640,6 +1640,9 @@ lift_list_to_pos_empty(?list(Content, Termination, _)) ->
 %%    V is equal to DefaultKey.
 %%  * DefaultKey must be the empty type iff DefaultValue is the empty type.
 %%  * DefaultKey must not be a singleton type.
+%%  * For every pair {K, ?none} in Optional, K must be a subtype of DefaultKey,
+%%    and DefaultKey - K must not be representable; i.e. t_subtract(DefaultKey,
+%%    K) must return DefaultKey.
 %%
 %% As indicated by the use of the orddict type, Mandatory and Optional must be
 %% sorted and not contain any duplicate keys. This ensures that equal map types
@@ -1661,13 +1664,13 @@ t_map(L) ->
 -spec t_map(t_map_dict(), t_map_dict(), erl_type(), erl_type()) -> erl_type().
 
 t_map(Mand, Opt0, DefK0, DefV0) ->
-  {Opt1, DefK, DefV}
+  {Opt1, DefK1, DefV1}
     = case t_is_singleton(DefK0) of
 	  true -> {orddict:update(DefK0, fun(V) -> V end, DefV0, Opt0),
 		   ?none, ?none};
 	  false -> {Opt0, DefK0, DefV0}
 	end,
-  Opt = normalise_map_optionals(Opt1, DefK, DefV),
+  {Opt, DefK, DefV} = normalise_map_optionals(Opt1, DefK1, DefV1, []),
   %% Validate invariants of the map representation.
   %% Since we needed to iterate over the arguments in order to normalise anyway,
   %% we might as well save us some future pain and do this even without
@@ -1690,11 +1693,18 @@ t_map(Mand, Opt0, DefK0, DefV0) ->
   end,
   ?map(Mand, Opt, DefK, DefV).
 
-normalise_map_optionals([], _, _) -> [];
-normalise_map_optionals([E={K,V}|T], DefK, DefV) ->
+normalise_map_optionals([], DefK, DefV, OptAcc) ->
+  {lists:reverse(OptAcc), DefK, DefV};
+normalise_map_optionals([E={K,?none}|T], DefK, DefV, OptAcc) ->
+  Diff = t_subtract(DefK, K),
+  case t_is_subtype(K, DefK) andalso DefK =:= Diff of
+    true -> normalise_map_optionals(T, DefK, DefV, [E|OptAcc]);
+    false -> normalise_map_optionals(T, Diff, DefV, OptAcc)
+  end;
+normalise_map_optionals([E={K,V}|T], DefK, DefV, OptAcc) ->
   case t_is_equal(V, DefV) andalso t_is_subtype(K, DefK) of
-    true -> normalise_map_optionals(T, DefK, DefV);
-    false -> [E|normalise_map_optionals(T, DefK, DefV)]
+    true -> normalise_map_optionals(T, DefK, DefV, OptAcc);
+    false -> normalise_map_optionals(T, DefK, DefV, [E|OptAcc])
   end.
 
 validate_map_elements([{K1,_}|Rest=[{K2,_}|_]]) ->

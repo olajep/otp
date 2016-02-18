@@ -1696,8 +1696,14 @@ type(maps, from_list, 1, Xs, Opaques) ->
 	       true -> t_map([], [], t_none(), t_none());
 	       false ->
 		 T = t_list_elements(List, Opaques),
-		 [K, V] = t_tuple_args(T, Opaques),
-		 t_map([], [], K, V)
+		 case t_tuple_subtypes(T, Opaques) of
+		   unknown -> t_map();
+		   Stypes when length(Stypes) >= 1 ->
+		     t_sup([begin
+			      [K, V] = t_tuple_args(Args, Opaques),
+			      t_map([], [], K, V)
+			    end || Args <- Stypes])
+		 end
 	     end
 	 end, Opaques);
 type(maps, get, 2, Xs, Opaques) ->
@@ -1731,13 +1737,17 @@ type(maps, to_list, 1, Xs, Opaques) ->
 	     DefV = t_map_def_val(Map, Opaques),
 	     Mand = t_map_mand_entries(Map, Opaques),
 	     Opt  = t_map_opt_entries(Map, Opaques),
-	     {K, V} = lists:foldl(fun({K,V},{KA,VA}) ->
-				      case t_is_none(V) of
-					true -> {t_subtract(KA,K), VA};
-					false -> {t_sup(K,KA), t_sup(V,VA)}
-				      end
-				  end, {DefK,DefV}, Mand ++ Opt),
-	     t_list(t_tuple([K,V]))
+	     EType = lists:foldl(
+		       fun({K,V},EType0) ->
+			   case t_is_none(V) of
+			     true -> t_subtract(EType0, t_tuple([K,t_any()]));
+			     false -> t_sup(EType0, t_tuple([K,V]))
+			   end
+		       end, t_tuple([DefK, DefV]), Mand ++ Opt),
+	     case t_is_none(EType) of
+	       true -> t_nil();
+	       false -> t_list(EType)
+	     end
 	 end, Opaques);
 type(maps, update, 3, Xs, Opaques) ->
   strict(maps, update, 3, Xs,
