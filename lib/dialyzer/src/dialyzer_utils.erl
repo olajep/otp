@@ -886,14 +886,14 @@ refold_concrete_pat(Val) ->
     _ when is_tuple(Val) ->
       Els = lists:map(fun refold_concrete_pat/1, tuple_to_list(Val)),
       case lists:all(fun cerl:is_literal/1, Els) of
-	true -> Val;
+	true -> cerl:abstract(Val);
 	false -> cerl:c_tuple_skel(Els)
       end;
     [H|T] ->
       case  cerl:is_literal(HP=refold_concrete_pat(H))
 	and cerl:is_literal(TP=refold_concrete_pat(T))
       of
-	true -> Val;
+	true -> cerl:abstract(Val);
 	false -> cerl:c_cons_skel(HP, TP)
       end;
     M when is_map(M) ->
