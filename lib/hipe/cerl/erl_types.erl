@@ -1795,16 +1795,16 @@ map_def_val(?map(_,_,_,DefV)) ->
 
 orddict_combine(_, [], []) -> [];
 orddict_combine(F, As0, Bs0) ->
-  {As2, Bs2, A, B, K} =
+  K =
     case {As0, Bs0} of
-      {[A0={K0,_}|As1], [B0={K0,_}|Bs1]} ->             {As1, Bs1, A0,    B0, K0};
-      {[A0={AK,_}|As1], [{BK,_}|_]=Bs0} when AK < BK -> {As1, Bs0, A0, false, AK};
-      {As0,             [B0={BK,_}|Bs1]} ->             {As0, Bs1, false, B0, BK};
-      {[A0={AK,_}|As1], []} ->                          {As1, [],  A0, false, AK}
+      {[A={SK,_}|As], [B={SK,_}|Bs]} ->              ok,        SK;
+      {[A={AK,_}|As], [{BK,_}|_]=Bs} when AK < BK -> B = false, AK;
+      {As,            [B={BK,_}|Bs]} ->              A = false, BK;
+      {[A={AK,_}|As], []=Bs} ->                      B = false, AK
     end,
   case F(A, B) of
-    false -> orddict_combine(F, As2, Bs2);
-    M={K,_} -> [M|orddict_combine(F, As2, Bs2)]
+    false -> orddict_combine(F, As, Bs);
+    M={K,_} -> [M|orddict_combine(F, As, Bs)]
   end.
 
 -spec orddict_combine_foldr(fun(({K, VA} | false, {K, VB} | false, Acc) -> Acc),
@@ -3600,7 +3600,7 @@ t_unify(A=?map(AMand, AOpt, ADefK, ADefV), B=?map(BMand, BOpt, BDefK, BDefV), Va
 	  case {E1, E2} of {{K,V},false} -> ok; {false,{K,V}} -> ok end,
 	  case t_do_overlap(K, DefK) andalso t_do_overlap(V, DefV) of
 	    false -> throw({mismatch, A, B});
-	    true -> {[{K,subst_all_vars_to_any(V)}|Mand0], Opt0, VarMap3}
+	    true -> {Mand0, [{K,subst_all_vars_to_any(V)}|Opt0], VarMap3}
 	  end
       end, {[], [], VarMap2}, [AMand, BMand, AOpt, BOpt]),
   {t_map(Mand, Opt, DefK, DefV), VarMap};
@@ -3960,31 +3960,86 @@ t_subtract(?product(Elements1) = T1, ?product(Elements2)) ->
 	_ -> T1
       end
   end;
-t_subtract(?map(AMand, AOpt, ADefK=?any, ADefV=?any) = A, ?map(BMand, [], ?any, ?any)) ->
-  case map_subtract(AMand, BMand) of
-    mismatch ->
-      case BMand of
-	[{K, V0}] ->
-	  case t_is_subtype(K, ADefK) of
-	    true ->
-	      case t_subtract(ADefV, V0) of
-		ADefV -> A;
-		V ->
-		  AOpt1 = orddict:update(K, fun(OldV) -> t_inf(OldV, V) end,
-					 V, AOpt),
-		  t_map(AMand, AOpt1, ADefK, ADefV)
-	      end;
-	    false -> A
-	  end;
-	_ -> A
-      end;
-    complete -> ?none; %% A is a subtype of B
-    {K, V} ->
-      t_map(orddict:store(K, V, AMand), AOpt, ?any, ?any)
+t_subtract(?map(AMand, AOpt, ADefK, ADefV) = A,
+	   ?map(BMand, BOpt, BDefK, BDefV)) ->
+  case t_is_subtype(ADefK, BDefK) andalso t_is_subtype(ADefV, BDefV) of
+    false -> A;
+    true ->
+      %% This is very hairy.
+      %% We fold over the maps to produce a list of constraints, where
+      %% constraints are additional key-value pairs to put in Mandatory or
+      %% Optional. Only one constraint need to be applied to produce a type that
+      %% excludes the right-hand-side type, so if more than one constraint is
+      %% produced, we just return the left-hand-side argument.
+      %%
+      %% Each case of the fold may either conclude that
+      %%  * The arguments constrain A at least as much as B, i.e. that A so far
+      %%    is a subtype of B. In that case they return Acc unmodified.
+      %%  * That for the particular arguments, A being a subtype of B does not
+      %%    hold, but can be made to hold if the association of K is narrowed in
+      %%    A. In that case, they will add that association to the accumulator.
+      %%  * That for the particular arguments, A being a subtype of B does not
+      %%    hold, and A would either require several constraints, or it is not
+      %%    even possible to represent A-B using this form of constraints. In
+      %%    that case, it will throw 'mismatch'.
+      try orddict_manyfoldr(
+	    fun(_, _, [_, _, _, _], {[_,_|_], _}) -> throw(mismatch);
+	       (_, _, [_, _, _, _], {_, [_,_|_]}) -> throw(mismatch);
+	       (K, 2, [{K, V1}, {K, V2}, false, false], Acc = {XMand, XOpt}) ->
+		case t_subtract(V1, V2) of
+		  ?none -> Acc;
+		  Partial -> {[{K, Partial}|XMand], XOpt}
+		end;
+	       (K, 2, [{K, V1}, false, false, {K, V2}], Acc = {XMand, XOpt}) ->
+		case t_subtract(V1, V2) of
+		  ?none -> Acc;
+		  Partial -> {[{K, Partial}|XMand], XOpt}
+		end;
+	       (K, 2, [false, {K, _}, {K, ?none}, false], _) ->
+		throw(mismatch);
+	       (K, 2, [false, {K, V2}, {K, V1}, false], {XMand, XOpt}) ->
+		%% If V1 is a subtype of V2, the case that K does not exist in A
+		%% remain.
+		{XMand, [{K, t_subtract(V1, V2)}|XOpt]};
+	       (K, 2, [false, false, {K, V1}, {K, ?none}], {XMand, XOpt}) ->
+		%% If we subtract a forbidden key, that leaves a mandatory key
+		{[{K, V1}|XMand], XOpt};
+	       (K, 2, [false, false, {K, V1}, {K, V2}], Acc = {XMand, XOpt}) ->
+		case t_subtract(V1, V2) of
+		  ?none -> Acc;
+		  Partial -> {XMand, [{K, Partial}|XOpt]}
+		end;
+	       (_, 1, [{_,_}, false, false, false], Acc) -> Acc;
+	       (K, 1, [false, {K,V}, false, false], Acc = {XMand, XOpt}) ->
+		case t_inf(K, ADefK) of
+		  ?none -> Acc;
+		  K -> {XMand, [{K, t_subtract(ADefV, V)}|XOpt]}
+		end;
+	       (_, 1, [false, false, {_,_}, false], Acc) -> Acc;
+	       (K, 1, [false, false, false, {K,?none}], {XMand, XOpt}) ->
+		{[{K, ADefV}|XMand], XOpt};
+	       (K, 1, [false, false, false, {K,V}], Acc = {XMand, XOpt}) ->
+		case t_inf(K, ADefK) of
+		  ?none -> Acc;
+		  K -> {XMand, [{K, t_subtract(ADefV, V)}|XOpt]}
+		end
+	    end, {[], []}, [AMand, BMand, AOpt, BOpt])
+      of
+	  %% We produce a list of keys that are constrained. As only one of
+	  %% these should apply at a time, we can't represent the difference if
+	  %% more than one constraint is produced. If we applied all of them,
+	  %% that would make an underapproximation, which we must not do.
+	{[], []} -> ?none; %% A is a subtype of B
+	{[{K,V}], []} ->
+	  t_map(orddict:store(K, V, AMand), orddict:erase(K, AOpt),
+		ADefK, ADefV);
+	{[], [{K,V}]} ->
+	  t_map(orddict:erase(K, AMand), orddict:store(K, V, AOpt),
+		ADefK, ADefV);
+	  _ -> A
+      catch throw:mismatch -> A
+      end
   end;
-t_subtract(?map(_, _, _, _) = A, ?map(_, _, _, _)) ->
-  %% TODO: The complex subtract cases
-  A;
 t_subtract(?product(P1), _) ->
   ?product(P1);
 t_subtract(T, ?product(_)) ->
@@ -4005,28 +4060,6 @@ opaque_subtract(?opaque(Set1), T2) ->
   case List of
     [] -> ?none;
     _ -> ?opaque(ordsets:from_list(List))
-  end.
-
--spec map_subtract([Pair], [Pair]) -> Pair | mismatch | complete
-					when Pair :: {erl_type(), erl_type()}.
-
-map_subtract(EL1, EL2) ->
-  try
-    Pairs = orddict_combine(
-	      fun(false, _) -> throw(mismatch);
-		 (_, false) -> false;
-		 ({K, V1}, {K, V2}) ->
-		  case t_subtract(V1, V2) of
-		    ?none -> false;
-		    Partial -> {K, Partial}
-		  end
-	      end, EL1, EL2),
-      case Pairs of
-	[] -> complete;
-	[Pair] -> Pair;
-	_ -> mismatch
-      end
-  catch throw:mismatch -> mismatch
   end.
 
 -spec t_subtract_lists([erl_type()], [erl_type()]) -> [erl_type()].
@@ -4178,12 +4211,18 @@ t_unopaque(?union([A,B,F,I,L,N,T,M,O,R,Map]), Opaques) ->
   UL = t_unopaque(L, Opaques),
   UT = t_unopaque(T, Opaques),
   UF = t_unopaque(F, Opaques),
+  UM = t_unopaque(M, Opaques),
   UMap = t_unopaque(Map, Opaques),
   {OF,UO} = case t_unopaque(O, Opaques) of
               ?opaque(_) = O1 -> {O1, []};
               Type -> {?none, [Type]}
             end,
-  t_sup([?union([A,B,UF,I,UL,N,UT,M,OF,R,UMap])|UO]);
+  t_sup([?union([A,B,UF,I,UL,N,UT,UM,OF,R,UMap])|UO]);
+t_unopaque(?map(Mand,Opt,DefK,DefV), Opaques) ->
+  t_map([{K, t_unopaque(V, Opaques)} || {K, V} <- Mand],
+	[{K, t_unopaque(V, Opaques)} || {K, V} <- Opt],
+	t_unopaque(DefK, Opaques),
+	t_unopaque(DefV, Opaques));
 t_unopaque(T, _) ->
   T.
 
@@ -4320,6 +4359,9 @@ t_map(Fun, ?opaque(Set)) ->
         [] -> ?none;
         _ -> ?opaque(ordsets:from_list(L))
       end);
+t_map(Fun, ?map(Mand,Opt,DefK,DefV)) ->
+  %% TODO:
+  Fun(t_map(Mand, Opt, Fun(DefK), Fun(DefV)));
 t_map(Fun, T) ->
   Fun(T).
 
