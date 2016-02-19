@@ -1778,7 +1778,10 @@ bind_guard(Guard, Map, Env, Eval, State) ->
       {Map1, Es} = bind_guard_list(Es0, Map, Env, dont_know, State),
       {Map1, t_tuple(Es)};
     map ->
-      {Map, t_map([])};
+      case Eval of
+	dont_know -> handle_guard_map(Guard, Map, Env, State);
+	_PosOrNeg -> {Map, t_none()}  %% Map exprs do not produce bools
+      end;
     'let' ->
       Arg = cerl:let_arg(Guard),
       [Var] = cerl:let_vars(Guard),
@@ -2408,6 +2411,30 @@ bind_guard_list([G|Gs], Map, Env, Eval, State, Acc) ->
   bind_guard_list(Gs, Map1, Env, Eval, State, [T|Acc]);
 bind_guard_list([], Map, _Env, _Eval, _State, Acc) ->
   {Map, lists:reverse(Acc)}.
+
+handle_guard_map(Guard, Map, Env, State) ->
+  Pairs = cerl:map_es(Guard),
+  Arg = cerl:map_arg(Guard),
+  {Map1, ArgType0} = bind_guard(Arg, Map, Env, dont_know, State),
+  ArgType1 = t_inf(t_map(), ArgType0),
+  case t_is_none_or_unit(ArgType1) of
+    true -> {Map1, t_none()};
+    false ->
+      {Map2, TypePairs} = bind_guard_map_pairs(Pairs, Map1, Env, State, []),
+      {Map2, lists:foldl(fun({KV,assoc},Acc) -> erl_types:t_map_put(KV,Acc);
+			    ({KV,exact},Acc) -> erl_types:t_map_update(KV,Acc)
+			 end, ArgType1, TypePairs)}
+  end.
+
+bind_guard_map_pairs([], Map, _Env, _State, PairAcc) ->
+  {Map, lists:reverse(PairAcc)};
+bind_guard_map_pairs([Pair|Pairs], Map, Env, State, PairAcc) ->
+  Key = cerl:map_pair_key(Pair),
+  Val = cerl:map_pair_val(Pair),
+  Op = cerl:map_pair_op(Pair),
+  {Map1, [K,V]} = bind_guard_list([Key,Val],Map,Env,dont_know,State),
+  bind_guard_map_pairs(Pairs, Map1, Env, State,
+		       [{{K,V},cerl:concrete(Op)}|PairAcc]).
 
 -type eval() :: 'pos' | 'neg' | 'dont_know'.
 
