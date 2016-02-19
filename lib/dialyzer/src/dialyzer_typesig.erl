@@ -1113,7 +1113,9 @@ bitstr_val_constr(SizeType, UnitVal, Flags) ->
       end
   end.
 
-get_safe_underapprox_1([Pat|Left], Acc, Map) ->
+get_safe_underapprox_1([Pat0|Left], Acc, Map) ->
+  %% Maps should be treated as patterns, not as literals
+  Pat = dialyzer_utils:refold_pattern(Pat0),
   case cerl:type(Pat) of
     alias ->
       APat = cerl:alias_pat(Pat),
