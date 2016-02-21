@@ -118,7 +118,6 @@
 		    t_tuple_subtypes/2,
 		    t_is_map/2,
 		    t_map/0,
-		    t_map/1,
 		    t_map/4,
 		    t_map_def_key/2,
 		    t_map_def_val/2,
@@ -127,7 +126,9 @@
 		    t_map_mand_entries/2,
 		    t_map_opt_entries/2,
 		    t_map_put/3,
-		    t_map_update/3
+		    t_map_update/3,
+		    orddict_manyfoldr/3,
+		    t_do_overlap/3
 		   ]).
 
 -ifdef(DO_ERL_BIF_TYPES_TEST).
@@ -777,7 +778,7 @@ type(erlang, length, 1, Xs, Opaques) ->
   strict(erlang, length, 1, Xs, fun (_) -> t_non_neg_fixnum() end, Opaques);
 %% Guard bif, needs to be here.
 type(erlang, map_size, 1, Xs, Opaques) ->
-  strict(erlang, map_size, 1, Xs, fun (_) -> t_non_neg_integer() end, Opaques);
+  type(maps, size, 1, Xs, Opaques);
 type(erlang, make_fun, 3, Xs, Opaques) ->
   strict(erlang, make_fun, 3, Xs,
          fun ([_, _, Arity]) ->
@@ -1718,17 +1719,58 @@ type(maps, is_key, 2, Xs, Opaques) ->
 	 end, Opaques);
 type(maps, merge, 2, Xs, Opaques) ->
   strict(maps, merge, 2, Xs,
-	 fun ([Map1, Map2]) ->
-	     %% TODO:
-	     Map1Entries = t_map_mand_entries(Map1, Opaques),
-	     Weakened = t_map([{K, t_any()} || {K,_} <- Map1Entries]),
-	     lists:foldl(fun erl_types:t_map_put/2, Weakened,
-			 t_map_mand_entries(Map2, Opaques))
+	 fun ([MapA, MapB]) ->
+	     AMand = t_map_mand_entries(MapA, Opaques),
+	     BMand = t_map_mand_entries(MapB, Opaques),
+	     AOpt  = t_map_opt_entries(MapA, Opaques),
+	     BOpt  = t_map_opt_entries(MapB, Opaques),
+	     ADefK = t_map_def_key(MapA, Opaques),
+	     BDefK = t_map_def_key(MapB, Opaques),
+	     ADefV = t_map_def_val(MapA, Opaques),
+	     BDefV = t_map_def_val(MapB, Opaques),
+	     {Mand, Opt} =
+	       orddict_manyfoldr(
+		 fun(_, _, [_,_,KV={_,_},_], {Mand0, Opt0}) ->
+		     {[KV|Mand0], Opt0};
+		    (_, 2, [{K,VA},false,false,{K,VB}], {Mand0, Opt0}) ->
+		     {[{K,t_sup(VA,VB)}|Mand0], Opt0};
+		    (_, 2, [false,{K,VA},false,{K,VB}], {Mand0, Opt0}) ->
+		     {Mand0, [{K,t_sup(VA,VB)}|Opt0]};
+		    (_, 1, [false,false,false,KV={K,V}], {Mand0, Opt0}) ->
+		     case t_do_overlap(K, ADefK, Opaques) of
+		       false -> {Mand0, [KV|Opt0]};
+		       true -> {Mand0, [{K,t_sup(V,ADefV)}|Opt0]}
+		     end;
+		    (_, 1, [KV={K,V},false,false,false], {Mand0, Opt0}) ->
+		     case t_do_overlap(K, BDefK, Opaques) of
+		       false -> {[KV|Mand0], Opt0};
+		       true -> {[{K,t_sup(V,BDefV)}|Mand0], Opt0}
+		     end;
+		    (_, 1, [false,KV={K,V},false,false], {Mand0, Opt0}) ->
+		     case t_do_overlap(K, BDefK, Opaques) of
+		       false -> {Mand0, [KV|Opt0]};
+		       true -> {Mand0, [{K,t_sup(V,BDefV)}|Opt0]}
+		     end
+		 end, {[], []}, [AMand, AOpt, BMand, BOpt]),
+	     t_map(Mand, Opt, t_sup(ADefK, BDefK), t_sup(ADefV, BDefV))
 	 end, Opaques);
 type(maps, put, 3, Xs, Opaques) ->
   strict(maps, put, 3, Xs,
 	 fun ([Key, Value, Map]) ->
 	     t_map_put({Key, Value}, Map, Opaques)
+	 end, Opaques);
+type(maps, size, 1, Xs, Opaques) ->
+  strict(maps, size, 1, Xs,
+	 fun ([Map]) ->
+	     Mand = t_map_mand_entries(Map, Opaques),
+	     LowerBound = length(Mand),
+	     case t_is_none(t_map_def_key(Map, Opaques)) of
+	       false -> t_from_range(LowerBound, pos_inf);
+	       true ->
+		 Opt = t_map_opt_entries(Map, Opaques),
+		 UpperBound = LowerBound + length(Opt),
+		 t_from_range(LowerBound, UpperBound)
+	     end
 	 end, Opaques);
 type(maps, to_list, 1, Xs, Opaques) ->
   strict(maps, to_list, 1, Xs,
@@ -2728,6 +2770,8 @@ arg_types(maps, merge, 2) ->
   [t_map(), t_map()];
 arg_types(maps, put, 3) ->
   [t_any(), t_any(), t_map()];
+arg_types(maps, size, 1) ->
+  [t_map()];
 arg_types(maps, to_list, 1) ->
   [t_map()];
 arg_types(maps, update, 3) ->

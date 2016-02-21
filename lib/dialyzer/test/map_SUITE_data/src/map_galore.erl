@@ -70,8 +70,7 @@
 	t_maps_without/1,
 
 	%% misc
-	t_hashmap_balance/1,
-        t_erts_internal_order/1,
+	t_erts_internal_order/1,
         t_erts_internal_hash/1,
 	t_pdict/1,
 	t_ets/1,
@@ -132,8 +131,7 @@ all() -> [
 
 
         %% Other functions
-	t_hashmap_balance,
-        t_erts_internal_order,
+	t_erts_internal_order,
         t_erts_internal_hash,
 	t_pdict,
 	t_ets,
@@ -1706,7 +1704,6 @@ term_gen_recursive(Leafs, Flags, Depth) ->
 				{K1,K2} = term_gen_recursive(Leafs, Flags,
 							     Depth+1),
 				{V1,V2} = term_gen_recursive(Leafs, Flags, Depth+1),
-				%%ok = check_keys(K1,K2, 0),
 				{maps:put(K1,V1, Acc1), maps:put(K2,V2, Acc2)}
 			end,
 			{maps:new(), maps:new()},
@@ -1733,27 +1730,6 @@ term_gen_recursive(Leafs, Flags, Depth) ->
 		T -> {T,T}
 	    end
     end.
-
-check_keys(K1, K2, _) when K1 =:= K2 ->
-    case erlang:phash3(K1) =:= erlang:phash3(K2) of
-	true -> ok;
-	false ->
-	    io:format("Same keys with different hash values !!!\nK1 = ~p\nK2 = ~p\n", [K1,K2]),
-	    error
-    end;
-check_keys(K1, K2, 0) ->
-    case {erlang:phash3(K1), erlang:phash3(K2)} of
-	{H,H} -> check_keys(K1, K2, 1);
-	{_,_} -> ok
-    end;
-check_keys(K1, K2, L) when L < 10 ->
-    case {erlang:phash3([L|K1]), erlang:phash3([L|K2])} of
-	{H,H} -> check_keys(K1, K2, L+1);
-	{_,_} -> ok
-    end;
-check_keys(K1, K2, L) ->
-    io:format("Same hash value at level ~p !!!\nK1 = ~p\nK2 = ~p\n", [L,K1,K2]),
-    error.
 
 %% BIFs
 t_bif_map_get(Config) when is_list(Config) ->
@@ -2543,107 +2519,7 @@ t_maps_without(_Config) ->
     M1 = maps:without([{k,I}||I <- Ki],M0),
     ok.
 
-
-%% MISC
-
-%% Verify that the the number of nodes in hashmaps
-%% of different types and sizes does not deviate too
-%% much from the theoretical model.
-t_hashmap_balance(_Config) ->
-    io:format("Integer keys\n", []),
-    hashmap_balance(fun(I) -> I end),
-    io:format("Float keys\n", []),
-    hashmap_balance(fun(I) -> float(I) end),
-    io:format("String keys\n", []),
-    hashmap_balance(fun(I) -> integer_to_list(I) end),
-    io:format("Binary (big) keys\n", []),
-    hashmap_balance(fun(I) -> <<I:16/big>> end),
-    io:format("Binary (little) keys\n", []),
-    hashmap_balance(fun(I) -> <<I:16/little>> end),
-    io:format("Atom keys\n", []),
-    erts_debug:set_internal_state(available_internal_state, true),
-    hashmap_balance(fun(I) -> erts_debug:get_internal_state({atom,I}) end),
-    erts_debug:set_internal_state(available_internal_state, false),
-
-    ok.
-
-hashmap_balance(KeyFun) ->
-    F = fun(I, {M0,Max0}) ->
-		Key = KeyFun(I),
-		M1 = M0#{Key => Key},
-		Max1 = case erts_internal:map_type(M1) of
-			   hashmap ->
-			       Nodes = hashmap_nodes(M1),
-			       Avg = maps:size(M1) * 0.4,
-			       StdDev = math:sqrt(maps:size(M1)) / 3,
-			       SD_diff = abs(Nodes - Avg) / StdDev,
-			       %%io:format("~p keys: ~p nodes avg=~p SD_diff=~p\n",
-			       %%          [maps:size(M1), Nodes, Avg, SD_diff]),
-			       {MaxDiff0, _} = Max0,
-			       case {Nodes > Avg, SD_diff > MaxDiff0} of
-				   {true, true} -> {SD_diff, M1};
-				   _ -> Max0
-			       end;
-
-			   flatmap -> Max0
-		       end,
-		{M1, Max1}
-	end,
-
-    {_,{MaxDiff,MaxMap}} = lists:foldl(F,
-				       {#{}, {0, 0}},
-				       lists:seq(1,10000)),
-    io:format("Max std dev diff ~p for map of size ~p (nodes=~p, flatsize=~p)\n",
-	      [MaxDiff, maps:size(MaxMap), hashmap_nodes(MaxMap), erts_debug:flat_size(MaxMap)]),
-
-    true = (MaxDiff < 6),  % The probability of this line failing is about 0.000000001
-                           % for a uniform hash. I've set the probability this "high" for now
-                           % to detect flaws in our make_internal_hash.
-                           % Hard limit is 15 (see hashmap_over_estimated_heap_size).
-    ok.
-
-hashmap_nodes(M) ->
-    Info = erts_debug:map_info(M),
-    lists:foldl(fun(Tpl,Acc) ->
-			case element(1,Tpl) of
-			    bitmaps -> Acc + element(2,Tpl);
-			    arrays -> Acc + element(2,Tpl);
-			    _ -> Acc
-			end
-		end,
-		0,
-		Info).
-
 t_erts_internal_order(_Config) when is_list(_Config) ->
-
-    -1 = erts_internal:cmp_term(1,2),
-    1  = erts_internal:cmp_term(2,1),
-    0  = erts_internal:cmp_term(2,2),
-
-
-    -1 = erts_internal:cmp_term(1,a),
-    1  = erts_internal:cmp_term(a,1),
-    0  = erts_internal:cmp_term(a,a),
-
-    -1 = erts_internal:cmp_term(1,1.0),
-    1  = erts_internal:cmp_term(1.0,1),
-    0  = erts_internal:cmp_term(1.0,1.0),
-
-    -1 = erts_internal:cmp_term(1,1 bsl 65),
-    1  = erts_internal:cmp_term(1 bsl 65,1),
-    0  = erts_internal:cmp_term(1 bsl 65, 1 bsl 65),
-
-    -1 = erts_internal:cmp_term(1 bsl 65,float(1)),
-    1  = erts_internal:cmp_term(float(1),1 bsl 65),
-    -1 = erts_internal:cmp_term(1,float(1 bsl 65)),
-    1  = erts_internal:cmp_term(float(1 bsl 65),1),
-    0  = erts_internal:cmp_term(float(1 bsl 65), float(1 bsl 65)),
-
-    %% reported errors
-    -1 = erts_internal:cmp_term(0,2147483648),
-    0  = erts_internal:cmp_term(2147483648,2147483648),
-    1  = erts_internal:cmp_term(2147483648,0),
-
     M = #{0 => 0,2147483648 => 0},
     true = M =:= binary_to_term(term_to_binary(M)),
 

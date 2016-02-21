@@ -553,9 +553,9 @@ traverse(Tree, DefinedVars, State) ->
 	end,
       %% Accumulate shadowing keys right-to-left
       {State3, _} = lists:foldr(Fun, {State2, []}, Pairs),
-      %% In a match, Arg must contain all keys that are inserted with the exact
-      %% (:=) operator, and are known (i.e. are not in ShadowedKeys) to not have
-      %% been introduced by a previous association
+      %% In a map expression, Arg must contain all keys that are inserted with
+      %% the exact (:=) operator, and are known (i.e. are not in ShadowedKeys)
+      %% to not have been introduced by a previous association
       State4 =
 	case state__is_in_match(State) of
 	  true -> State3;

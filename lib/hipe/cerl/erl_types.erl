@@ -224,7 +224,9 @@
          lift_list_to_pos_empty/1, lift_list_to_pos_empty/2,
          is_opaque_type/2,
 	 is_erl_type/1,
-	 atom_to_string/1
+	 atom_to_string/1,
+	 orddict_manyfoldr/3,
+	 t_do_overlap/2, t_do_overlap/3
 	]).
 
 %%-define(DO_ERL_TYPES_TEST, true).
