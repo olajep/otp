@@ -1100,16 +1100,24 @@ handle_map(Tree,Map,State) ->
     false ->
       {State2, Map2, TypePairs, ExactKeys} =
 	traverse_map_pairs(Pairs, Map1, State1, t_none(), [], []),
-      case bind_pat_vars([Arg], [t_map([{K, t_any()} || K <- ExactKeys])],
-			 [], Map2, State2) of
-	{error, _, _, _, _} ->
-	  {State2, Map2, t_none()};
-	{Map3, [BoundArgType]} ->
-	  ArgType2 = t_inf(ArgType1, BoundArgType),
-	  ResType = lists:foldl(fun({KV,assoc},Acc) -> erl_types:t_map_put(KV,Acc);
-				   ({KV,exact},Acc) -> erl_types:t_map_update(KV,Acc)
-				end, ArgType2, TypePairs),
-	  {State2, Map3, ResType}
+      try lists:foldl(fun({KV,assoc,_},Acc) -> erl_types:t_map_put(KV,Acc);
+			 ({KV,exact,KVTree},Acc) ->
+			  case t_is_none(T=erl_types:t_map_update(KV,Acc)) of
+			    true -> throw({none, Acc, KV, KVTree});
+			    false -> T
+			  end
+		      end, ArgType1, TypePairs)
+      of ResT ->
+	  BindT = t_map([{K, t_any()} || K <- ExactKeys]),
+	  case bind_pat_vars_reverse([Arg], [BindT], [], Map2, State2) of
+	    {error, _, _, _, _} -> {State2, Map2, ResT};
+	    {Map3, _} ->           {State2, Map3, ResT}
+	  end
+      catch {none, MapType, {K,_}, KVTree} ->
+	  Msg2 = {map_update, [format_type(MapType, State2),
+			       format_type(K, State2)]},
+	  {state__add_warning(State2, ?WARN_MAP_CONSTRUCTION, KVTree, Msg2),
+	   Map2,t_none()}
       end
   end.
 
@@ -1128,7 +1136,7 @@ traverse_map_pairs([Pair|Pairs], Map, State, ShadowKeys, PairAcc, KeyAcc) ->
       false -> KeyAcc
   end,
   traverse_map_pairs(Pairs, Map1, State1, t_sup(K, ShadowKeys),
-		     [{{K,V},cerl:concrete(Op)}|PairAcc], KeyAcc1).
+		     [{{K,V},cerl:concrete(Op),Pair}|PairAcc], KeyAcc1).
 
 %%----------------------------------------
 
@@ -1527,33 +1535,38 @@ bind_pat_vars([Pat|PatLeft], [Type|TypeLeft], Acc, Map, State, Rev) ->
 	  true ->
 	    bind_opaque_pats(t_map(), Type, Pat, State);
 	  false ->
-	    FoldFun =
-	      fun(Pair, {MapAcc, ListAcc}) ->
-		  %% Only exact (:=) can appear in patterns
-		  exact = cerl:concrete(cerl:map_pair_op(Pair)),
-		  Key = cerl:map_pair_key(Pair),
-		  KeyType =
-		    case cerl:type(Key) of
-		      var ->
-			case state__lookup_type_for_letrec(Key, State) of
-			  error -> lookup_type(Key, MapAcc);
-			  {ok, RecType} -> RecType
-			end;
-		      literal ->
-			literal_type(Key)
-		    end,
-		  Bind = erl_types:t_map_get(KeyType, MapT),
-		  {MapAcc1, [ValType]} =
-		    bind_pat_vars([cerl:map_pair_val(Pair)],
-				  [Bind], [], MapAcc, State, Rev),
-		  case t_is_singleton(KeyType, Opaques) of
-		    true  -> {MapAcc1, [{KeyType, ValType}|ListAcc]};
-		    false -> {MapAcc1, ListAcc}
-		  end
-	      end,
-	    {Map1, Pairs} = lists:foldl(FoldFun, {Map, []}, cerl:map_es(Pat)),
-	    {Map1, t_inf(MapT, t_map(Pairs))}
-	  end;
+	    case Rev of
+	      %% TODO: Reverse matching (propagating a matched subset back to a value)
+	      true -> {Map, MapT};
+	      false ->
+		FoldFun =
+		  fun(Pair, {MapAcc, ListAcc}) ->
+		      %% Only exact (:=) can appear in patterns
+		      exact = cerl:concrete(cerl:map_pair_op(Pair)),
+		      Key = cerl:map_pair_key(Pair),
+		      KeyType =
+			case cerl:type(Key) of
+			  var ->
+			    case state__lookup_type_for_letrec(Key, State) of
+			      error -> lookup_type(Key, MapAcc);
+			      {ok, RecType} -> RecType
+			    end;
+			  literal ->
+			    literal_type(Key)
+			end,
+		      Bind = erl_types:t_map_get(KeyType, MapT),
+		      {MapAcc1, [ValType]} =
+			bind_pat_vars([cerl:map_pair_val(Pair)],
+				      [Bind], [], MapAcc, State, Rev),
+		      case t_is_singleton(KeyType, Opaques) of
+			true  -> {MapAcc1, [{KeyType, ValType}|ListAcc]};
+			false -> {MapAcc1, ListAcc}
+		      end
+		  end,
+		{Map1, Pairs} = lists:foldl(FoldFun, {Map, []}, cerl:map_es(Pat)),
+		{Map1, t_inf(MapT, t_map(Pairs))}
+	    end
+	end;
       tuple ->
 	Es = cerl:tuple_es(Pat),
 	{TypedRecord, Prototype} =

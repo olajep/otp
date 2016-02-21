@@ -5286,8 +5286,7 @@ t_form_to_string({type, _L, iodata, []}) -> "iodata()";
 t_form_to_string({type, _L, iolist, []}) -> "iolist()";
 t_form_to_string({type, _L, list, [Type]}) -> 
   "[" ++ t_form_to_string(Type) ++ "]";
-t_form_to_string({type, _L, map, any}) ->
-  "#{}";
+t_form_to_string({type, _L, map, any}) -> "map()";
 t_form_to_string({type, _L, map, Args}) ->
   "#{" ++ string:join(t_form_to_string_list(Args), ",") ++ "}";
 t_form_to_string({type, _L, map_field_assoc, [Key, Val]}) ->

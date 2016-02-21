@@ -506,7 +506,6 @@ traverse(Tree, DefinedVars, State) ->
 	  false -> traverse(cerl:map_arg(Tree), DefinedVars, State1);
 	  true -> {State1, t_map()}
 	end,
-
       MapVar = mk_var(Tree),
       MapType = ?mk_fun_var(
 		   fun(Map) ->
@@ -554,38 +553,43 @@ traverse(Tree, DefinedVars, State) ->
 	end,
       %% Accumulate shadowing keys right-to-left
       {State3, _} = lists:foldr(Fun, {State2, []}, Pairs),
-      %% Arg must contain all keys that are inserted with the exact (:=)
-      %% operator, and are known (i.e. are not in ShadowedKeys) to not have
+      %% In a match, Arg must contain all keys that are inserted with the exact
+      %% (:=) operator, and are known (i.e. are not in ShadowedKeys) to not have
       %% been introduced by a previous association
-      ArgFun =
-	fun(Map) ->
-	    FoldFun =
-	      fun({{KeyVar, _}, Entry}, {AccType, ShadowedKeys}) ->
-		  OpTree = cerl:map_pair_op(Entry),
-		  KeyType = lookup_type(KeyVar, Map),
-		  AccType1 =
-		    case cerl:is_literal(OpTree) andalso
-		      cerl:concrete(OpTree) =:= exact of
-		      true ->
-			case t_is_none(t_inf(ShadowedKeys, KeyType)) of
-			  true ->
-			    t_map_put({KeyType, t_any()}, AccType);
-			  false ->
-			    AccType
-			end;
-		      false ->
-			AccType
+      State4 =
+	case state__is_in_match(State) of
+	  true -> State3;
+	  false ->
+	    ArgFun =
+	      fun(Map) ->
+		  FoldFun =
+		    fun({{KeyVar, _}, Entry}, {AccType, ShadowedKeys}) ->
+			OpTree = cerl:map_pair_op(Entry),
+			KeyType = lookup_type(KeyVar, Map),
+			AccType1 =
+			  case cerl:is_literal(OpTree) andalso
+			    cerl:concrete(OpTree) =:= exact of
+			    true ->
+			      case t_is_none(t_inf(ShadowedKeys, KeyType)) of
+				true ->
+				  t_map_put({KeyType, t_any()}, AccType);
+				false ->
+				  AccType
+			      end;
+			    false ->
+			      AccType
+			  end,
+			{AccType1, t_sup(KeyType, ShadowedKeys)}
 		    end,
-		  {AccType1, t_sup(KeyType, ShadowedKeys)}
+		  %% Accumulate shadowed keys left-to-right
+		  {ResType, _} = lists:foldl(FoldFun, {t_map(), t_none()},
+					     lists:zip(Pairs, Entries)),
+		  ResType
 	      end,
-	    %% Accumulate shadowed keys left-to-right
-	    {ResType, _} = lists:foldl(FoldFun, {t_map(), t_none()},
-				       lists:zip(Pairs, Entries)),
-	    ResType
+	    ArgType = ?mk_fun_var(ArgFun, [KeyVar || {KeyVar, _} <- Pairs]),
+	    state__store_conj(ArgVar, sub, ArgType, State3)
 	end,
-      ArgType = ?mk_fun_var(ArgFun, [KeyVar || {KeyVar, _} <- Pairs]),
-      {state__store_conj_lists([MapVar, ArgVar], sub,
-			       [MapType, ArgType], State3), MapVar};
+      {state__store_conj(MapVar, sub, MapType, State4), MapVar};
     values ->
       %% We can get into trouble when unifying products that have the
       %% same element appearing several times. Handle these cases by

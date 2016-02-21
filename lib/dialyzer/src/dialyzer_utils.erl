@@ -867,12 +867,18 @@ seq([], _, _, _) ->
 
 %%------------------------------------------------------------------------------
 
+-define(GREATER_THAN_ANY_LABEL, (1 bsl 48)).
+
 -spec refold_pattern(cerl:cerl()) -> cerl:cerl().
 
 refold_pattern(Pat) ->
   %% Avoid the churn of unfolding and refolding
   case cerl:is_literal(Pat) andalso find_map(cerl:concrete(Pat)) of
-    true -> cerl:copy_ann(Pat, refold_concrete_pat(cerl:concrete(Pat)));
+    true ->
+      %% Sigh
+      Label = ?GREATER_THAN_ANY_LABEL + erlang:unique_integer([positive]),
+      cerl:set_ann(refold_concrete_pat(cerl:concrete(Pat)),
+			 [{label, Label}|cerl:get_ann(Pat)]);
     false -> Pat
   end.
 
