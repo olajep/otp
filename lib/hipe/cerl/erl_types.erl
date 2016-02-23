@@ -2220,7 +2220,6 @@ t_has_var(?tuple(Elements, _, _)) ->
 t_has_var(?tuple_set(_) = T) ->
   t_has_var_list(t_tuple_subtypes(T));
 t_has_var(?map(_, _, DefK, _)= Map) ->
-  %% t_has_var_list(map_all_keys(Map)) orelse
   t_has_var_list(map_all_values(Map)) orelse
     t_has_var(DefK);
 t_has_var(?opaque(Set)) ->
@@ -2258,7 +2257,6 @@ t_collect_vars(?tuple(Types, _, _), Acc) ->
 t_collect_vars(?tuple_set(_) = TS, Acc) ->
   t_collect_vars_list(t_tuple_subtypes(TS), Acc);
 t_collect_vars(?map(_, _, DefK, _) = Map, Acc0) ->
-  %% Acc = t_collect_vars_list(map_keys(Map), Acc0),
   Acc = t_collect_vars_list(map_all_values(Map), Acc0),
   t_collect_vars(DefK, Acc);
 t_collect_vars(?opaque(Set), Acc) ->
@@ -3422,9 +3420,8 @@ t_subst_dict(?tuple(Elements, _Arity, _Tag), Dict) ->
 t_subst_dict(?tuple_set(_) = TS, Dict) ->
   t_sup([t_subst_dict(T, Dict) || T <- t_tuple_subtypes(TS)]);
 t_subst_dict(?map(Mand, Opt, DefK, DefV), Dict) ->
-  %% What are the semantics if a *key* is substituted? 
-  t_map([{K=t_subst_dict(K, Dict), t_subst_dict(V, Dict)} || {K, V} <- Mand],
-	[{K=t_subst_dict(K, Dict), t_subst_dict(V, Dict)} || {K, V} <- Opt],
+  t_map([{K, t_subst_dict(V, Dict)} || {K, V} <- Mand],
+	[{K, t_subst_dict(V, Dict)} || {K, V} <- Opt],
 	t_subst_dict(DefK, Dict), t_subst_dict(DefV, Dict));
 t_subst_dict(?opaque(Es), Dict) ->
   List = [Opaque#opaque{args = [t_subst_dict(Arg, Dict) || Arg <- Args],
@@ -3476,8 +3473,8 @@ t_subst_aux(?tuple(Elements, _Arity, _Tag), VarMap) ->
 t_subst_aux(?tuple_set(_) = TS, VarMap) ->
   t_sup([t_subst_aux(T, VarMap) || T <- t_tuple_subtypes(TS)]);
 t_subst_aux(?map(Mand, Opt, DefK, DefV), VarMap) ->
-  t_map([{K=t_subst_aux(K, VarMap), t_subst_aux(V, VarMap)} || {K, V} <- Mand],
-	[{K=t_subst_aux(K, VarMap), t_subst_aux(V, VarMap)} || {K, V} <- Opt],
+  t_map([{K, t_subst_aux(V, VarMap)} || {K, V} <- Mand],
+	[{K, t_subst_aux(V, VarMap)} || {K, V} <- Opt],
 	t_subst_aux(DefK, VarMap), t_subst_aux(DefV, VarMap));
 t_subst_aux(?opaque(Es), VarMap) ->
    List = [Opaque#opaque{args = [t_subst_aux(Arg, VarMap) || Arg <- Args],
@@ -4515,6 +4512,8 @@ t_to_string(?remote(Set), RecDict) ->
 	       || #remote{mod = Mod, name = Name, args = Args} <-
 		    set_to_list(Set)],
 	      " | ");
+t_to_string(?map([],[],?any,?any), _RecDict) ->
+  "map()";
 t_to_string(?map(Mand,Opt0,DefK,DefV), RecDict) ->
   {Opt, ExtraEl} =
     case {DefK, DefV} of

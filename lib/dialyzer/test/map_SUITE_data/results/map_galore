@@ -13,9 +13,9 @@ map_galore.erl:1495: The test #{'a':=1} =:= #{'a':=2} can never evaluate to 'tru
 map_galore.erl:1496: The test #{'a':=2} =:= #{'a':=1} can never evaluate to 'true'
 map_galore.erl:1497: The test #{'a':=2, 'b':=1} =:= #{'a':=1, 'b':=3} can never evaluate to 'true'
 map_galore.erl:1498: The test #{'a':=1, 'b':=1} =:= #{'a':=1, 'b':=3} can never evaluate to 'true'
-map_galore.erl:1762: The call maps:get({1, 1},#{{1,float()}=>[101 | 108 | 112 | 116 | 117,...]}) will never return since the success typing arguments are (any(),#{...})
-map_galore.erl:1763: The call maps:get('a',#{}) will never return since the success typing arguments are (any(),#{...})
-map_galore.erl:1765: The call maps:get('a',#{'b':=1, 'c':=2}) will never return since the success typing arguments are (any(),#{...})
+map_galore.erl:1762: The call maps:get({1, 1},#{{1,float()}=>[101 | 108 | 112 | 116 | 117,...]}) will never return since the success typing arguments are (any(),map())
+map_galore.erl:1763: The call maps:get('a',#{}) will never return since the success typing arguments are (any(),map())
+map_galore.erl:1765: The call maps:get('a',#{'b':=1, 'c':=2}) will never return since the success typing arguments are (any(),map())
 map_galore.erl:186: The pattern #{'x':=2} can never match the type #{'x':=3}
 map_galore.erl:187: The pattern #{'x':=3} can never match the type {'a','b','c'}
 map_galore.erl:188: The pattern #{'x':=3} can never match the type #{'y':=3}
