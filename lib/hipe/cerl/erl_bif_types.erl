@@ -118,16 +118,18 @@
 		    t_tuple_subtypes/2,
 		    t_is_map/2,
 		    t_map/0,
+		    t_map/3,
 		    t_map/4,
 		    t_map_def_key/2,
 		    t_map_def_val/2,
 		    t_map_get/3,
 		    t_map_is_key/3,
+		    t_map_entries/2,
 		    t_map_mand_entries/2,
 		    t_map_opt_entries/2,
 		    t_map_put/3,
 		    t_map_update/3,
-		    orddict_manyfoldr/3,
+		    mapdict_merge/3,
 		    t_do_overlap/3
 		   ]).
 
@@ -1720,39 +1722,36 @@ type(maps, is_key, 2, Xs, Opaques) ->
 type(maps, merge, 2, Xs, Opaques) ->
   strict(maps, merge, 2, Xs,
 	 fun ([MapA, MapB]) ->
-	     AMand = t_map_mand_entries(MapA, Opaques),
-	     BMand = t_map_mand_entries(MapB, Opaques),
-	     AOpt  = t_map_opt_entries(MapA, Opaques),
-	     BOpt  = t_map_opt_entries(MapB, Opaques),
+	     APairs = t_map_entries(MapA, Opaques),
+	     BPairs = t_map_entries(MapB, Opaques),
 	     ADefK = t_map_def_key(MapA, Opaques),
 	     BDefK = t_map_def_key(MapB, Opaques),
 	     ADefV = t_map_def_val(MapA, Opaques),
 	     BDefV = t_map_def_val(MapB, Opaques),
-	     {Mand, Opt} =
-	       orddict_manyfoldr(
-		 fun(_, _, [_,_,KV={_,_},_], {Mand0, Opt0}) ->
-		     {[KV|Mand0], Opt0};
-		    (_, 2, [{K,VA},false,false,{K,VB}], {Mand0, Opt0}) ->
-		     {[{K,t_sup(VA,VB)}|Mand0], Opt0};
-		    (_, 2, [false,{K,VA},false,{K,VB}], {Mand0, Opt0}) ->
-		     {Mand0, [{K,t_sup(VA,VB)}|Opt0]};
-		    (_, 1, [false,false,false,KV={K,V}], {Mand0, Opt0}) ->
-		     case t_do_overlap(K, ADefK, Opaques) of
-		       false -> {Mand0, [KV|Opt0]};
-		       true -> {Mand0, [{K,t_sup(V,ADefV)}|Opt0]}
-		     end;
-		    (_, 1, [KV={K,V},false,false,false], {Mand0, Opt0}) ->
-		     case t_do_overlap(K, BDefK, Opaques) of
-		       false -> {[KV|Mand0], Opt0};
-		       true -> {[{K,t_sup(V,BDefV)}|Mand0], Opt0}
-		     end;
-		    (_, 1, [false,KV={K,V},false,false], {Mand0, Opt0}) ->
-		     case t_do_overlap(K, BDefK, Opaques) of
-		       false -> {Mand0, [KV|Opt0]};
-		       true -> {Mand0, [{K,t_sup(V,BDefV)}|Opt0]}
-		     end
-		 end, {[], []}, [AMand, AOpt, BMand, BOpt]),
-	     t_map(Mand, Opt, t_sup(ADefK, BDefK), t_sup(ADefV, BDefV))
+	     t_map(mapdict_merge(
+		     fun(_, KV={_,mandatory,_}) ->
+			 KV;
+			({K,mandatory,VA}, {K,optional,VB}) ->
+			 {K,mandatory,t_sup(VA,VB)};
+			({K,optional,VA}, {K,optional,VB}) ->
+			 {K,optional,t_sup(VA,VB)};
+			(false,KV={K,optional,V}) ->
+			 case t_do_overlap(K, ADefK, Opaques) of
+			   false -> KV;
+			   true -> {K,optional,t_sup(V,ADefV)}
+			 end;
+			(KV={K,mandatory,V}, false) ->
+			 case t_do_overlap(K, BDefK, Opaques) of
+			   false -> KV;
+			   true -> {K,mandatory,t_sup(V,BDefV)}
+			 end;
+			(KV={K,optional,V}, false) ->
+			 case t_do_overlap(K, BDefK, Opaques) of
+			   false -> KV;
+			   true -> {K,optional,t_sup(V,BDefV)}
+			 end
+		     end, APairs, BPairs),
+		   t_sup(ADefK, BDefK), t_sup(ADefV, BDefV))
 	 end, Opaques);
 type(maps, put, 3, Xs, Opaques) ->
   strict(maps, put, 3, Xs,
@@ -1777,15 +1776,14 @@ type(maps, to_list, 1, Xs, Opaques) ->
 	 fun ([Map]) ->
 	     DefK = t_map_def_key(Map, Opaques),
 	     DefV = t_map_def_val(Map, Opaques),
-	     Mand = t_map_mand_entries(Map, Opaques),
-	     Opt  = t_map_opt_entries(Map, Opaques),
+	     Pairs = t_map_entries(Map, Opaques),
 	     EType = lists:foldl(
-		       fun({K,V},EType0) ->
+		       fun({K,_,V},EType0) ->
 			   case t_is_none(V) of
 			     true -> t_subtract(EType0, t_tuple([K,t_any()]));
 			     false -> t_sup(EType0, t_tuple([K,V]))
 			   end
-		       end, t_tuple([DefK, DefV]), Mand ++ Opt),
+		       end, t_tuple([DefK, DefV]), Pairs),
 	     case t_is_none(EType) of
 	       true -> t_nil();
 	       false -> t_list(EType)
