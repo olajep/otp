@@ -496,7 +496,7 @@ traverse(Tree, DefinedVars, State) ->
 						      DefinedVars, AccState3),
 		       {{KeyVar, ValVar}, AccState4}
 		   end,
-      {Pairs, State1} = lists:mapfoldr(MapFoldFun, State, Entries),
+      {Pairs, State1} = lists:mapfoldl(MapFoldFun, State, Entries),
       %% We mustn't recurse into map arguments to matches. Not only are they
       %% syntactically only allowed to be the literal #{}, but that would also
       %% cause an infinite recursion, since traverse/3 unfolds literals with
