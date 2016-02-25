@@ -2743,8 +2743,9 @@ store_map(Key, Val, #map{dict = Dict, ref = undefined} = Map) ->
 store_map(Key, Val, #map{dict = Dict, modified = Mod} = Map) ->
   Map#map{dict = dict:store(Key, Val, Dict), modified = [Key | Mod]}.
 
-enter_subst(Key, Val, #map{subst = Subst} = MS) ->
+enter_subst(Key, Val0, #map{subst = Subst} = MS) ->
   KeyLabel = get_label(Key),
+  Val = dialyzer_utils:refold_pattern(Val0),
   case cerl:is_literal(Val) of
     true ->
       store_map(KeyLabel, literal_type(Val), MS);
