@@ -119,14 +119,11 @@
 		    t_is_map/2,
 		    t_map/0,
 		    t_map/3,
-		    t_map/4,
 		    t_map_def_key/2,
 		    t_map_def_val/2,
 		    t_map_get/3,
 		    t_map_is_key/3,
 		    t_map_entries/2,
-		    t_map_mand_entries/2,
-		    t_map_opt_entries/2,
 		    t_map_put/3,
 		    t_map_update/3,
 		    map_pairwise_merge/3
@@ -1695,7 +1692,7 @@ type(maps, from_list, 1, Xs, Opaques) ->
   strict(maps, from_list, 1, Xs,
 	 fun ([List]) ->
 	     case t_is_nil(List, Opaques) of
-	       true -> t_map([], [], t_none(), t_none());
+	       true -> t_from_term(#{});
 	       false ->
 		 T = t_list_elements(List, Opaques),
 		 case t_tuple_subtypes(T, Opaques) of
@@ -1703,7 +1700,7 @@ type(maps, from_list, 1, Xs, Opaques) ->
 		   Stypes when length(Stypes) >= 1 ->
 		     t_sup([begin
 			      [K, V] = t_tuple_args(Args, Opaques),
-			      t_map([], [], K, V)
+			      t_map([], K, V)
 			    end || Args <- Stypes])
 		 end
 	     end
@@ -1739,12 +1736,12 @@ type(maps, put, 3, Xs, Opaques) ->
 type(maps, size, 1, Xs, Opaques) ->
   strict(maps, size, 1, Xs,
 	 fun ([Map]) ->
-	     Mand = t_map_mand_entries(Map, Opaques),
+	     Mand = [E || E={_,mandatory,_} <- t_map_entries(Map, Opaques)],
 	     LowerBound = length(Mand),
 	     case t_is_none(t_map_def_key(Map, Opaques)) of
 	       false -> t_from_range(LowerBound, pos_inf);
 	       true ->
-		 Opt = t_map_opt_entries(Map, Opaques),
+		 Opt = [E || E={_,optional,_} <- t_map_entries(Map, Opaques)],
 		 UpperBound = LowerBound + length(Opt),
 		 t_from_range(LowerBound, UpperBound)
 	     end

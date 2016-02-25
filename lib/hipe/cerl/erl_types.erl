@@ -156,9 +156,6 @@
 	 t_map/0,
 	 t_map/1,
 	 t_map/3,
-	 t_map/4,
-	 t_map_mand_entries/2, t_map_mand_entries/1,
-	 t_map_opt_entries/2, t_map_opt_entries/1,
 	 t_map_entries/2, t_map_entries/1,
 	 t_map_def_key/2, t_map_def_key/1,
 	 t_map_def_val/2, t_map_def_val/1,
@@ -1665,17 +1662,6 @@ t_map() ->
 t_map(L) ->
   lists:foldl(fun t_map_put/2, t_map(), L).
 
--spec t_map(orddict:orddict(erl_type()), orddict:orddict(erl_type()),
-	    erl_type(), erl_type()) -> erl_type().
-
-t_map(Mand, Opt, DefK, DefV) ->
-  t_map([{K,Mness,V}
-	 || {K,{Mness,V}} <-
-	      orddict:merge(fun(_,_,_)->error(overlapping_map_keys)end,
-			    [{K,{?mand,V}}||{K,V} <- Mand],
-			    [{K,{?opt, V}}||{K,V} <- Opt])],
-	DefK, DefV).
-
 -spec t_map(t_map_dict(), erl_type(), erl_type()) -> erl_type().
 
 t_map(Pairs0, DefK0, DefV0) ->
@@ -1695,7 +1681,6 @@ t_map(Pairs0, DefK0, DefV0) ->
   %% define(DEBUG, true).
   try
     validate_map_elements(Pairs),
-    [] = [error({badarg, none_in_mand})||{_,?mand,?none}<-Pairs],
     case {t_is_none_or_unit(DefK), t_is_none_or_unit(DefV)} of
       {Same, Same} -> ok;
       _ -> error({badarg, bad_default_keys})
@@ -1720,6 +1705,7 @@ normalise_map_optionals([E={K,?opt,V}|T], DefK, DefV) ->
 normalise_map_optionals([E|T], DefK, DefV) ->
   [E|normalise_map_optionals(T, DefK, DefV)].
 
+validate_map_elements([{_,?mand,?none}|_]) -> error({badarg, none_in_mand});
 validate_map_elements([{K1,_,_}|Rest=[{K2,_,_}|_]]) ->
   case t_is_singleton(K1) andalso K1 < K2 of
     false -> error(badarg);
@@ -1757,32 +1743,6 @@ t_map_entries(M, Opaques) ->
 
 map_entries(?map(Pairs,_,_)) ->
   Pairs.
-
--spec t_map_mand_entries(erl_type()) -> t_map_dict().
-
-t_map_mand_entries(M) ->
-  t_map_mand_entries(M, 'universe').
-
--spec t_map_mand_entries(erl_type(), opaques()) -> t_map_dict().
-
-t_map_mand_entries(M, Opaques) ->
-  do_opaque(M, Opaques, fun map_mand_entries/1).
-
-map_mand_entries(?map(Pairs,_,_)) ->
-  [{K,V} || {K,?mand,V} <- Pairs].
-
--spec t_map_opt_entries(erl_type()) -> t_map_dict().
-
-t_map_opt_entries(M) ->
-  t_map_opt_entries(M, 'universe').
-
--spec t_map_opt_entries(erl_type(), opaques()) -> t_map_dict().
-
-t_map_opt_entries(M, Opaques) ->
-  do_opaque(M, Opaques, fun map_opt_entries/1).
-
-map_opt_entries(?map(Pairs,_,_)) ->
-  [{K,V} || {K,?opt,V} <- Pairs].
 
 -spec t_map_def_key(erl_type()) -> erl_type().
 
@@ -1829,24 +1789,14 @@ map_pairwise_merge(F, ?map(APairs, ADefK, ADefV),
 
 map_pairwise_merge(_, [], _, _, [], _, _) -> [];
 map_pairwise_merge(F, As0, ADefK, ADefV, Bs0, BDefK, BDefV) ->
-  %% By observing that a missing pair in a map is equivalent to an optional
-  %% pair, with ?none or DefV value, depending on wether K \in DefK, we can
-  %% simplify merging by denormalising the map pairs temporarily, removing all
-  %% 'false' cases, at the cost of the creation of more tuples:
-  OtherV = fun(K, ODefK, ODefV) ->
-	       case t_inf(K, ODefK) of
-		 ?none -> ?none;
-		 K     -> ODefV
-	       end
-	   end,
   case {As0, Bs0} of
     {[{K,AMNess,AV}|As], [{K, BMNess,BV}|Bs]} -> ok;
     {[{K,AMNess,AV}|As], [{BK,_,     _ }|_]=Bs} when K < BK ->
-      {BMNess, BV} = {?opt, OtherV(K, BDefK, BDefV)};
+      {BMNess, BV} = {?opt, mapmerge_otherv(K, BDefK, BDefV)};
     {As,                 [{K, BMNess,BV}|Bs]} ->
-      {AMNess, AV} = {?opt, OtherV(K, ADefK, ADefV)};
+      {AMNess, AV} = {?opt, mapmerge_otherv(K, ADefK, ADefV)};
     {[{K,AMNess,AV}|As], []=Bs} ->
-      {BMNess, BV} = {?opt, OtherV(K, BDefK, BDefV)}
+      {BMNess, BV} = {?opt, mapmerge_otherv(K, BDefK, BDefV)}
   end,
   MK = K, %% Rename to make clear that we are matching below
   case F(K, AMNess, AV, BMNess, BV) of
@@ -1868,23 +1818,27 @@ map_pairwise_merge_foldr(F, AccIn, ?map(APairs, ADefK, ADefV),
 
 map_pairwise_merge_foldr(_, Acc,   [],  _,     _,     [],  _,     _) -> Acc;
 map_pairwise_merge_foldr(F, AccIn, As0, ADefK, ADefV, Bs0, BDefK, BDefV) ->
-  OtherV = fun(K, ODefK, ODefV) ->
-	       case t_inf(K, ODefK) of
-		 ?none -> ?none;
-		 K     -> ODefV
-	       end
-	   end,
   case {As0, Bs0} of
     {[{K,AMNess,AV}|As], [{K, BMNess,BV}|Bs]} -> ok;
     {[{K,AMNess,AV}|As], [{BK,_,     _ }|_]=Bs} when K < BK ->
-      {BMNess, BV} = {?opt, OtherV(K, BDefK, BDefV)};
+      {BMNess, BV} = {?opt, mapmerge_otherv(K, BDefK, BDefV)};
     {As,                 [{K, BMNess,BV}|Bs]} ->
-      {AMNess, AV} = {?opt, OtherV(K, ADefK, ADefV)};
+      {AMNess, AV} = {?opt, mapmerge_otherv(K, ADefK, ADefV)};
     {[{K,AMNess,AV}|As], []=Bs} ->
-      {BMNess, BV} = {?opt, OtherV(K, BDefK, BDefV)}
+      {BMNess, BV} = {?opt, mapmerge_otherv(K, BDefK, BDefV)}
   end,
   F(K, AMNess, AV, BMNess, BV,
     map_pairwise_merge_foldr(F,AccIn,As,ADefK,ADefV,Bs,BDefK,BDefV)).
+
+%% By observing that a missing pair in a map is equivalent to an optional pair,
+%% with ?none or DefV value, depending on whether K \in DefK, we can simplify
+%% merging by denormalising the map pairs temporarily, removing all 'false'
+%% cases, at the cost of the creation of more tuples:
+mapmerge_otherv(K, ODefK, ODefV) ->
+  case t_inf(K, ODefK) of
+    ?none -> ?none;
+    K     -> ODefV
+  end.
 
 -spec t_map_put({erl_type(), erl_type()}, erl_type()) -> erl_type().
 
@@ -2324,11 +2278,13 @@ t_from_term(T) when is_function(T) ->
   t_fun(Arity, t_any());
 t_from_term(T) when is_integer(T) ->   t_integer(T);
 t_from_term(T) when is_map(T) ->
-  Pairs = [{t_from_term(K), t_from_term(V)} || {K, V} <- maps:to_list(T)],
-  {Stons, Rest} = lists:partition(fun({K,_}) -> t_is_singleton(K) end, Pairs),
-  {DefK, DefV} = lists:foldl(fun({K,V},{AK,AV}) -> {t_sup(K,AK), t_sup(V,AV)} end,
-			     {t_none(), t_none()}, Rest),
-  t_map(lists:keysort(1, Stons), orddict:new(), DefK, DefV);
+  Pairs = [{t_from_term(K), ?mand, t_from_term(V)}
+	   || {K, V} <- maps:to_list(T)],
+  {Stons, Rest} = lists:partition(fun({K,_,_}) -> t_is_singleton(K) end, Pairs),
+  {DefK, DefV}
+    = lists:foldl(fun({K,_,V},{AK,AV}) -> {t_sup(K,AK), t_sup(V,AV)} end,
+		  {t_none(), t_none()}, Rest),
+  t_map(lists:keysort(1, Stons), DefK, DefV);
 t_from_term(T) when is_pid(T) ->       t_pid();
 t_from_term(T) when is_port(T) ->      t_port();
 t_from_term(T) when is_reference(T) -> t_reference();
