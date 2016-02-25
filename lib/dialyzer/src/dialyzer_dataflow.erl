@@ -1839,7 +1839,8 @@ handle_guard_call(Guard, Map, Env, Eval, State) ->
 			F =:= is_float; F =:= is_function;
 			F =:= is_integer; F =:= is_list;
 			F =:= is_number; F =:= is_pid; F =:= is_port;
-			F =:= is_reference; F =:= is_tuple ->
+			F =:= is_reference; F =:= is_tuple;
+			F =:= is_map ->
       handle_guard_type_test(Guard, F, Map, Env, Eval, State);
     {erlang, is_function, 2} ->
       handle_guard_is_function(Guard, Map, Env, Eval, State);
@@ -1917,6 +1918,7 @@ bind_type_test(Eval, TypeTest, ArgType, State) ->
 	   is_function -> t_fun();
 	   is_integer -> t_integer();
 	   is_list -> t_maybe_improper_list();
+	   is_map -> t_map();
 	   is_number -> t_number();
 	   is_pid -> t_pid();
 	   is_port -> t_port();

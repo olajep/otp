@@ -1061,6 +1061,7 @@ get_type_test({erlang, is_float, 1}) ->     {ok, t_float()};
 get_type_test({erlang, is_function, 1}) ->  {ok, t_fun()};
 get_type_test({erlang, is_integer, 1}) ->   {ok, t_integer()};
 get_type_test({erlang, is_list, 1}) ->      {ok, t_list()};
+get_type_test({erlang, is_map, 1}) ->       {ok, t_map()};
 get_type_test({erlang, is_number, 1}) ->    {ok, t_number()};
 get_type_test({erlang, is_pid, 1}) ->       {ok, t_pid()};
 get_type_test({erlang, is_port, 1}) ->      {ok, t_port()};
@@ -1416,6 +1417,8 @@ get_bif_constr({erlang, is_list, 1}, Dst, [Arg], State) ->
   get_bif_test_constr(Dst, Arg, t_maybe_improper_list(), State);
 get_bif_constr({erlang, is_number, 1}, Dst, [Arg], State) ->
   get_bif_test_constr(Dst, Arg, t_number(), State);
+get_bif_constr({erlang, is_map, 1}, Dst, [Arg], State) ->
+  get_bif_test_constr(Dst, Arg, t_map(), State);
 get_bif_constr({erlang, is_pid, 1}, Dst, [Arg], State) ->
   get_bif_test_constr(Dst, Arg, t_pid(), State);
 get_bif_constr({erlang, is_port, 1}, Dst, [Arg], State) ->
