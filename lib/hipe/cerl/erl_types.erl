@@ -227,8 +227,7 @@
          is_opaque_type/2,
 	 is_erl_type/1,
 	 atom_to_string/1,
-	 mapdict_merge/3,
-	 t_do_overlap/2, t_do_overlap/3
+	 map_pairwise_merge/3
 	]).
 
 %%-define(DO_ERL_TYPES_TEST, true).
@@ -1680,7 +1679,7 @@ t_map(Mand, Opt, DefK, DefV) ->
 -spec t_map(t_map_dict(), erl_type(), erl_type()) -> erl_type().
 
 t_map(Pairs0, DefK0, DefV0) ->
-  {Pairs1, DefK1, DefV1}
+  {Pairs1, DefK, DefV}
     = case t_is_singleton(DefK0) of
 	true ->
 	  {case lists:keymember(DefK0, 1, Pairs0) of
@@ -1689,7 +1688,7 @@ t_map(Pairs0, DefK0, DefV0) ->
 	   end, ?none, ?none};
 	false -> {Pairs0, DefK0, DefV0}
       end,
-  {Pairs, DefK, DefV} = normalise_map_optionals(Pairs1, DefK1, DefV1, []),
+  Pairs = normalise_map_optionals(Pairs1, DefK, DefV),
   %% Validate invariants of the map representation.
   %% Since we needed to iterate over the arguments in order to normalise anyway,
   %% we might as well save us some future pain and do this even without
@@ -1706,21 +1705,20 @@ t_map(Pairs0, DefK0, DefV0) ->
   end,
   ?map(Pairs, DefK, DefV).
 
-normalise_map_optionals([], DefK, DefV, OptAcc) ->
-  {lists:reverse(OptAcc), DefK, DefV};
-normalise_map_optionals([E={K,?opt,?none}|T], DefK, DefV, OptAcc) ->
+normalise_map_optionals([], _, _) -> [];
+normalise_map_optionals([E={K,?opt,?none}|T], DefK, DefV) ->
   Diff = t_subtract(DefK, K),
   case t_is_subtype(K, DefK) andalso DefK =:= Diff of
-    true -> normalise_map_optionals(T, DefK, DefV, [E|OptAcc]);
-    false -> normalise_map_optionals(T, Diff, DefV, OptAcc)
+    true -> [E|normalise_map_optionals(T, DefK, DefV)];
+    false -> normalise_map_optionals(T, Diff, DefV)
   end;
-normalise_map_optionals([E={K,?opt,V}|T], DefK, DefV, OptAcc) ->
+normalise_map_optionals([E={K,?opt,V}|T], DefK, DefV) ->
   case t_is_equal(V, DefV) andalso t_is_subtype(K, DefK) of
-    true -> normalise_map_optionals(T, DefK, DefV, OptAcc);
-    false -> normalise_map_optionals(T, DefK, DefV, [E|OptAcc])
+    true -> normalise_map_optionals(T, DefK, DefV);
+    false -> [E|normalise_map_optionals(T, DefK, DefV)]
   end;
-normalise_map_optionals([E|T], DefK, DefV, OptAcc) ->
-  normalise_map_optionals(T, DefK, DefV, [E|OptAcc]).
+normalise_map_optionals([E|T], DefK, DefV) ->
+  [E|normalise_map_optionals(T, DefK, DefV)].
 
 validate_map_elements([{K1,_,_}|Rest=[{K2,_,_}|_]]) ->
   case t_is_singleton(K1) andalso K1 < K2 of
@@ -1819,41 +1817,74 @@ mapdict_store(E1={K1,_,_}, [E2={K2,_,_}|T]) when K1 > K2->
   [E2|mapdict_store(E1, T)];
 mapdict_store(E={_,_,_}, T) -> [E|T].
 
-%% Merges two mapdicts together.
-%% Fun is invoked with ({K, AV}, false), (false, {K, BV}) or ({K, AV}, {K, BV})
-%% for every entry in both dictionaries and may return either {K, ?mand|?opt,
-%% term()} or false.
--spec mapdict_merge(fun((t_map_pair() | false, t_map_pair() | false)
-			-> t_map_pair() | false),
-		    t_map_dict(), t_map_dict()) -> t_map_dict().
+%% Merges the pairs of two maps together. Missing pairs become (?opt, DefV) or
+%% (?opt, ?none), depending on whether K \in DefK.
+-spec map_pairwise_merge(fun((erl_type(),
+			      ?mand|?opt, erl_type(),
+			      ?mand|?opt, erl_type()) -> t_map_pair() | false),
+			 erl_type(), erl_type()) -> t_map_dict().
+map_pairwise_merge(F, ?map(APairs, ADefK, ADefV),
+		       ?map(BPairs, BDefK, BDefV)) ->
+  map_pairwise_merge(F, APairs, ADefK, ADefV, BPairs, BDefK, BDefV).
 
-mapdict_merge(_, [], []) -> [];
-mapdict_merge(F, As0, Bs0) ->
+map_pairwise_merge(_, [], _, _, [], _, _) -> [];
+map_pairwise_merge(F, As0, ADefK, ADefV, Bs0, BDefK, BDefV) ->
+  %% By observing that a missing pair in a map is equivalent to an optional
+  %% pair, with ?none or DefV value, depending on wether K \in DefK, we can
+  %% simplify merging by denormalising the map pairs temporarily, removing all
+  %% 'false' cases, at the cost of the creation of more tuples:
+  OtherV = fun(K, ODefK, ODefV) ->
+	       case t_inf(K, ODefK) of
+		 ?none -> ?none;
+		 K     -> ODefV
+	       end
+	   end,
   case {As0, Bs0} of
-    {[A={K,_,_}|As], [B={K,_,_}|Bs]} ->              ok;
-    {[A={K,_,_}|As], [{BK,_,_}|_]=Bs} when K < BK -> B = false;
-    {As,              [B={K,_,_}|Bs]} ->             A = false;
-    {[A={K,_,_}|As], []=Bs} ->                       B = false
+    {[{K,AMNess,AV}|As], [{K, BMNess,BV}|Bs]} -> ok;
+    {[{K,AMNess,AV}|As], [{BK,_,     _ }|_]=Bs} when K < BK ->
+      {BMNess, BV} = {?opt, OtherV(K, BDefK, BDefV)};
+    {As,                 [{K, BMNess,BV}|Bs]} ->
+      {AMNess, AV} = {?opt, OtherV(K, ADefK, ADefV)};
+    {[{K,AMNess,AV}|As], []=Bs} ->
+      {BMNess, BV} = {?opt, OtherV(K, BDefK, BDefV)}
   end,
   MK = K, %% Rename to make clear that we are matching below
-  case F(A, B) of
-    false -> mapdict_merge(F, As, Bs);
-    M={MK,_,_} -> [M|mapdict_merge(F, As, Bs)]
+  case F(K, AMNess, AV, BMNess, BV) of
+    false ->         map_pairwise_merge(F,As,ADefK,ADefV,Bs,BDefK,BDefV);
+    M={MK,_,_} -> [M|map_pairwise_merge(F,As,ADefK,ADefV,Bs,BDefK,BDefV)]
   end.
 
--spec mapdict_merge_foldr(
-	fun((t_map_pair() | false, t_map_pair() | false, Acc) -> Acc),
-	Acc, t_map_dict(), t_map_dict()) -> Acc.
+%% Folds over the pairs in two maps simultaneously in reverse key order. Missing
+%% pairs become (?opt, DefV) or (?opt, ?none), depending on whether K \in DefK.
+-spec map_pairwise_merge_foldr(fun((erl_type(),
+				    ?mand|?opt, erl_type(),
+				    ?mand|?opt, erl_type(),
+				    Acc) -> Acc),
+			       Acc, erl_type(), erl_type()) -> Acc.
 
-mapdict_merge_foldr(F, Acc, [A={K,_,_}|As], [B={K,_,_}|Bs]) ->
-  F(A, B, mapdict_merge_foldr(F, Acc, As, Bs));
-mapdict_merge_foldr(F, Acc, [A={AK,_,_}|As], [{BK,_,_}|_]=Bs) when AK < BK ->
-  F(A, false, mapdict_merge_foldr(F, Acc, As, Bs));
-mapdict_merge_foldr(F, Acc, As, [B|Bs]) -> %% AK > BK or As=[]
-  F(false, B, mapdict_merge_foldr(F, Acc, As, Bs));
-mapdict_merge_foldr(F, Acc, [A|As], []) ->
-  F(A, false, mapdict_merge_foldr(F, Acc, As, []));
-mapdict_merge_foldr(_, Acc, [], []) -> Acc.
+map_pairwise_merge_foldr(F, AccIn, ?map(APairs, ADefK, ADefV),
+			 ?map(BPairs, BDefK, BDefV)) ->
+  map_pairwise_merge_foldr(F, AccIn, APairs, ADefK, ADefV, BPairs, BDefK, BDefV).
+
+map_pairwise_merge_foldr(_, Acc,   [],  _,     _,     [],  _,     _) -> Acc;
+map_pairwise_merge_foldr(F, AccIn, As0, ADefK, ADefV, Bs0, BDefK, BDefV) ->
+  OtherV = fun(K, ODefK, ODefV) ->
+	       case t_inf(K, ODefK) of
+		 ?none -> ?none;
+		 K     -> ODefV
+	       end
+	   end,
+  case {As0, Bs0} of
+    {[{K,AMNess,AV}|As], [{K, BMNess,BV}|Bs]} -> ok;
+    {[{K,AMNess,AV}|As], [{BK,_,     _ }|_]=Bs} when K < BK ->
+      {BMNess, BV} = {?opt, OtherV(K, BDefK, BDefV)};
+    {As,                 [{K, BMNess,BV}|Bs]} ->
+      {AMNess, AV} = {?opt, OtherV(K, ADefK, ADefV)};
+    {[{K,AMNess,AV}|As], []=Bs} ->
+      {BMNess, BV} = {?opt, OtherV(K, BDefK, BDefV)}
+  end,
+  F(K, AMNess, AV, BMNess, BV,
+    map_pairwise_merge_foldr(F,AccIn,As,ADefK,ADefV,Bs,BDefK,BDefV)).
 
 -spec t_map_put({erl_type(), erl_type()}, erl_type()) -> erl_type().
 
@@ -2589,23 +2620,12 @@ t_sup(?tuple_set(List1), T2 = ?tuple(_, Arity, _)) ->
   sup_tuple_sets(List1, [{Arity, [T2]}]);
 t_sup(?tuple(_, Arity, _) = T1, ?tuple_set(List2)) ->
   sup_tuple_sets([{Arity, [T1]}], List2);
-t_sup(?map(APairs, ADefK, ADefV), ?map(BPairs, BDefK, BDefV)) ->
+t_sup(?map(_, ADefK, ADefV) = A, ?map(_, BDefK, BDefV) = B) ->
   Pairs =
-    mapdict_merge(
-      fun({K, MNess, V1}, {K, MNess, V2}) -> {K, MNess, t_sup(V1, V2)};
-	 ({K, _,     V1}, {K, _,     V2}) -> {K, ?opt,  t_sup(V1, V2)};
-	 (E1, E2) ->
-	  %% If a key is mandatory in one map, but not possible in the
-	  %% other, we transform it to an optional
-	  {OtherDefK, OtherDefV} = case {E1, E2} of
-				     {false, {K,_,V}} -> {ADefK, ADefV};
-				     {{K,_,V}, false} -> {BDefK, BDefV}
-				   end,
-	  case t_inf(K, OtherDefK) of
-	    ?none -> {K,?opt,V};
-	    _     -> {K,?opt,t_sup(V,OtherDefV)}
-	  end
-      end, APairs, BPairs),
+    map_pairwise_merge(
+      fun(K, MNess, V1, MNess, V2) -> {K, MNess, t_sup(V1, V2)};
+	 (K, _,     V1, _,     V2) -> {K, ?opt,  t_sup(V1, V2)}
+      end, A, B),
   t_map(Pairs, t_sup(ADefK, BDefK), t_sup(ADefV, BDefV));
 t_sup(T1, T2) ->
   ?union(U1) = force_union(T1),
@@ -2846,40 +2866,19 @@ t_inf(?identifier(Set1), ?identifier(Set2), _Opaques) ->
     ?none -> ?none;
     Set -> ?identifier(Set)
   end;
-t_inf(?map(APairs, ADefK, ADefV), ?map(BPairs, BDefK, BDefV), _Opaques) ->
+t_inf(?map(_, ADefK, ADefV) = A, ?map(_, BDefK, BDefV) = B, _Opaques) ->
   %% Because it simplifies the anonymous function, we allow Pairs to temporarily
   %% contain mandatory pairs with none values, since all such cases should
   %% result in a none result.
   Pairs =
-    mapdict_merge(
-      fun({K,?mand,V1}, {K,?mand,V2}) ->
-	  %% First handle the case of the same mandatory key existing in
-	  %% both maps.
-	  {K, ?mand, t_inf(V1, V2)};
-	 ({K,?opt,V1}, {K,?opt,V2}) ->
-	  %% For optional keys in both maps, when the infinimum is none, we
-	  %% have essentially concluded that K must not be a key in the map.
-	  {K, ?opt, t_inf(V1, V2)};
-	 ({K,MNess1,V1}, {K,MNess2,V2}) when MNess1 =/= MNess2 ->
-	  %% When a key is optional in one map, but mandatory in another, it
-	  %% becomes mandatory in the infinumum
-	  {K, ?mand, t_inf(V1, V2)};
-	 (E1, E2) ->
-	  {KI, VI}
-	    = case {E1, E2} of
-		{{K,MNess,V},false} -> {t_inf(K,BDefK), t_inf(V,BDefV)};
-		{false,{K,MNess,V}} -> {t_inf(K,ADefK), t_inf(V,ADefV)}
-	      end,
-	  %% For mandatory keys in one of the maps, they need to overlap with
-	  %% the default kvs of the other, or the infinimum is none. For
-	  %% optional keys, we have concluded it must not exist, but since the
-	  %% key is not included in the defaults, we can just discard it.
-	  case {KI, MNess} of
-	    {?none, ?mand} -> {K, ?mand, ?none}; %% Force a ?none result
-	    {?none, ?opt} -> false;
-	    _ -> {KI,MNess,VI}
-	  end
-      end, APairs, BPairs),
+    map_pairwise_merge(
+      %% For optional keys in both maps, when the infinimum is none, we have
+      %% essentially concluded that K must not be a key in the map.
+      fun(K, ?opt, V1, ?opt, V2) -> {K, ?opt, t_inf(V1, V2)};
+	 %% When a key is optional in one map, but mandatory in another, it
+	 %% becomes mandatory in the infinumum
+	 (K, _, V1, _, V2) -> {K, ?mand, t_inf(V1, V2)}
+      end, A, B),
   %% If the infinimum of any mandatory values is ?none, the entire map infinimum
   %% is ?none.
   case lists:any(fun({_,?mand,?none})->true; ({_,_,_}) -> false end, Pairs) of
@@ -3545,28 +3544,22 @@ t_unify(?tuple_set(List1) = T1, ?tuple_set(List2) = T2, VarMap) ->
     {Tuples, NewVarMap} -> {t_sup(Tuples), NewVarMap}
   catch _:_ -> throw({mismatch, T1, T2})
   end;
-t_unify(A=?map(APairs, ADefK, ADefV), B=?map(BPairs, BDefK, BDefV), VarMap0) ->
+t_unify(?map(_, ADefK, ADefV) = A, ?map(_, BDefK, BDefV) = B, VarMap0) ->
   {DefK, VarMap1} = t_unify(ADefK, BDefK, VarMap0),
   {DefV, VarMap2} = t_unify(ADefV, BDefV, VarMap1),
   {Pairs, VarMap} =
-    mapdict_merge_foldr(
-      fun({K,MNess,V1}, {K,MNess,V2}, {Pairs0, VarMap3}) ->
+    map_pairwise_merge_foldr(
+      fun(K, MNess, V1, MNess, V2, {Pairs0, VarMap3}) ->
 	  %% We know that the keys unify and do not contain variables, or they
 	  %% would not be singletons
 	  %% TODO: Should V=?none (known missing keys) be handled special?
 	  {V, VarMap4} = t_unify(V1, V2, VarMap3),
 	  {[{K,MNess,V}|Pairs0], VarMap4};
-	 ({K,_,V1}, {K,_,V2}, {Pairs0, VarMap3}) ->
+	 (K, _, V1, _, V2, {Pairs0, VarMap3}) ->
 	  %% One mandatory and one optional; what should be done in this case?
 	  {V, VarMap4} = t_unify(V1, V2, VarMap3),
-	  {[{K,?mand,V}|Pairs0], VarMap4};
-	 (E1, E2, {Pairs0, VarMap3}) ->
-	  case {E1,E2} of {{K,MNess,V},false}->ok; {false,{K,MNess,V}}->ok end,
-	  case t_do_overlap(K, DefK) andalso t_do_overlap(V, DefV) of
-	    false -> throw({mismatch, A, B});
-	    true -> {[{K,MNess,subst_all_vars_to_any(V)}|Pairs0], VarMap3}
-	  end
-      end, {[], VarMap2}, APairs, BPairs),
+	  {[{K,?mand,V}|Pairs0], VarMap4}
+      end, {[], VarMap2}, A, B),
   {t_map(Pairs, DefK, DefV), VarMap};
 t_unify(?opaque(_) = T1, ?opaque(_) = T2, VarMap) ->
   t_unify(t_opaque_structure(T1), t_opaque_structure(T2), VarMap);
@@ -3924,54 +3917,40 @@ t_subtract(?product(Elements1) = T1, ?product(Elements2)) ->
 	_ -> T1
       end
   end;
-t_subtract(?map(APairs, ADefK, ADefV) = A, ?map(BPairs, BDefK, BDefV)) ->
+t_subtract(?map(APairs, ADefK, ADefV) = A, ?map(_, BDefK, BDefV) = B) ->
   case t_is_subtype(ADefK, BDefK) andalso t_is_subtype(ADefV, BDefV) of
     false -> A;
     true ->
-      %% This is very hairy.
       %% We fold over the maps to produce a list of constraints, where
-      %% constraints are additional key-value pairs to put in Mandatory or
-      %% Optional. Only one constraint need to be applied to produce a type that
-      %% excludes the right-hand-side type, so if more than one constraint is
-      %% produced, we just return the left-hand-side argument.
+      %% constraints are additional key-value pairs to put in Pairs. Only one
+      %% constraint need to be applied to produce a type that excludes the
+      %% right-hand-side type, so if more than one constraint is produced, we
+      %% just return the left-hand-side argument.
       %%
       %% Each case of the fold may either conclude that
       %%  * The arguments constrain A at least as much as B, i.e. that A so far
       %%    is a subtype of B. In that case they return false
       %%  * That for the particular arguments, A being a subtype of B does not
-      %%    hold, but can be made to hold if the association of K is narrowed in
-      %%    A. In that case, they will return that association.
+      %%    hold, but the infinimum of A and B is nonempty, and by narrowing a
+      %%    pair in A, we can create a type that excludes some elements in the
+      %%    infinumum. In that case, they will return that pair.
       %%  * That for the particular arguments, A being a subtype of B does not
-      %%    hold, and A would either require several constraints, or it is not
-      %%    even possible to represent A-B using this form of constraints. In
-      %%    that case, it will throw 'mismatch'.
-      try mapdict_merge(
-	    fun({K, ?mand, V1}, {K, _, V2}) ->
-		case t_subtract(V1, V2) of
-		  ?none -> false;
-		  Partial -> {K, ?mand, Partial}
-		end;
-	       ({K, ?opt, ?none}, {K, ?mand, _}) -> throw(mismatch);
-		%% If V1 is a subtype of V2, the case that K does not exist in A
-		%% remain.
-	       ({K, ?opt, V1}, {K, ?mand, V2}) -> {K, ?opt, t_subtract(V1, V2)};
-	       ({K, ?opt, V1}, {K, ?opt, ?none}) when V1 =/= ?none ->
-		%% If we subtract a forbidden key, that leaves a mandatory key
-		{K, ?mand, V1};
-	       ({K, ?opt, V1}, {K, ?opt, V2}) ->
-		case t_subtract(V1, V2) of
-		  ?none -> false;
-		  Partial -> {K, ?mand, Partial}
-		end;
-	       ({_,_,_}, false) -> false;
-	       (false, {K, ?opt, ?none}) ->
-		{K, ?mand, ADefV};
-	       (false, {K, _, V}) ->
-		case t_inf(K, ADefK) of
-		  ?none -> false;
-		  K -> {K, ?opt, t_subtract(ADefV, V)}
-		end
-	    end, APairs, BPairs)
+      %%    hold, and either the infinumum of A and B is empty, or it is not
+      %%    possible with the current representation to create a type that
+      %%    excludes elements from B without also excluding elements that are
+      %%    only in A. In that case, it will return the pair from A unchanged.
+      case
+	map_pairwise_merge(
+	  %% If V1 is a subtype of V2, the case that K does not exist in A
+	  %% remain.
+	  fun(K, ?opt, V1, ?mand, V2) -> {K, ?opt, t_subtract(V1, V2)};
+	     (K, _,    V1, _,     V2) ->
+	      %% If we subtract an optional key, that leaves a mandatory key
+	      case t_subtract(V1, V2) of
+		?none -> false;
+		Partial -> {K, ?mand, Partial}
+	      end
+	  end, A, B)
       of
 	  %% We produce a list of keys that are constrained. As only one of
 	  %% these should apply at a time, we can't represent the difference if
@@ -3980,7 +3959,6 @@ t_subtract(?map(APairs, ADefK, ADefV) = A, ?map(BPairs, BDefK, BDefV)) ->
 	  [] -> ?none; %% A is a subtype of B
 	  [E] -> t_map(mapdict_store(E, APairs), ADefK, ADefV);
 	  _ -> A
-      catch throw:mismatch -> A
       end
   end;
 t_subtract(?product(P1), _) ->
@@ -4113,11 +4091,6 @@ subtype_is_equal(T1, T2) ->
 t_is_instance(ConcreteType, Type) ->
   t_is_subtype(ConcreteType, t_unopaque(Type)).
 
-
--spec t_do_overlap(erl_type(), erl_type()) -> boolean().
-
-t_do_overlap(TypeA, TypeB) ->
-  t_do_overlap(TypeA, TypeB, 'universe').
 
 -spec t_do_overlap(erl_type(), erl_type(), opaques()) -> boolean().
 

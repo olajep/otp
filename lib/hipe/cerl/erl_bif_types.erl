@@ -129,8 +129,7 @@
 		    t_map_opt_entries/2,
 		    t_map_put/3,
 		    t_map_update/3,
-		    mapdict_merge/3,
-		    t_do_overlap/3
+		    map_pairwise_merge/3
 		   ]).
 
 -ifdef(DO_ERL_BIF_TYPES_TEST).
@@ -1722,35 +1721,14 @@ type(maps, is_key, 2, Xs, Opaques) ->
 type(maps, merge, 2, Xs, Opaques) ->
   strict(maps, merge, 2, Xs,
 	 fun ([MapA, MapB]) ->
-	     APairs = t_map_entries(MapA, Opaques),
-	     BPairs = t_map_entries(MapB, Opaques),
 	     ADefK = t_map_def_key(MapA, Opaques),
 	     BDefK = t_map_def_key(MapB, Opaques),
 	     ADefV = t_map_def_val(MapA, Opaques),
 	     BDefV = t_map_def_val(MapB, Opaques),
-	     t_map(mapdict_merge(
-		     fun(_, KV={_,mandatory,_}) ->
-			 KV;
-			({K,mandatory,VA}, {K,optional,VB}) ->
-			 {K,mandatory,t_sup(VA,VB)};
-			({K,optional,VA}, {K,optional,VB}) ->
-			 {K,optional,t_sup(VA,VB)};
-			(false,KV={K,optional,V}) ->
-			 case t_do_overlap(K, ADefK, Opaques) of
-			   false -> KV;
-			   true -> {K,optional,t_sup(V,ADefV)}
-			 end;
-			(KV={K,mandatory,V}, false) ->
-			 case t_do_overlap(K, BDefK, Opaques) of
-			   false -> KV;
-			   true -> {K,mandatory,t_sup(V,BDefV)}
-			 end;
-			(KV={K,optional,V}, false) ->
-			 case t_do_overlap(K, BDefK, Opaques) of
-			   false -> KV;
-			   true -> {K,optional,t_sup(V,BDefV)}
-			 end
-		     end, APairs, BPairs),
+	     t_map(map_pairwise_merge(
+		     fun(K, _,     _,  mandatory, V) -> {K, mandatory, V};
+			(K, MNess, VA, optional, VB) -> {K, MNess, t_sup(VA,VB)}
+		     end, MapA, MapB),
 		   t_sup(ADefK, BDefK), t_sup(ADefV, BDefV))
 	 end, Opaques);
 type(maps, put, 3, Xs, Opaques) ->
