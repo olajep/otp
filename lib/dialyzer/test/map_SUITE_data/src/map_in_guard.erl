@@ -1,6 +1,6 @@
 -module(map_in_guard).
 
--export([test/0]).
+-export([test/0, raw_expr/0]).
 
 test() ->
     false = assoc_guard(#{}),
@@ -31,3 +31,5 @@ exact_guard(M) when (false =/= M#{a := b}) -> true;
 exact_guard(_) -> false.
 
 exact_guard_clause(M) when (false =/= M#{a := b}) -> ok.
+
+raw_expr() when #{}; true -> ok. %% Must not warn here!
