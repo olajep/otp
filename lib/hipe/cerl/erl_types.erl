@@ -69,7 +69,7 @@
 	 t_cons_hd/1, t_cons_hd/2,
 	 t_cons_tl/1, t_cons_tl/2,
          t_contains_opaque/1, t_contains_opaque/2,
-	 t_decorate_with_opaque/3,
+         t_decorate_with_opaque/3,
 	 t_elements/1,
 	 t_find_opaque_mismatch/3,
          t_find_unknown_opaque/3,
@@ -1907,7 +1907,6 @@ t_map_get(Key, ?map(Pairs, DefK, DefV), Opaques) ->
 	{_, _, ValType} -> ValType
       end
   end.
-
 
 -spec t_map_is_key(erl_type(), erl_type()) -> erl_type().
 
@@ -4383,8 +4382,7 @@ t_to_string(?remote(Set), RecDict) ->
 	       || #remote{mod = Mod, name = Name, args = Args} <-
 		    set_to_list(Set)],
 	      " | ");
-t_to_string(?map([],?any,?any), _RecDict) ->
-  "map()";
+t_to_string(?map([],?any,?any), _RecDict) -> "map()";
 t_to_string(?map(Pairs0,DefK,DefV), RecDict) ->
   {Pairs, ExtraEl} =
     case {DefK, DefV} of
