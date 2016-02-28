@@ -2848,6 +2848,9 @@ mark_as_fresh([Tree|Left], Map) ->
       bitstr ->
 	%% The Size field is not fresh.
 	{SubTrees1 -- [cerl:bitstr_size(Tree)], Map};
+      map_pair ->
+	%% The keys are not fresh
+	{SubTrees1 -- [cerl:map_pair_key(Tree)], Map};
       var ->
 	{SubTrees1, enter_type(Tree, t_any(), Map)};
       _ ->

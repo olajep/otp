@@ -5,7 +5,7 @@
 t1() ->
     #{a:=1} = maps:merge(#{}, #{}).
 
-t2() -> %% Just "has no local return"
+t2() ->
     #{hej := _} = maps:merge(cao(), cio()),
     #{{} := _} = maps:merge(cao(), cio()).
 
