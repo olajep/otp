@@ -65,17 +65,20 @@
 %% depending on the value of the HIPE_LOGGING flag.
 %%
 
--ifdef(HIPE_LOGGING).
--define(msg(Msg, Args),
-	code_server:info_msg(?MSGTAG ++ Msg, Args)).
--define(untagged_msg(Msg, Args),
-	code_server:info_msg(Msg, Args)).
--else.
--define(msg(Msg, Args),
-	io:format(?MSGTAG ++ Msg, Args)).
--define(untagged_msg(Msg, Args),
-	io:format(Msg, Args)).
--endif.
+%% -ifdef(HIPE_LOGGING).
+%% -define(msg(Msg, Args),
+%% 	code_server:info_msg(?MSGTAG ++ Msg, Args)).
+%% -define(untagged_msg(Msg, Args),
+%% 	code_server:info_msg(Msg, Args)).
+%% -else.
+%% -define(msg(Msg, Args),
+%% 	io:format(?MSGTAG ++ Msg, Args)).
+%% -define(untagged_msg(Msg, Args),
+%% 	io:format(Msg, Args)).
+%% -endif.
+
+-define(msg(Msg, Args), hipe_timing_server:msg(?MSGTAG ++ Msg, Args)).
+-define(untagged_msg, hipe_timing_server:msg).
 
 %%
 %% Define error and warning messages.
@@ -166,7 +169,7 @@
                    fun(R) ->
                            ?when_option(time, Options, ?stop_timer(Text)),
                            R
-                   end(Stmnt)end).
+		   end(Stmnt)end).
 
 -define(option_start_time(Text,Options),
 	?when_option(time, Options, ?start_timer(Text))).
@@ -178,7 +181,12 @@
 	hipe_timing:start_optional_timer(Text,?MODULE)).
 -define(opt_stop_timer(Text),
 	hipe_timing:stop_optional_timer(Text,?MODULE)).
-     
+-define(opt_time(Stmnt, Text),
+     if true -> ?opt_start_timer(Text),
+                   fun(R) ->
+			   ?opt_stop_timer(Text),
+                           R
+		   end(Stmnt)end).
 %%
 %% Turn on instrumentation of the compiler.
 %%
