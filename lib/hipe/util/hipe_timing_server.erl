@@ -199,9 +199,10 @@ get_time() -> erlang:monotonic_time().
 time_to_s(T) -> erlang:convert_time_unit(T, native, seconds).
 
 repaint(State = #state{clients=Clients, last_lines=LastLines}) ->
+    {ok, Cols} = io:columns(standard_error),
     io:fwrite(standard_error, "\nWorkers:\e[K", []),
     Lines = lists:foldl(fun({C, I}, S) ->
-				paint_client(C, I) + S
+				paint_client(Cols, C, I) + S
 			end, 0, maps:to_list(Clients)),
     Lines2 = case LastLines - Lines of
 		 Pos when Pos > 0 ->
@@ -213,12 +214,17 @@ repaint(State = #state{clients=Clients, last_lines=LastLines}) ->
     io:fwrite(standard_error, "\n\e[~wA\e[K", [Lines2+2]),
     State#state{last_lines = Lines}.
 
-paint_client(_, #client_info{suspended=true}) -> 0;
-paint_client(_, #client_info{stack=[]}) -> 0;
-paint_client(C, #client_info{stack=[{Text, Start}|_],
+paint_client(_, _, #client_info{suspended=true}) -> 0;
+paint_client(_, _, #client_info{stack=[]}) -> 0;
+paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
 			     task=Task0,
 			     friendly_name=FriendlyName}) ->
     S = time_to_s(get_time() - Start),
+    case process_info(C, memory) of
+	{memory, Mem} -> ok;
+	_ -> Mem = 0
+    end,
+    M = Mem div 1000000,
     Task = case Task0 of none -> ""; _ ->
 		   [": ", Task0]
 	   end,
@@ -226,5 +232,7 @@ paint_client(C, #client_info{stack=[{Text, Start}|_],
 	       none -> pid_to_list(C);
 	       _ -> FriendlyName
 	   end,
-    io:fwrite(standard_error, "\n~30s ~s: ~ws~s\e[K", [Name, Text, S, Task]),
+    Line = lists:flatten(io_lib:format("~30s~4ws~5wMB ~s~s",
+				       [Name, S, M, Text, Task])),
+    io:fwrite(standard_error, "\n~s\e[K", [lists:sublist(Line, Cols-1)]),
     1.

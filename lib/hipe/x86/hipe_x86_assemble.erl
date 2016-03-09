@@ -35,6 +35,7 @@
 -define(REGArch, reg64).
 -define(RMArch, rm64).
 -define(EA_DISP32_ABSOLUTE, ea_disp32_sindex).
+-define(X86STR, "amd64").
 -else.
 -define(HIPE_X86_ASSEMBLE,  hipe_x86_assemble).
 -define(HIPE_X86_ENCODE,    hipe_x86_encode).
@@ -44,6 +45,7 @@
 -define(REGArch, reg32).
 -define(RMArch, rm32).
 -define(EA_DISP32_ABSOLUTE, ea_disp32).
+-define(X86STR, "x86").
 -endif.
 
 -module(?HIPE_X86_ASSEMBLE).
@@ -69,20 +71,28 @@ assemble(CompiledCode, Closures, Exports, Options) ->
 	  || {MFA, Defun} <- CompiledCode],
   %%
   {ConstAlign,ConstSize,ConstMap,RefsFromConsts} =
-    hipe_pack_constants:pack_constants(Code, ?HIPE_X86_REGISTERS:alignment()),
+    ?option_time(hipe_pack_constants:pack_constants(Code, ?HIPE_X86_REGISTERS:alignment()),
+		 ?X86STR" pack constants", Options),
   %%
+  Translated = ?option_time(translate(Code, ConstMap, Options),
+			    ?X86STR" translate", Options),
   {CodeSize,CodeBinary,AccRefs,LabelMap,ExportMap} =
-    encode(translate(Code, ConstMap, Options), Options),
+    ?option_time(encode(Translated, Options),
+		 ?X86STR" encode", Options),
   print("Total num bytes=~w\n", [CodeSize], Options),
   %% put(code_size, CodeSize),
   %% put(const_size, ConstSize),
   %% ?when_option(verbose, Options,
   %%	       ?debug_msg("Constants are ~w bytes\n",[ConstSize])),
   %%
-  SC = hipe_pack_constants:slim_constmap(ConstMap),
-  DataRelocs = hipe_pack_constants:mk_data_relocs(RefsFromConsts, LabelMap),
-  SSE = hipe_pack_constants:slim_sorted_exportmap(ExportMap,Closures,Exports),
-  SlimRefs = hipe_pack_constants:slim_refs(AccRefs),
+  SC = ?option_time(hipe_pack_constants:slim_constmap(ConstMap),
+		    ?X86STR" slim_constmap", Options),
+  DataRelocs = ?option_time(hipe_pack_constants:mk_data_relocs(RefsFromConsts, LabelMap),
+		    ?X86STR" mk_data_relocs", Options),
+  SSE = ?option_time(hipe_pack_constants:slim_sorted_exportmap(ExportMap,Closures,Exports),
+		     ?X86STR" slim_sorted_exportmap", Options),
+  SlimRefs = ?option_time(hipe_pack_constants:slim_refs(AccRefs),
+			  ?X86STR" slim_refs", Options),
   Bin = term_to_binary([{?VERSION_STRING(),?HIPE_ERTS_CHECKSUM},
 			ConstAlign, ConstSize,
 			SC,
@@ -120,8 +130,9 @@ translate_mfas([], _ConstMap, NewCode, _Options) ->
 translate_insns([I|Insns], Context, SdiPass1, Address, NewInsns, Options) ->
   NewIs = translate_insn(I, Context, Options),
   add_insns(NewIs, Insns, Context, SdiPass1, Address, NewInsns, Options);
-translate_insns([], _Context, SdiPass1, Address, NewInsns, _Options) ->
-  {LabelMap,CodeSizeIncr} = hipe_sdi:pass2(SdiPass1),
+translate_insns([], _Context, SdiPass1, Address, NewInsns, Options) ->
+  {LabelMap,CodeSizeIncr} = ?option_time(hipe_sdi:pass2(SdiPass1),
+					 ?X86STR" sdi pass2", Options),
   {lists:reverse(NewInsns), Address+CodeSizeIncr, LabelMap}.
 
 add_insns([I|Is], Insns, Context, SdiPass1, Address, NewInsns, Options) ->

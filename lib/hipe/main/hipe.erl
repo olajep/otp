@@ -748,6 +748,7 @@ finalize(OrigList, Mod, Exports, WholeModule, Opts) ->
 		hipe_icode:icode_is_closure(Icode)],
       {T1,_} = erlang:statistics(runtime),
       ?when_option(verbose, Opts, ?debug_msg("Assembling ~w",[Mod])),
+      ?opt_start_timer("Assemble"),
       try assemble(CompiledCode, Closures, Exports, Opts) of
 	Bin ->
 	  {T2,_} = erlang:statistics(runtime),
@@ -760,6 +761,8 @@ finalize(OrigList, Mod, Exports, WholeModule, Opts) ->
       catch
 	error:Error ->
 	  {error,Error,erlang:get_stacktrace()}
+      after
+	?opt_stop_timer("Assemble")
       end
   end.
 
