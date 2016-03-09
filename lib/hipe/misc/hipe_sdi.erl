@@ -33,6 +33,8 @@
 
 -include("hipe_sdi.hrl").
 
+-include("../main/hipe.hrl").
+
 %%------------------------------------------------------------------------
 
 -type hipe_array() :: integer(). % declare this in hipe.hrl or builtin?
@@ -128,13 +130,26 @@ pass1_finalise_preS([PreSdiData|PreS], LabelMap, S) ->
 
 -spec pass2(#pass1{}) -> {gb_trees:tree(), non_neg_integer()}.
 pass2(Pass1) ->
+  ?opt_start_timer("SDI pass1_finalise"),
   {N,SDIS,LabelMap} = pass1_finalise(Pass1),
+  ?opt_stop_timer("SDI pass1_finalise"),
   LONG = mk_long(N),
+  ?opt_start_timer("SDI mk_span"),
   SPAN = mk_span(N, SDIS),
+  ?opt_stop_timer("SDI mk_span"),
+  ?opt_start_timer("SDI mk_parents"),
   PARENTS = mk_parents(N, SDIS),
+  ?opt_stop_timer("SDI mk_parents"),
+  ?opt_start_timer("SDI update_long"),
   update_long(N, SDIS, SPAN, PARENTS, LONG),
+  ?opt_stop_timer("SDI update_long"),
+  ?opt_start_timer("SDI mk_increment"),
   {INCREMENT,CodeSizeIncr} = mk_increment(N, LONG),
-  {adjust_label_map(LabelMap, INCREMENT), CodeSizeIncr}.
+  ?opt_stop_timer("SDI mk_increment"),
+  ?opt_start_timer("SDI adjust_label_map"),
+  Adjusted = adjust_label_map(LabelMap, INCREMENT),
+  ?opt_stop_timer("SDI adjust_label_map"),
+  {Adjusted, CodeSizeIncr}.
 
 %%% "Between passes 1 and 2 we will construct an integer table
 %%% LONG[1:n] such that LONG[i] is nonzero if and only if the
@@ -238,8 +253,13 @@ parents_generate_range(SdiNr, PrevSDIS) ->
 -spec update_long(non_neg_integer(), tuple(), hipe_array(),
 		  parents(),hipe_array()) -> 'ok'.
 update_long(N, SDIS, SPAN, PARENTS, LONG) ->
+  ?opt_start_timer("SDI init_wkl"),
   WKL = initWKL(N-1, SDIS, SPAN, []),
-  processWKL(WKL, SDIS, SPAN, PARENTS, LONG).
+  ?opt_stop_timer("SDI init_wkl"),
+  ?opt_start_timer("SDI process_wkl"),
+  Res = processWKL(WKL, SDIS, SPAN, PARENTS, LONG),
+  ?opt_stop_timer("SDI process_wkl"),
+  Res.
 
 -spec initWKL(integer(), tuple(),
 	      hipe_array(), [non_neg_integer()]) -> [non_neg_integer()].
