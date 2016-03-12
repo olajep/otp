@@ -57,7 +57,7 @@ cfg_labels(CFG) ->
   hipe_icode_cfg:labels(CFG).
 
 liveout_no_succ() ->
-  ordsets:new().
+  liveset_new().
 
 pp_liveness_info(LiveList) ->
  print_live_list(LiveList).

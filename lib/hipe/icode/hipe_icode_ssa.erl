@@ -38,7 +38,7 @@
 -include("../ssa/hipe_ssa.inc").
 
 %% Declarations for exported functions which are Icode-specific.
--spec ssa_liveness__analyze(#cfg{}) -> gb_trees:tree().
+-spec ssa_liveness__analyze(#cfg{}) -> hipe_icode_liveness:liveness().
 -spec ssa_liveness__livein(_, icode_lbl()) -> [#icode_variable{}].
 %% -spec ssa_liveness__livein(_, icode_lbl(), _) -> [#icode_var{}].
 

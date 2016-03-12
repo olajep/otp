@@ -33,7 +33,7 @@ cfg_succ(CFG, L) -> hipe_ppc_cfg:succ(CFG, L).
 uses(Insn) -> hipe_ppc_defuse:insn_use_gpr(Insn).
 defines(Insn) -> hipe_ppc_defuse:insn_def_gpr(Insn).
 liveout_no_succ() ->
-  ordsets:from_list(lists:map(fun({Reg,Type}) ->
+  liveset_from_list(lists:map(fun({Reg,Type}) ->
 				  hipe_ppc:mk_temp(Reg, Type)
 			      end,
 			      hipe_ppc_registers:live_at_return())).
