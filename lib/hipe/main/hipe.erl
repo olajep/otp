@@ -1382,8 +1382,12 @@ opt_keys() ->
 
 %% Definitions:
 
+o0_opts(_TargetArch) ->
+  [concurrent_comp, {regalloc, naive}].
+
 o1_opts(TargetArch) ->
-  Common = [inline_fp, pmatch, peephole],
+  Common = [inline_fp, pmatch, peephole,
+	    {regalloc, linear_scan} | o0_opts(TargetArch)],
   case TargetArch of
     ultrasparc ->
       Common;
