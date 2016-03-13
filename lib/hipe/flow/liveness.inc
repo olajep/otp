@@ -51,7 +51,7 @@
 -include("../flow/cfg.hrl").
 -include("../main/hipe.hrl").
 
--opaque liveness() :: gb_trees:tree().
+-opaque liveness() :: map().
 -export_type([liveness/0]).
 
 -export_type([liveset/0, liveset/1]).
@@ -130,8 +130,8 @@ doit_once([], Liveness, Changed) ->
 doit_once([L|Ls], Liveness, Changed) ->
   LiveOut = liveout(Liveness, L),
   {Gen, Kill0} = genkill(L, Liveness),
-  Kill = liveset_subtract(LiveOut, Gen),
-  LiveIn = liveset_union(Kill, Kill0),
+  Kill = liveset_subtract(LiveOut, Kill0),
+  LiveIn = liveset_union(Kill, Gen),
   {NewLiveness, ChangedP} = update_livein(L, LiveIn, Liveness),
   Le = length(LiveIn),
   Max = get(hipe_largest_liveset),
@@ -301,12 +301,12 @@ strip([{_,Y}|Xs]) ->
 -compile({inline, [liveness_lookup/2, liveness_update/3]}).
 
 liveness_init(List) ->
-  gb_trees:from_orddict(orddict:from_list(List)).
+  maps:from_list(List).
 
 liveness_lookup(Label, Liveness) ->
-  gb_trees:get(Label, Liveness).
+  maps:get(Label, Liveness).
 liveness_update(Label, Val, Liveness) ->
-  gb_trees:update(Label, Val, Liveness).
+  maps:update(Label, Val, Liveness).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
