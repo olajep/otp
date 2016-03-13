@@ -4,7 +4,7 @@
 
 -export([start/0, start_link/0]).
 
--export([push/2, pop/1,
+-export([push/2, pop/1, pop_msg/4, client_msg/3,
 	 begin_task/1, begin_task/2, end_task/0,
 	 suspend/1, resume/1,
 	 friendly_name/1, friendly_name/2,
@@ -18,20 +18,24 @@
 -define(SERVER, ?MODULE).
 
 -record(client_info, {
-	  stack = []           :: [{string(), integer()}],
-	  task = none          :: none | string(),
-	  suspended = false    :: boolean(),
-	  friendly_name = none :: none | string(),
-	  progress             :: undefined | {integer(), integer()}
+	  stack         = []    :: [{string(), integer()}],
+	  task          = none  :: none | string(),
+	  suspended     = false :: boolean(),
+	  friendly_name = none  :: none | string(),
+	  progress              :: undefined | {integer(), integer()},
+	  tag                   :: char()
 	 }).
 -type client_info() :: #client_info{}.
 
 -record(state, {
-	  clients = #{}  :: #{pid() => client_info()},
-	  refresh_timer  :: timer:tref(),
-	  last_lines = 0 :: integer(),
-	  pending_repaint = false :: boolean()
+	  clients         = #{}   :: #{pid() => client_info()},
+	  refresh_timer           :: timer:tref(),
+	  last_lines      = 0     :: integer(),
+	  pending_repaint = false :: boolean(),
+	  next_tag        = $A    :: char()
 	 }).
+
+-include("../main/hipe.hrl").
 
 -define(REFRESH_INTERVAL, 1000).
 
@@ -51,6 +55,22 @@ push(Id, Text) ->
 
 pop(Id) ->
     gen_server:cast(?SERVER, {pop, Id}).
+
+client_msg(Id, Msg, Args) ->
+    MsgStr = io_lib:format(Msg, Args),
+    case whereis(?SERVER) of
+	undefined -> io:format(?MSGTAG "~s~n", [MsgStr]);
+	_Pid -> gen_server:cast(?SERVER, {client_msg, Id, MsgStr})
+    end.
+
+pop_msg(Id, Msg, Args, DefaultTime) ->
+    MsgStr = io_lib:format(Msg, Args),
+    End = get_time(),
+    case whereis(?SERVER) of
+	undefined -> io:format(?MSGTAG "~s: ~wms~n", [MsgStr, DefaultTime]);
+	_Pid -> gen_server:cast(?SERVER, {pop_msg, Id, End, MsgStr,
+					  DefaultTime})
+    end.
 
 begin_task({_M,F,A}) ->
     begin_task("~w/~w", [F,A]);
@@ -124,6 +144,31 @@ handle_cast({push, Id, Text, Start}, State0) ->
 				  CI0#client_info{stack=[{Text, Start}|Stack0]}
 			  end, Id, State0),
     noreply_repaint(State);
+handle_cast({client_msg, Id, MsgStr}, State0) ->
+    State = update_client(fun(Cli=#client_info{tag=Tag}) ->
+				  io:fwrite(standard_error,
+					    ?MSGTAG "~s ~s\e[K~n",
+					    [[Tag], MsgStr]),
+				  Cli
+			  end, Id, State0),
+    noreply_repaint(State);
+handle_cast({pop_msg, Id, End, MsgStr, DefaultTime}, State0) ->
+    State = update_client(
+	      fun(Cli=#client_info{stack=Stack, tag=Tag,
+				   suspended=Suspended}) ->
+		      case Stack of
+			  [{_,Start}|T] ->
+			      MS = case Suspended of
+				       true -> Start;
+				       false -> time_to_ms(End - Start)
+				   end;
+			  T=[] -> MS = DefaultTime
+		      end,
+		      io:fwrite(standard_error, ?MSGTAG "~s ~s: ~wms\e[K~n",
+				[[Tag], MsgStr, MS]),
+		      Cli#client_info{stack=T}
+	      end, Id, State0),
+    noreply_repaint(State);
 handle_cast({pop, Id}, State0) ->
     State = maybe_update_client(fun(Cli=#client_info{stack=[]}) -> Cli;
 				   (Cli=#client_info{stack=[_|T]}) ->
@@ -159,7 +204,10 @@ handle_cast({resume, Id, Time}, State0) ->
 	      end, Id, State0),
     noreply_repaint(State);
 handle_cast({friendly_name, Id, Name}, State0) ->
-    State = update_client(fun(Cli) ->
+    State = update_client(fun(Cli = #client_info{tag=Tag}) ->
+				  io:fwrite(standard_error, ?MSGTAG
+					    "~s worker friendly name: ~s\e[K~n",
+					    [[Tag], Name]),
 				  Cli#client_info{friendly_name=Name}
 			  end, Id, State0),
     noreply_repaint(State);
@@ -225,9 +273,13 @@ maybe_update_client(Fun, Id, State=#state{clients=Clients0}) ->
 	      end,
     State#state{clients=Clients}.
 
-update_client(Fun, Id, State=#state{clients=Clients0}) ->
-    Clients = Clients0#{Id => Fun(maps:get(Id, Clients0, #client_info{}))},
-    State#state{clients=Clients}.
+update_client(Fun, Id, State=#state{clients=Clients0, next_tag=NextTag0}) ->
+    {Clients, NextTag} =
+	case Clients0 of
+	    #{Id := Cli} -> {Clients0#{Id := Fun(Cli)}, NextTag0};
+	    _ -> {Clients0#{Id => Fun(#client_info{tag=NextTag0})}, NextTag0+1}
+	end,
+    State#state{clients=Clients, next_tag=NextTag}.
 
 noreply(State=#state{pending_repaint=true}) -> {noreply, State, 0};
 noreply(State) -> {noreply, State}.
@@ -241,6 +293,7 @@ noreply_repaint(State) ->
 get_time() -> erlang:monotonic_time().
 
 time_to_s(T) -> erlang:convert_time_unit(T, native, seconds).
+time_to_ms(T) -> erlang:convert_time_unit(T, native, milli_seconds).
 
 repaint(State = #state{clients=Clients0, last_lines=LastLines}) ->
     case lists:filter(fun is_to_be_painted/1, maps:to_list(Clients0)) of
@@ -254,20 +307,24 @@ repaint(State = #state{clients=Clients0, last_lines=LastLines}) ->
 	    end,
 	    State#state{last_lines=0};
 	Clients ->
-	    {ok, Cols} = io:columns(standard_error),
-	    io:fwrite(standard_error, "\nWorkers:\e[K", []),
-	    Lines = lists:foldl(fun({C, I}, S) ->
-					paint_client(Cols, C, I) + S
-				end, 0, Clients),
-	    Lines2 = case LastLines - Lines of
-			 Pos when Pos > 0 ->
-			     io:fwrite(standard_error, "~s",
-				       [["\n\e[K" || _ <- lists:seq(1, Pos)]]),
-			     LastLines;
-			 _ -> Lines
-		     end,
-	    io:fwrite(standard_error, "\n\e[~wA\e[K", [Lines2+2]),
-	    State#state{last_lines = Lines}
+	    case io:columns(standard_error) of
+		{ok, Cols} ->
+		    io:fwrite(standard_error, "\nWorkers:\e[K", []),
+		    Lines = lists:foldl(fun({C, I}, S) ->
+						paint_client(Cols, C, I) + S
+					end, 0, Clients),
+		    Lines2 = case LastLines - Lines of
+				 Pos when Pos > 0 ->
+				     io:fwrite(standard_error, "~s",
+					       [["\n\e[K"
+						 || _ <- lists:seq(1, Pos)]]),
+				     LastLines;
+				 _ -> Lines
+			     end,
+		    io:fwrite(standard_error, "\n\e[~wA\e[K", [Lines2+2]),
+		    State#state{last_lines = Lines};
+		_ -> State
+	    end
     end.
 
 is_to_be_painted({_, #client_info{stack=[]}}) -> false;
@@ -292,7 +349,8 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
 				   suspended=Suspended,
 				   task=Task0,
 				   friendly_name=FriendlyName,
-				   progress=Progress}) ->
+				   progress=Progress,
+				   tag=Tag}) ->
     S = time_to_s(get_time() - Start),
     M = case process_info(C, reachable_memory) of
 	    {reachable_memory, Mem} ->
@@ -312,7 +370,7 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
     Time = case Suspended of true -> " SUSP"; false ->
 		   io_lib:format("~4ws", [S])
 	   end,
-    Line = lists:flatten(io_lib:format("~30s~s~s ~s~s~s",
-				       [Name, Time, M, Text, Task, P])),
+    Line = lists:flatten(io_lib:format("~30s ~s~s~s ~s~s~s",
+				       [Name, [Tag], Time, M, Text, Task, P])),
     io:fwrite(standard_error, "\n~s\e[K", [lists:sublist(Line, Cols-1)]),
     1.
