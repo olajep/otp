@@ -277,9 +277,15 @@ update_client(Fun, Id, State=#state{clients=Clients0, next_tag=NextTag0}) ->
     {Clients, NextTag} =
 	case Clients0 of
 	    #{Id := Cli} -> {Clients0#{Id := Fun(Cli)}, NextTag0};
-	    _ -> {Clients0#{Id => Fun(#client_info{tag=NextTag0})}, NextTag0+1}
+	    _ -> {Clients0#{Id => Fun(#client_info{tag=NextTag0})},
+		  next_tag(NextTag0)}
 	end,
     State#state{clients=Clients, next_tag=NextTag}.
+
+next_tag($Z) -> $a;
+next_tag($z) -> $0;
+next_tag($9) -> $A;
+next_tag(Tag) -> Tag + 1.
 
 noreply(State=#state{pending_repaint=true}) -> {noreply, State, 0};
 noreply(State) -> {noreply, State}.

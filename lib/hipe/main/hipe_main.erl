@@ -94,7 +94,7 @@ compile_icode(MFA, LinearIcode, Options, Servers) ->
 %%---------------------------------------------------------------------
 
 compile_icode(MFA, LinearIcode0, Options, Servers, DebugState) ->
-  hipe_timing_server:friendly_name(MFA),
+  ?when_has_option(time, Options, hipe_timing_server:friendly_name(MFA)),
   %% Set up gensym with the right ranges for this function.
   {LMin,LMax} = hipe_icode:icode_label_range(LinearIcode0),
   hipe_gensym:set_label_range(icode, LMin, LMax+1),
