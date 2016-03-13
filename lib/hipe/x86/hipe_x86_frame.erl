@@ -34,15 +34,18 @@
 -define(HIPE_X86_REGISTERS, hipe_amd64_registers).
 -define(HIPE_X86_LIVENESS,  hipe_amd64_liveness).
 -define(LEAF_WORDS,	    ?AMD64_LEAF_WORDS).
+-define(X86STR, "amd64").
 -else.
 -define(HIPE_X86_FRAME,     hipe_x86_frame).
 -define(HIPE_X86_REGISTERS, hipe_x86_registers).
 -define(HIPE_X86_LIVENESS,  hipe_x86_liveness).
 -define(LEAF_WORDS,	    ?X86_LEAF_WORDS).
+-define(X86STR, "x86").
 -endif.
 
 -module(?HIPE_X86_FRAME).
 -export([frame/2]).
+-include("../main/hipe.hrl").
 -include("../x86/hipe_x86.hrl").
 -include("../rtl/hipe_literals.hrl").
 
@@ -50,15 +53,21 @@
 -include("../flow/liveness.hrl").
 -undef(LIVENESS).
 
-frame(Defun, _Options) ->
+frame(Defun, Options) ->
   Formals = fix_formals(hipe_x86:defun_formals(Defun)),
-  Temps0 = all_temps(hipe_x86:defun_code(Defun), Formals),
+
+  Temps0 = ?option_time(all_temps(hipe_x86:defun_code(Defun), Formals),
+			 ?X86STR" all_temps", Options),
   MinFrame = defun_minframe(Defun),
-  Temps = ensure_minframe(MinFrame, Temps0),
+  Temps = ?option_time(ensure_minframe(MinFrame, Temps0),
+		       ?X86STR" ensure_minframe", Options),
   CFG0 = hipe_x86_cfg:init(Defun),
-  Liveness = ?HIPE_X86_LIVENESS:analyse(CFG0),
-  CFG1 = do_body(CFG0, Liveness, Formals, Temps),
-  hipe_x86_cfg:linearise(CFG1).
+  Liveness = ?option_time(?HIPE_X86_LIVENESS:analyse(CFG0),
+			  ?X86STR" liveness", Options),
+  CFG1 = ?option_time(do_body(CFG0, Liveness, Formals, Temps),
+			  ?X86STR" frame do_body", Options),
+  ?option_time(hipe_x86_cfg:linearise(CFG1),
+	       ?X86STR" frame linearise", Options).
 
 fix_formals(Formals) ->
   fix_formals(?HIPE_X86_REGISTERS:nr_args(), Formals).

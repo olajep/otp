@@ -83,15 +83,17 @@
 -ifdef(HIPE_LIVENESS_CALC_LARGEST_LIVESET).
 analyze(CFG) ->
   PO = cfg_postorder(CFG),
-  InitLiveness = liveness_init(init(cfg_labels(CFG), CFG)),
+  InitLiveness = ?opt_time(liveness_init(init(PO, CFG)),
+			   "liveness_init"),
   _Max = case get(hipe_largest_liveset) of
 	   undefined ->
 	     put(hipe_largest_liveset, 0),
 	     0;
 	   LL -> LL
 	 end,
-  Res = merry_go_around(PO, InitLiveness,0),
-  case get(hipe_largest_liveset) > _Max of 
+  Res = ?opt_time(merry_go_around(PO, InitLiveness,0),
+		  "liveness merry_go_around"),
+  case get(hipe_largest_liveset) > _Max of
     true ->
       io:format("Largest liveset: ~w \n", [get(hipe_largest_liveset)]);
     _ -> ok
@@ -102,8 +104,10 @@ analyze(CFG) ->
 
 analyze(CFG) ->
   PO = cfg_postorder(CFG),
-  InitLiveness = liveness_init(init(PO, CFG)),
-  Res = merry_go_around(PO, InitLiveness, 0),
+  InitLiveness = ?opt_time(liveness_init(init(PO, CFG)),
+			   "liveness_init"),
+  Res = ?opt_time(merry_go_around(PO, InitLiveness, 0),
+		  "liveness merry_go_around"),
   Res.
 -endif.
 
