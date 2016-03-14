@@ -23,7 +23,8 @@
 	  suspended     = false :: boolean(),
 	  friendly_name = none  :: none | string(),
 	  progress              :: undefined | {integer(), integer()},
-	  tag                   :: char()
+	  tag                   :: char(),
+	  mon                   :: monitor()
 	 }).
 -type client_info() :: #client_info{}.
 
@@ -140,7 +141,8 @@ handle_call(_Request, _From, State) ->
     reply(ok, State).
 
 handle_cast({push, Id, Text, Start}, State0) ->
-    State = update_client(fun(CI0=#client_info{stack=Stack0}) ->
+    State = update_client(fun(CI0=#client_info{stack=Stack0, mon=Mon}) ->
+				  monitor_push_max(Mon),
 				  CI0#client_info{stack=[{Text, Start}|Stack0]}
 			  end, Id, State0),
     noreply_repaint(State);
@@ -154,24 +156,26 @@ handle_cast({client_msg, Id, MsgStr}, State0) ->
     noreply_repaint(State);
 handle_cast({pop_msg, Id, End, MsgStr, DefaultTime}, State0) ->
     State = update_client(
-	      fun(Cli=#client_info{stack=Stack, tag=Tag,
+	      fun(Cli=#client_info{stack=Stack, tag=Tag, mon=Mon,
 				   suspended=Suspended}) ->
 		      case Stack of
 			  [{_,Start}|T] ->
+			      MB = monitor_pop_max(Mon) div (1024*1024),
 			      MS = case Suspended of
 				       true -> Start;
 				       false -> time_to_ms(End - Start)
 				   end;
-			  T=[] -> MS = DefaultTime
+			  T=[] -> MS = DefaultTime, MB = 0
 		      end,
-		      io:fwrite(standard_error, ?MSGTAG "~s ~s: ~wms\e[K~n",
-				[[Tag], MsgStr, MS]),
+		      io:fwrite(standard_error, ?MSGTAG "~s ~s: ~wMB ~wms\e[K~n",
+				[[Tag], MsgStr, MB, MS]),
 		      Cli#client_info{stack=T}
 	      end, Id, State0),
     noreply_repaint(State);
 handle_cast({pop, Id}, State0) ->
     State = maybe_update_client(fun(Cli=#client_info{stack=[]}) -> Cli;
-				   (Cli=#client_info{stack=[_|T]}) ->
+				   (Cli=#client_info{stack=[_|T],mon=Mon}) ->
+					monitor_pop_max(Mon),
 					Cli#client_info{stack=T}
 				end, Id, State0),
     noreply_repaint(State);
@@ -277,7 +281,8 @@ update_client(Fun, Id, State=#state{clients=Clients0, next_tag=NextTag0}) ->
     {Clients, NextTag} =
 	case Clients0 of
 	    #{Id := Cli} -> {Clients0#{Id := Fun(Cli)}, NextTag0};
-	    _ -> {Clients0#{Id => Fun(#client_info{tag=NextTag0})},
+	    _ -> {Clients0#{Id => Fun(#client_info{tag=NextTag0,
+						   mon=monitor_memory(Id)})},
 		  next_tag(NextTag0)}
 	end,
     State#state{clients=Clients, next_tag=NextTag}.
@@ -337,12 +342,9 @@ is_to_be_painted({_, #client_info{stack=[]}}) -> false;
 is_to_be_painted({_, #client_info{suspended=true}}) -> false;
 is_to_be_painted({_, #client_info{}}) -> true.
 
-%% paint_client(Cols, C, #client_info{suspended=true,
+%% paint_client(Cols, C, #client_info{suspended=true, mon=Mon,
 %% 				   friendly_name=FriendlyName}) ->
-%%     case process_info(C, reachable_memory) of
-%% 	{reachable_memory, Mem} -> ok;
-%% 	_ -> Mem = 0
-%%     end,
+%%     Mem = monitor_poll(Mon),
 %%     M = Mem div 1000000,
 %%     Name = case FriendlyName of
 %% 	       none -> pid_to_list(C);
@@ -356,12 +358,12 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
 				   task=Task0,
 				   friendly_name=FriendlyName,
 				   progress=Progress,
-				   tag=Tag}) ->
+				   tag=Tag,
+				   mon=Mon}) ->
     S = time_to_s(get_time() - Start),
-    M = case process_info(C, reachable_memory) of
-	    {reachable_memory, Mem} ->
-		io_lib:format("~5wMB", [Mem div (1024*1024)]);
-	    _ -> "   DEAD"
+    M = case monitor_poll(Mon) of
+	    0 -> "   DEAD";
+	    Mem -> io_lib:format("~5wMB", [Mem div (1024*1024)])
 	end,
     Task = case Task0 of none -> ""; _ ->
 		   [": ", Task0]
@@ -380,3 +382,92 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
 				       [Name, [Tag], Time, M, Text, Task, P])),
     io:fwrite(standard_error, "\n~s\e[K", [lists:sublist(Line, Cols-1)]),
     1.
+
+
+%% =============================================================================
+%% Memory monitoring daemon
+-type monitor() :: pid().
+-define(MONITOR_POLL_INTERVAL_MS, 1).
+
+-spec monitor_memory(pid()) -> monitor().
+monitor_memory(Process) ->
+    spawn_link(fun() -> monitor_entry(Process) end).
+
+-spec monitor_poll(monitor()) -> non_neg_integer().
+monitor_poll(Mon) when is_pid(Mon) ->
+    monitor_call(Mon, poll).
+
+-spec monitor_push_max(monitor()) -> ok.
+monitor_push_max(Mon) when is_pid(Mon) ->
+    Mon ! push_max, ok.
+
+-spec monitor_pop_max(monitor()) -> non_neg_integer().
+monitor_pop_max(Mon) when is_pid(Mon) ->
+    monitor_call(Mon, pop_max).
+
+monitor_call(Mon, Call) when is_pid(Mon) ->
+    Ref = monitor(process, Mon),
+    Mon ! {Call, self(), Ref},
+    receive
+	{Ref, Answer} ->
+	    demonitor(Ref, [flush]),
+	    Answer;
+	{'DOWN', Ref, process, Mon, Info} ->
+	    error({monitor_died, Info})
+    after 10000 -> error(timeout, [Mon, Call])
+    end.
+
+monitor_entry(Process) ->
+    erlang:trace(Process, true, [set_on_spawn, procs]),
+    {ok, _} = timer:send_after(?MONITOR_POLL_INTERVAL_MS, timeout),
+    Mem = monitor_get([Process]),
+    monitor_loop([Process], Mem, [Mem]).
+
+monitor_loop(Procs, Mem, [Max|Maxs]=M) ->
+    receive
+	{poll, Client, Ref} ->
+	    Client ! {Ref, Mem},
+	    monitor_loop(Procs, Mem, M);
+	{pop_max, Client, Ref} ->
+	    Client ! {Ref, Max},
+	    [NewMax|NewMaxs] = Maxs,
+	    monitor_loop(Procs, Mem, [max(NewMax, Mem)|NewMaxs]);
+	push_max ->
+	    New = monitor_get(Procs),
+	    monitor_loop(Procs, New, [New|M]);
+	{trace, Whom, What, Arg} ->
+	    monitor_loop(monitor_handle_trace(Procs, Whom, What, Arg), Mem, M);
+	{trace, Whom, What, Arg1, Arg2} ->
+	    monitor_loop(monitor_handle_trace(Procs, Whom, What, Arg1, Arg2),
+			 Mem, M);
+	timeout ->
+	    New = monitor_get(Procs),
+	    {ok, _} = timer:send_after(?MONITOR_POLL_INTERVAL_MS, timeout),
+	    monitor_loop(Procs, New, [max(New, Max)|Maxs]);
+	Unexpected ->
+	    error({unexpected_message, Unexpected})
+    end.
+
+monitor_get(Procs) ->
+    {Heaps, Bins} = monitor_get_collect(Procs, 0, #{}),
+    Heaps + lists:sum([Size || {_,_,Size} <- maps:values(Bins)]).
+
+monitor_get_collect([], Heaps, Bins) -> {Heaps, Bins};
+monitor_get_collect([Proc | Procs], Heaps0, Bins0) ->
+    Heaps = case process_info(Proc, memory) of
+		{memory, Mem} -> Mem + Heaps0;
+		_ -> Heaps0
+	    end,
+    Bins = case process_info(Proc, binary) of
+	       {binary, PBins} ->
+		   lists:foldl(fun(B={Id,_,_}, Bins1) -> Bins1#{Id=>B} end,
+			       Bins0, PBins);
+	       _ -> Bins0
+	   end,
+    monitor_get_collect(Procs, Heaps, Bins).
+
+monitor_handle_trace(Procs, Proc, exit, _) -> Procs -- [Proc];
+monitor_handle_trace(Procs, _, _, _) -> Procs.
+
+monitor_handle_trace(Procs, _, spawn, New, _) -> [New|Procs];
+monitor_handle_trace(Procs, _, _, _, _) -> Procs.
