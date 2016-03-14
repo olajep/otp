@@ -1670,7 +1670,7 @@ t_map(Pairs0, DefK0, DefV0) ->
 	true ->
 	  {case lists:keymember(DefK0, 1, Pairs0) of
 	     true -> Pairs0;
-	     false -> mapdict_store({DefK0, ?opt, DefV0}, Pairs0)
+	     false -> mapdict_insert({DefK0, ?opt, DefV0}, Pairs0)
 	   end, ?none, ?none};
 	false -> {Pairs0, DefK0, DefV0}
       end,
@@ -1776,6 +1776,13 @@ mapdict_store(E={K,_,_}, [{K,_,_}|T]) -> [E|T];
 mapdict_store(E1={K1,_,_}, [E2={K2,_,_}|T]) when K1 > K2->
   [E2|mapdict_store(E1, T)];
 mapdict_store(E={_,_,_}, T) -> [E|T].
+
+-spec mapdict_insert(t_map_pair(), t_map_dict()) -> t_map_dict().
+
+mapdict_insert(E={K,_,_}, D=[{K,_,_}|_]) -> error(badarg, [E, D]);
+mapdict_insert(E1={K1,_,_}, [E2={K2,_,_}|T]) when K1 > K2->
+  [E2|mapdict_insert(E1, T)];
+mapdict_insert(E={_,_,_}, T) -> [E|T].
 
 %% Merges the pairs of two maps together. Missing pairs become (?opt, DefV) or
 %% (?opt, ?none), depending on whether K \in DefK.
@@ -4665,29 +4672,23 @@ t_from_form({type, _L, list, [Type]}, TypeNames, ET, S, MR, V, D, L) ->
 t_from_form({type, _L, map, any}, TypeNames, ET, S, MR, V, D, L) ->
   builtin_type(map, t_map(), TypeNames, ET, S, MR, V, D, L);
 t_from_form({type, _L, map, List}, TypeNames, ET, S, MR, V, D, L) ->
-  {Pairs1, DefK, DefV, L5} =
-    fun PairsFromForm(_, L1) when L1 =< 0 -> {[], ?any, ?any, L1};
-	PairsFromForm([], L1) -> {[], ?none, ?none, L1};
+  {Pairs1, L5} =
+    fun PairsFromForm(_, L1) when L1 =< 0 -> {[{?any,?opt,?any}], L1};
+	PairsFromForm([], L1) -> {[], L1};
 	PairsFromForm([{type, _, Oper, [KF, VF]}|T], L1) ->
 	{Key, L2} = t_from_form(KF, TypeNames, ET, S, MR, V, D - 1, L1),
 	{Val, L3} = t_from_form(VF, TypeNames, ET, S, MR, V, D - 1, L2),
-	{Pairs0, DefK0, DefV0, L4} = PairsFromForm(T, L3 - 1),
-	case {t_is_singleton(Key), Oper} of
-	  {false, _} -> {Pairs0, t_sup(DefK0, Key), t_sup(DefV0, Val), L4};
-	  {true, map_field_assoc} -> {[{Key,?opt,Val}|Pairs0], DefK0, DefV0, L4};
-	  {true, map_field_exact} -> {[{Key,?mand,Val}|Pairs0], DefK0, DefV0, L4}
+	{Pairs0, L4} = PairsFromForm(T, L3 - 1),
+	case Oper of
+	  map_field_assoc -> {[{Key,?opt, Val}|Pairs0], L4};
+	  map_field_exact -> {[{Key,?mand,Val}|Pairs0], L4}
 	end
     end(List, L),
-  MergeMNess = fun(?opt, ?opt) -> ?opt; (_,_) -> ?mand end,
-  MergeEquals =
-    fun MergeEquals([{K,MNess1,V1},{K,MNess2,V2}|T]) ->
-	MergeEquals([{K,MergeMNess(MNess1,MNess2),t_sup(V1,V2)}|T]);
-	MergeEquals([{K,?mand,?none}|T]) -> [{K,?opt,?none}|MergeEquals(T)];
-	MergeEquals([P|T]) -> [P|MergeEquals(T)];
-	MergeEquals([]) -> []
-    end,
-  Pairs = MergeEquals(lists:keysort(1, Pairs1)),
-  {t_map(Pairs, DefK, DefV), L5};
+  try
+    {Pairs, DefK, DefV} = map_from_form(Pairs1, [], [], [], ?none, ?none),
+    {t_map(Pairs, DefK, DefV), L5}
+  catch none -> {t_none(), L5}
+  end;
 t_from_form({type, _L, mfa, []}, _TypeNames, _ET, _S, _MR, _V, _D, L) ->
   {t_mfa(), L};
 t_from_form({type, _L, module, []}, _TypeNames, _ET, _S, _MR, _V, _D, L) ->
@@ -5016,6 +5017,50 @@ list_from_form([H|Tail], TypeNames, ET, S, MR, V, D, L) ->
   {H1, L1} = t_from_form(H, TypeNames, ET, S, MR, V, D, L - 1),
   {T1, L2} = list_from_form(Tail, TypeNames, ET, S, MR, V, D, L1),
   {[H1|T1], L2}.
+
+%% Sorts, combines non-singleton pairs, and applies precendence and
+%% mandatoriness rules.
+map_from_form([], ShdwPs, MKs, Pairs, DefK, DefV) ->
+  verify_possible(MKs, ShdwPs),
+  {promote_to_mand(MKs, Pairs), DefK, DefV};
+map_from_form([{SKey,MNess,Val}|SPairs], ShdwPs0, MKs0, Pairs0, DefK0, DefV0) ->
+  Key = lists:foldl(fun({K,_},S)->t_subtract(S,K)end, SKey, ShdwPs0),
+  ShdwPs = case Key of ?none -> ShdwPs0; _ -> [{Key,Val}|ShdwPs0] end,
+  MKs = case MNess of ?mand -> [SKey|MKs0]; ?opt -> MKs0 end,
+  if MNess =:= ?mand, SKey =:= ?none -> throw(none);
+     true -> ok
+  end,
+  {Pairs, DefK, DefV} =
+    case t_is_singleton(Key) of
+      true ->
+	MNess1 = case Val =:= ?none of true -> ?opt; false -> MNess end,
+	{mapdict_insert({Key,MNess1,Val}, Pairs0), DefK0, DefV0};
+      false ->
+	case Key =:= ?none orelse Val =:= ?none of
+	  true  -> {Pairs0, DefK0,             DefV0};
+	  false -> {Pairs0, t_sup(DefK0, Key), t_sup(DefV0, Val)}
+	end
+    end,
+  map_from_form(SPairs, ShdwPs, MKs, Pairs, DefK, DefV).
+
+%% Verifies that all mandatory keys are possible, throws 'none' otherwise
+verify_possible(MKs, ShdwPs) ->
+  lists:foreach(fun(M) -> verify_possible_1(M, ShdwPs) end, MKs).
+
+verify_possible_1(M, ShdwPs) ->
+  case lists:any(fun({K,_}) -> t_inf(M, K) =/= ?none end, ShdwPs) of
+    true -> ok;
+    false -> throw(none)
+  end.
+
+-spec promote_to_mand([erl_type()], t_map_dict()) -> t_map_dict().
+
+promote_to_mand(_, []) -> [];
+promote_to_mand(MKs, [E={K,_,V}|T]) ->
+  [case lists:any(fun(M) -> t_is_subtype(K,M) end, MKs) of
+     true -> {K, ?mand, V};
+     false -> E
+   end|promote_to_mand(MKs, T)].
 
 -spec t_check_record_fields(parse_form(), sets:set(mfa()), site(),
                             mod_records()) -> ok.
