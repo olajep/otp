@@ -1854,8 +1854,12 @@ t_map_put(KV, Map) ->
 
 -spec t_map_put({erl_type(), erl_type()}, erl_type(), opaques()) -> erl_type().
 
-t_map_put(_, ?none, _) -> ?none;
-t_map_put({Key, Value}, ?map(Pairs,DefK,DefV), Opaques) ->
+t_map_put(KV, Map, Opaques) ->
+  do_opaque(Map, Opaques, fun(UM) -> map_put(KV, UM, Opaques) end).
+
+%% Key and Value are *not* unopaqued, but the map is
+map_put(_, ?none, _) -> ?none;
+map_put({Key, Value}, ?map(Pairs,DefK,DefV), Opaques) ->
   case t_is_none_or_unit(Key) orelse t_is_none_or_unit(Value) of
     true -> ?none;
     false ->
@@ -1881,7 +1885,7 @@ t_map_update(KV, Map) ->
 
 t_map_update(_, ?none, _) -> ?none;
 t_map_update(KV={Key, _}, M, Opaques) ->
-  case t_is_subtype(t_atom('true'), t_map_is_key(Key, M)) of
+  case t_is_subtype(t_atom('true'), t_map_is_key(Key, M, Opaques)) of
     false -> ?none;
     true -> t_map_put(KV, M, Opaques)
   end.
@@ -1893,17 +1897,23 @@ t_map_get(Key, Map) ->
 
 -spec t_map_get(erl_type(), erl_type(), opaques()) -> erl_type().
 
-t_map_get(_, ?none, _) -> ?none;
-t_map_get(Key, ?map(Pairs, DefK, DefV), Opaques) ->
+t_map_get(Key, Map, Opaques) ->
+  do_opaque(Map, Opaques,
+	    fun(UM) ->
+		do_opaque(Key, Opaques, fun(UK) -> map_get(UK, UM) end)
+	    end).
+
+map_get(_, ?none) -> ?none;
+map_get(Key, ?map(Pairs, DefK, DefV)) ->
   DefRes =
-    case t_do_overlap(DefK, Key, Opaques) of
+    case t_do_overlap(DefK, Key) of
       false -> t_none();
       true -> DefV
     end,
-  case t_is_singleton(Key, Opaques) of
+  case t_is_singleton(Key) of
     false ->
       lists:foldl(fun({K, _, V}, Res) ->
-		      case t_do_overlap(K, Key, Opaques) of
+		      case t_do_overlap(K, Key) of
 			false -> Res;
 			true -> t_sup(Res, V)
 		      end
@@ -1922,24 +1932,30 @@ t_map_is_key(Key, Map) ->
 
 -spec t_map_is_key(erl_type(), erl_type(), opaques()) -> erl_type().
 
-t_map_is_key(_, ?none, _) -> ?none;
-t_map_is_key(Key, ?map(Pairs, DefK, _DefV), Opaques) ->
-  case (t_is_singleton(Key, Opaques)) of
+t_map_is_key(Key, Map, Opaques) ->
+  do_opaque(Map, Opaques,
+	    fun(UM) ->
+		do_opaque(Key, Opaques, fun(UK) -> map_is_key(UK, UM) end)
+	    end).
+
+map_is_key(_, ?none) -> ?none;
+map_is_key(Key, ?map(Pairs, DefK, _DefV)) ->
+  case t_is_singleton(Key) of
     true ->
       case lists:keyfind(Key, 1, Pairs) of
 	{Key, ?mand, _}     -> t_atom(true);
 	{Key, ?opt,  ?none} -> t_atom(false);
 	{Key, ?opt,  _}     -> t_boolean();
 	false ->
-	  case t_do_overlap(DefK, Key, Opaques) of
+	  case t_do_overlap(DefK, Key) of
 	    false -> t_atom(false);
 	    true -> t_boolean()
 	  end
       end;
     false ->
-      case t_do_overlap(DefK, Key, Opaques)
+      case t_do_overlap(DefK, Key)
 	orelse lists:any(fun({_,_,?none}) -> false;
-			    ({K,_,_}) -> t_do_overlap(K, Key, Opaques)
+			    ({K,_,_}) -> t_do_overlap(K, Key)
 			 end, Pairs)
       of
 	true -> t_boolean();
@@ -4053,11 +4069,10 @@ subtype_is_equal(T1, T2) ->
 t_is_instance(ConcreteType, Type) ->
   t_is_subtype(ConcreteType, t_unopaque(Type)).
 
+-spec t_do_overlap(erl_type(), erl_type()) -> boolean().
 
--spec t_do_overlap(erl_type(), erl_type(), opaques()) -> boolean().
-
-t_do_overlap(TypeA, TypeB, Opaques) ->
-  not (t_is_none_or_unit(t_inf(TypeA, TypeB, Opaques))).
+t_do_overlap(TypeA, TypeB) ->
+  not (t_is_none_or_unit(t_inf(TypeA, TypeB))).
 
 -spec t_unopaque(erl_type()) -> erl_type().
 
