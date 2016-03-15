@@ -5072,7 +5072,7 @@ verify_possible_1(M, ShdwPs) ->
 
 promote_to_mand(_, []) -> [];
 promote_to_mand(MKs, [E={K,_,V}|T]) ->
-  [case lists:any(fun(M) -> t_is_subtype(K,M) end, MKs) of
+  [case lists:any(fun(M) -> t_is_equal(K,M) end, MKs) of
      true -> {K, ?mand, V};
      false -> E
    end|promote_to_mand(MKs, T)].
