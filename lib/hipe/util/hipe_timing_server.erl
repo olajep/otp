@@ -24,12 +24,14 @@
 	  friendly_name = none  :: none | string(),
 	  progress              :: undefined | {integer(), integer()},
 	  tag                   :: char(),
-	  mon                   :: monitor()
+	  mon                   :: monitor(),
+	  mem = 0               :: non_neg_integer()
 	 }).
 -type client_info() :: #client_info{}.
 
 -record(state, {
 	  clients         = #{}   :: #{pid() => client_info()},
+	  aliases         = #{}   :: #{pid() => pid()},
 	  refresh_timer           :: timer:tref(),
 	  last_lines      = 0     :: integer(),
 	  pending_repaint = false :: boolean(),
@@ -148,8 +150,7 @@ handle_cast({push, Id, Text, Start}, State0) ->
     noreply_repaint(State);
 handle_cast({client_msg, Id, MsgStr}, State0) ->
     State = update_client(fun(Cli=#client_info{tag=Tag}) ->
-				  io:fwrite(standard_error,
-					    ?MSGTAG "~s ~s\e[K~n",
+				  io:format(?MSGTAG "~s ~s\e[K~n",
 					    [[Tag], MsgStr]),
 				  Cli
 			  end, Id, State0),
@@ -167,7 +168,7 @@ handle_cast({pop_msg, Id, End, MsgStr, DefaultTime}, State0) ->
 				   end;
 			  T=[] -> MS = DefaultTime, MB = 0
 		      end,
-		      io:fwrite(standard_error, ?MSGTAG "~s ~s: ~wMB ~wms\e[K~n",
+		      io:format(?MSGTAG "~s ~s: ~wMB ~wms\e[K~n",
 				[[Tag], MsgStr, MB, MS]),
 		      Cli#client_info{stack=T}
 	      end, Id, State0),
@@ -209,7 +210,7 @@ handle_cast({resume, Id, Time}, State0) ->
     noreply_repaint(State);
 handle_cast({friendly_name, Id, Name}, State0) ->
     State = update_client(fun(Cli = #client_info{tag=Tag}) ->
-				  io:fwrite(standard_error, ?MSGTAG
+				  io:format(?MSGTAG
 					    "~s worker friendly name: ~s\e[K~n",
 					    [[Tag], Name]),
 				  Cli#client_info{friendly_name=Name}
@@ -243,13 +244,22 @@ handle_cast({end_progress, Id}, State0) ->
     noreply_repaint(State);
 handle_cast({msg, Txt0}, State) ->
     Txt = re:replace(Txt0, "\n", "\e[K\n"),
-    io:fwrite(standard_error, "~s", [Txt]),
+    io:format("~s", [Txt]),
     noreply_repaint(State);
 handle_cast(_Msg, State) ->
     noreply(State).
 
 handle_info(refresh_timer_tick, State) ->
     noreply_repaint(State);
+handle_info({mem_changed, Id, Mem}, State) ->
+    noreply_repaint(maybe_update_client(fun(Cli)->Cli#client_info{mem=Mem}end,
+					Id, State));
+handle_info({new_alias, Id, New}, State=#state{aliases=Aliases}) ->
+    noreply(State#state{aliases=Aliases#{New => Id}});
+handle_info({drop_alias, Id, Dead}, State=#state{aliases=Aliases})
+%% We still need the identitiy aliases, even when that process is dead
+  when Id =/= Dead ->
+    noreply(State#state{aliases=maps:remove(Dead, Aliases)});
 handle_info(timeout, State0) ->
     State =
 	case map_size(State0#state.clients) of
@@ -270,22 +280,52 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-maybe_update_client(Fun, Id, State=#state{clients=Clients0}) ->
-    Clients = case Clients0 of
-		  #{Id := Cli} -> Clients0#{Id := Fun(Cli)};
-		  _ -> Clients0
-	      end,
+maybe_update_client(Fun, Alias, State=#state{clients=Clients0, aliases=Aliases}) ->
+    Clients =
+	case Aliases of
+	    #{Alias := Id} ->
+		#{Id := Cli} = Clients0,
+		Clients0#{Id := Fun(Cli)};
+	    #{} ->
+		case
+		    any_monitor_knows_child(Alias,
+					    [Cli#client_info.mon
+					     || {_,Cli} <- maps:to_list(Clients0)])
+		of
+		    false -> Clients0;
+		    {true, Id} ->
+			#{Id := Cli} = Clients0,
+			Clients0#{Id := Fun(Cli)}
+		end
+	end,
     State#state{clients=Clients}.
 
-update_client(Fun, Id, State=#state{clients=Clients0, next_tag=NextTag0}) ->
-    {Clients, NextTag} =
-	case Clients0 of
-	    #{Id := Cli} -> {Clients0#{Id := Fun(Cli)}, NextTag0};
-	    _ -> {Clients0#{Id => Fun(#client_info{tag=NextTag0,
-						   mon=monitor_memory(Id)})},
-		  next_tag(NextTag0)}
+update_client(Fun, Alias, State=#state{clients=Clients0, next_tag=NextTag0,
+				       aliases=Aliases0}) ->
+    {Clients, Aliases, NextTag} =
+	case Aliases0 of
+	    #{Alias := Id} ->
+		#{Id := Cli} = Clients0,
+		{Clients0#{Id := Fun(Cli)}, Aliases0, NextTag0};
+	    #{} ->
+		false = maps:is_key(Alias, Clients0),
+		case
+		    monitor_memory(Alias)
+		of
+		    {already_traced, Id} ->
+			#{Id := Cli} = Clients0,
+			{Clients0#{Id := Fun(Cli)},
+			 Aliases0#{Alias => Id},
+			 NextTag0};
+		    {ok, Mon} ->
+			{Clients0#{Alias => Fun(#client_info{
+						   tag=NextTag0,
+						   mon=Mon})},
+			 Aliases0#{Alias => Alias},
+			 next_tag(NextTag0)}
+		end
 	end,
-    State#state{clients=Clients, next_tag=NextTag}.
+    State#state{clients=Clients, aliases=Aliases, next_tag=NextTag}.
 
 next_tag($Z) -> $a;
 next_tag($z) -> $0;
@@ -359,9 +399,9 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
 				   friendly_name=FriendlyName,
 				   progress=Progress,
 				   tag=Tag,
-				   mon=Mon}) ->
+				   mem=Mem}) ->
     S = time_to_s(get_time() - Start),
-    M = case monitor_poll(Mon) of
+    M = case Mem of
 	    0 -> "   DEAD";
 	    Mem -> io_lib:format("~5wMB", [Mem div (1024*1024)])
 	end,
@@ -386,16 +426,39 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
 
 %% =============================================================================
 %% Memory monitoring daemon
+%% Tracks the current and maximum memory use of a process and all its children.
 -type monitor() :: pid().
--define(MONITOR_POLL_INTERVAL_MS, 1).
+-define(MONITOR_POLL_INTERVAL_MS, 250).
+-define(WORDSIZE, erlang:system_info(wordsize)).
+-record(memory_sample, {
+	  total = 0   :: integer(),
+	  procs = #{} :: #{pid() => {Heap::integer(), PBins::_,
+				     BinVHeap::integer()}}
+	 }).
 
--spec monitor_memory(pid()) -> monitor().
+-spec monitor_memory(pid()) -> {ok, monitor()} | {already_traced, pid()}.
 monitor_memory(Process) ->
-    spawn_link(fun() -> monitor_entry(Process) end).
+    Self = self(),
+    Mon = spawn_link(fun() -> monitor_entry(Self, Process) end),
+    try erlang:trace(Process, true,
+		     [{tracer, Mon}, set_on_spawn, procs, garbage_collection]),
+	 {ok, Mon}
+    catch error:badarg ->
+	    stop_monitor(Mon),
+	    receive
+		{new_alias, Id, Process} ->
+		    {already_traced, Id}
+	    after 10000 -> error(timeout, [Process])
+	    end
+    end.
 
--spec monitor_poll(monitor()) -> non_neg_integer().
-monitor_poll(Mon) when is_pid(Mon) ->
-    monitor_call(Mon, poll).
+stop_monitor(Mon) ->
+    Mon ! die,
+    MonMonRef = monitor(process, Mon),
+    receive
+	{'DOWN', MonMonRef, process, Mon, _} -> ok
+    after 10000 -> error(timeout, [Mon])
+    end.
 
 -spec monitor_push_max(monitor()) -> ok.
 monitor_push_max(Mon) when is_pid(Mon) ->
@@ -403,7 +466,9 @@ monitor_push_max(Mon) when is_pid(Mon) ->
 
 -spec monitor_pop_max(monitor()) -> non_neg_integer().
 monitor_pop_max(Mon) when is_pid(Mon) ->
-    monitor_call(Mon, pop_max).
+    try monitor_call(Mon, pop_max)
+    catch {monitor_down, _} -> 0
+    end.
 
 monitor_call(Mon, Call) when is_pid(Mon) ->
     Ref = monitor(process, Mon),
@@ -413,61 +478,163 @@ monitor_call(Mon, Call) when is_pid(Mon) ->
 	    demonitor(Ref, [flush]),
 	    Answer;
 	{'DOWN', Ref, process, Mon, Info} ->
-	    error({monitor_died, Info})
+	    throw({monitor_down, Info})
     after 10000 -> error(timeout, [Mon, Call])
     end.
 
-monitor_entry(Process) ->
-    erlang:trace(Process, true, [set_on_spawn, procs]),
-    {ok, _} = timer:send_after(?MONITOR_POLL_INTERVAL_MS, timeout),
-    Mem = monitor_get([Process]),
-    monitor_loop([Process], Mem, [Mem]).
+-spec any_monitor_knows_child(pid(), [monitor()]) -> false | {true, pid()}.
+any_monitor_knows_child(Child, Mons) ->
+    Answers = monitor_multicall(Mons, knows_child, Child, fun(_) -> false end),
+    any_monitor_knows_child_collect(Answers).
 
-monitor_loop(Procs, Mem, [Max|Maxs]=M) ->
+any_monitor_knows_child_collect([]) -> false;
+any_monitor_knows_child_collect([false|Rest]) ->
+    any_monitor_knows_child_collect(Rest);
+any_monitor_knows_child_collect([A={true,_}|_]) -> A.
+
+monitor_multicall(Mons, Call, CallArg, DownAction) ->
+    MonRefs = maps:from_list([begin
+				  Ref = monitor(process, Mon),
+				  Mon ! {Call, CallArg, self(), Ref},
+				  {Ref, Mon}
+			      end || Mon <- Mons]),
+    monitor_multicall_receive(MonRefs, DownAction).
+
+%% If only is_key was allowed in guards... (I'm looking at you, OTP team)
+-define(IS_KEY_GUARD(Key, Map), (map_size(Map) =:= map_size(Map#{Key => []}))).
+
+monitor_multicall_receive(MonRefs, _) when map_size(MonRefs) =:= 0 -> [];
+monitor_multicall_receive(MonRefs, DownAction) ->
     receive
-	{poll, Client, Ref} ->
-	    Client ! {Ref, Mem},
-	    monitor_loop(Procs, Mem, M);
-	{pop_max, Client, Ref} ->
-	    Client ! {Ref, Max},
-	    [NewMax|NewMaxs] = Maxs,
-	    monitor_loop(Procs, Mem, [max(NewMax, Mem)|NewMaxs]);
-	push_max ->
-	    New = monitor_get(Procs),
-	    monitor_loop(Procs, New, [New|M]);
-	{trace, Whom, What, Arg} ->
-	    monitor_loop(monitor_handle_trace(Procs, Whom, What, Arg), Mem, M);
-	{trace, Whom, What, Arg1, Arg2} ->
-	    monitor_loop(monitor_handle_trace(Procs, Whom, What, Arg1, Arg2),
-			 Mem, M);
-	timeout ->
-	    New = monitor_get(Procs),
-	    {ok, _} = timer:send_after(?MONITOR_POLL_INTERVAL_MS, timeout),
-	    monitor_loop(Procs, New, [max(New, Max)|Maxs]);
-	Unexpected ->
-	    error({unexpected_message, Unexpected})
+	{Ref, Answer} when ?IS_KEY_GUARD(Ref, MonRefs) ->
+	    demonitor(Ref, [flush]),
+	    [Answer | monitor_multicall_receive(maps:remove(Ref, MonRefs), DownAction)];
+	{'DOWN', Ref, process, Mon, Info} when ?IS_KEY_GUARD(Ref, MonRefs) ->
+	    #{Ref := Mon} = MonRefs, %% Sanity
+	    [DownAction(Info) | monitor_multicall_receive(maps:remove(Ref, MonRefs), DownAction)]
+     end.
+
+monitor_entry(Server, Process) ->
+    {ok, _} = timer:send_after(?MONITOR_POLL_INTERVAL_MS, timeout),
+    #memory_sample{total=MemT} = Mem = monitor_get_initial(Process),
+    Server ! {mem_changed, Process, MemT * ?WORDSIZE},
+    monitor_loop(Server, Process, #{Process => false}, Mem, [MemT]).
+
+monitor_loop(Server, Id, Procs, Mem = #memory_sample{total=MemT}, [Max|Maxs]=M) ->
+    {NewProcs, NewMem, NewM} =
+	receive
+	    %% Calls
+	    {poll, Client, Ref} ->
+		Client ! {Ref, MemT * ?WORDSIZE},
+		{Procs, Mem, M};
+	    {pop_max, Client, Ref} ->
+		#memory_sample{total=NewT} = New = monitor_get(Procs, Mem),
+		Max1 = max(Max, NewT),
+		Client ! {Ref, Max1 * ?WORDSIZE},
+		[NewMax|NewMaxs] = Maxs,
+		{Procs, New, [max(NewMax, Max1)|NewMaxs]};
+	    {knows_child, Child, Client, Ref} ->
+	    	case Procs of
+	    	    #{Child := _} -> Client ! {Ref, {true, Id}};
+	    	    _ -> Client ! {Ref, false}
+	    	end,
+	    	{Procs, Mem, M};
+	    %% Casts
+	    push_max ->
+		#memory_sample{total=NewT} = New = monitor_get(Procs, Mem),
+		{Procs, New, [NewT|M]};
+	    die -> exit(normal);
+	    %% Others
+	    {trace, _, spawn, New, _} ->
+		Server ! {new_alias, Id, New},
+		{Procs#{New => false}, Mem, M};
+	    {trace, Proc, exit, _} ->
+		Server ! {drop_alias, Id, Proc},
+		#memory_sample{procs=MProcs} = Mem,
+		{maps:remove(Proc, Procs),
+		 Mem#memory_sample{procs=maps:remove(Proc, MProcs)},
+		 M};
+	    {trace, Whom, What, Arg} ->
+		{NewProcs1, NewMem1 = #memory_sample{total=NewT}} =
+		    monitor_handle_trace(Whom, What, Arg, Procs, Mem),
+		{NewProcs1, NewMem1, [max(NewT, Max)|Maxs]};
+	    {trace, _, _, _, _} -> {Procs, Mem, M}; %% Ignore
+	    timeout ->
+		#memory_sample{total=NewT} = New = monitor_get(Procs, Mem),
+		{ok, _} = timer:send_after(?MONITOR_POLL_INTERVAL_MS, timeout),
+		{Procs, New, [max(NewT, Max)|Maxs]};
+	    Unexpected ->
+		error({unexpected_message, Unexpected})
+	end,
+    case NewMemT = NewMem#memory_sample.total of
+	MemT -> ok;
+	_ -> Server ! {mem_changed, Id, NewMemT * ?WORDSIZE}
+    end,
+    case {map_size(NewProcs), NewM} of
+	{0, [_]} -> ok; %% Exit, nothing more to do
+	_ -> monitor_loop(Server, Id, NewProcs, NewMem, NewM)
     end.
 
-monitor_get(Procs) ->
-    {Heaps, Bins} = monitor_get_collect(Procs, 0, #{}),
-    Heaps + lists:sum([Size || {_,_,Size} <- maps:values(Bins)]).
+monitor_get_initial(Proc) ->
+    case process_info(Proc, [total_heap_size, binary]) of
+	undefined ->
+	    %% Dead already, we will either receive 'die' or a trace message
+	    %% saying that Process has exited, and exit at that point
+	    #memory_sample{};
+	[{total_heap_size, Mem}, {binary, PBins}] ->
+	    PBinSum = lists:sum([Size || {_,_,Size} <- PBins]) div ?WORDSIZE,
+	    #memory_sample{total = Mem + PBinSum, 
+			   procs=#{Proc=>{Mem,PBins,PBinSum}}}
+    end.
 
-monitor_get_collect([], Heaps, Bins) -> {Heaps, Bins};
-monitor_get_collect([Proc | Procs], Heaps0, Bins0) ->
-    Heaps = case process_info(Proc, memory) of
-		{memory, Mem} -> Mem + Heaps0;
-		_ -> Heaps0
+monitor_get(Procs, _Old = #memory_sample{procs=OldProcSamples}) ->
+    {Heaps, BinDelta, Bins, ProcSamples}
+	= monitor_get_collect(maps:to_list(Procs), 0, 0, #{}, OldProcSamples),
+    #memory_sample{
+       total = Heaps + BinDelta +
+	   lists:sum([Size || {_,_,Size} <- maps:values(Bins)]),
+       procs = ProcSamples
+      }.
+
+monitor_get_collect([], Heaps, BinDelta, Bins, PS) -> {Heaps, BinDelta, Bins, PS};
+monitor_get_collect([{Proc, true} | Procs], Heaps0, BinDelta0, Bins0, PS) ->
+    %% If we call process_info while it is garbage collecting, we will block.
+    %% Reuse old info.
+    #{Proc := {Mem, PBins, PBinSum}} = PS,
+    OldPBinSum = (lists:sum([Size || {_,_,Size} <- PBins])div?WORDSIZE),
+    monitor_get_collect(Procs, Heaps0 + Mem, BinDelta0 - OldPBinSum + PBinSum,
+			lists:foldl(fun(B={Id,_,_}, Bins1) -> Bins1#{Id=>B} end,
+				    Bins0, PBins),
+			PS);
+monitor_get_collect([{Proc, false} | Procs], Heaps0, BinDelta, Bins0, PS0) ->
+    {Bins, Heaps, PS} =
+	case process_info(Proc, [total_heap_size, binary]) of
+	    [{total_heap_size, Mem}, {binary, PBins}] ->
+		PBinSum = lists:sum([Size || {_,_,Size} <- PBins]),
+		{lists:foldl(fun(B={Id,_,_}, Bins1) -> Bins1#{Id=>B} end,
+			     Bins0, PBins),
+		 Mem + Heaps0, PS0#{Proc=>{Mem,PBins,PBinSum div?WORDSIZE}}};
+	    undefined -> {Bins0, Heaps0, PS0}
 	    end,
-    Bins = case process_info(Proc, binary) of
-	       {binary, PBins} ->
-		   lists:foldl(fun(B={Id,_,_}, Bins1) -> Bins1#{Id=>B} end,
-			       Bins0, PBins);
-	       _ -> Bins0
-	   end,
-    monitor_get_collect(Procs, Heaps, Bins).
+    monitor_get_collect(Procs, Heaps, BinDelta, Bins, PS).
 
-monitor_handle_trace(Procs, Proc, exit, _) -> Procs -- [Proc];
-monitor_handle_trace(Procs, _, _, _) -> Procs.
+monitor_handle_trace(Proc, gc_start, Info, Procs, Mem) ->
+    {Procs#{Proc := true}, monitor_update_ms(Proc, Info, Mem)};
+monitor_handle_trace(Proc, gc_end, Info, Procs, Mem) ->
+    {Procs#{Proc := false}, monitor_update_ms(Proc, Info, Mem)};
+monitor_handle_trace(_, _, _, Procs, Mem) -> {Procs, Mem}.
 
-monitor_handle_trace(Procs, _, spawn, New, _) -> [New|Procs];
-monitor_handle_trace(Procs, _, _, _, _) -> Procs.
+monitor_update_ms(Proc,Info,Mem=#memory_sample{total=OldTotal,procs=MProcs}) ->
+    case MProcs of
+	#{Proc := {OldHeap, OldPBins, OldPBinSum}} -> ok;
+	#{} ->
+	    %% Just spawned, make up some values
+	    OldHeap = OldPBinSum = 0,
+	    OldPBins = []
+    end,
+    #{heap_block_size := HS, old_heap_block_size := OHS, bin_vheap_size := BVS,
+      mbuf_size := MBS, bin_old_vheap_size := OBVS} = maps:from_list(Info),
+    Heap = HS + OHS + MBS,
+    PBinSum = BVS + OBVS,
+    Mem#memory_sample{total=OldTotal - OldHeap - OldPBinSum + Heap + PBinSum,
+		      procs=MProcs#{Proc => {Heap, OldPBins, PBinSum}}}.

@@ -1,4 +1,4 @@
-%% -*- erlang-indent-level: 2 -*-
+%% -*- mode: erlang; erlang-indent-level: 2 -*-
 %%
 %% %CopyrightBegin%
 %% 
@@ -213,7 +213,7 @@
 -define(stop_time_regalloc(Options),
 	?when_option(timeregalloc, Options, 
 		     put(regalloctime,
-			 get(regalloctime) + 
+			 case get(regalloctime) of undefined -> 0; O -> O end +
 			 (element(1,erlang:statistics(runtime))
 			  -element(1,get(regalloctime1)))))).
 -define(start_time_caller_saves(Options),

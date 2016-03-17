@@ -57,7 +57,8 @@ frame(CFG0, Options) ->
   Formals = fix_formals(hipe_x86_cfg:params(CFG0)),
   Temps0 = ?option_time(all_temps(CFG0, Formals, Options),
 			 ?X86STR" all_temps", Options),
-  MinFrame = defun_minframe(CFG0),
+  MinFrame = ?option_time(defun_minframe(CFG0),
+			  ?X86STR" defun_minframe", Options),
   Temps = ?option_time(ensure_minframe(MinFrame, Temps0),
 		       ?X86STR" ensure_minframe", Options),
   Liveness = ?option_time(?HIPE_X86_LIVENESS:analyse(CFG0),
@@ -610,9 +611,11 @@ temp_is_pseudo(Temp) ->
 %%%
 
 all_temps(CFG, Formals, Options) ->
-  S0 = fold_insns(fun find_temps/2, tset_empty(), CFG),
+  S0 = ?option_time(fold_insns(fun find_temps/2, tset_empty(), CFG),
+		    ?X86STR" find_temps", Options),
   S1 = tset_del_list(S0, Formals),
-  S2 = tset_filter(S1, fun(T) -> temp_is_pseudo(T) end),
+  S2 = ?option_time(tset_filter(S1, fun(T) -> temp_is_pseudo(T) end),
+		    ?X86STR" filter_temps", Options),
   S2.
 
 find_temps(I, S0) ->
