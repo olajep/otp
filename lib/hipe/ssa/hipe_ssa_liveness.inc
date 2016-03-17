@@ -262,21 +262,15 @@ update_directed_gen({Pred, Var}, Map)->
 %%
 %% liveness
 %%
+-compile({inline, [liveness_lookup/2, liveness_update/3]}).
 
 liveness_init(List) ->
-  liveness_init1(List, gb_trees:empty()).
+  maps:from_list(List).
 
-liveness_init1([{Label, Info}|Left], Map) ->
-  liveness_init1(Left, gb_trees:insert(Label, Info, Map));
-liveness_init1([], Map) ->
-  Map.
-
-liveness_lookup(Label, Map) ->
-  {value, Info} = gb_trees:lookup(Label, Map),
-  Info.
-
-liveness_update(Label, NewInfo, Map) ->
-  gb_trees:update(Label, NewInfo, Map).
+liveness_lookup(Label, Liveness) ->
+  maps:get(Label, Liveness).
+liveness_update(Label, Val, Liveness) ->
+  maps:update(Label, Val, Liveness).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
