@@ -503,6 +503,7 @@ atom receive
 atom recent_size
 atom reductions
 atom refc
+atom reachable_memory
 atom register
 atom registered_name
 atom reload

@@ -8,7 +8,7 @@
 	 begin_task/1, begin_task/2, end_task/0,
 	 suspend/1, resume/1,
 	 friendly_name/1, friendly_name/2,
-	 start_progress/1, inc_progress/1, end_progress/0,
+	 start_progress/1, inc_progress/1, inc_total/1, end_progress/0,
 	 msg/2]).
 
 %% gen_server callbacks
@@ -94,6 +94,10 @@ inc_progress(Amount) ->
     Id = self(),
     gen_server:cast(?SERVER, {inc_progress, Id, Amount}).
 
+inc_total(Amount) ->
+    Id = self(),
+    gen_server:cast(?SERVER, {inc_total, Id, Amount}).
+
 end_progress() ->
     Id = self(),
     gen_server:cast(?SERVER, {end_progress, Id}).
@@ -172,6 +176,13 @@ handle_cast({inc_progress, Id, Amount}, State0) ->
 		 (Cli) -> Cli#client_info{progress={Amount, 0}}
 	      end, Id, State0),
     noreply_repaint(State);
+handle_cast({inc_total, Id, Amount}, State0) ->
+    State = maybe_update_client(
+	      fun(Cli=#client_info{progress={Now, Total}}) ->
+		      Cli#client_info{progress={Now, Total + Amount}};
+		 (Cli) -> Cli#client_info{progress={0, Amount}}
+	      end, Id, State0),
+    noreply_repaint(State);
 handle_cast({end_progress, Id}, State0) ->
     State = maybe_update_client(
 	      fun(Cli=#client_info{}) ->
@@ -247,15 +258,30 @@ repaint(State = #state{clients=Clients, last_lines=LastLines}) ->
     io:fwrite(standard_error, "\n\e[~wA\e[K", [Lines2+2]),
     State#state{last_lines = Lines}.
 
-paint_client(_, _, #client_info{suspended=true}) -> 0;
 paint_client(_, _, #client_info{stack=[]}) -> 0;
+%% paint_client(_, _, #client_info{suspended=true}) -> 0;
+%% paint_client(Cols, C, #client_info{suspended=true,
+%% 				   friendly_name=FriendlyName}) ->
+%%     case process_info(C, reachable_memory) of
+%% 	{reachable_memory, Mem} -> ok;
+%% 	_ -> Mem = 0
+%%     end,
+%%     M = Mem div 1000000,
+%%     Name = case FriendlyName of
+%% 	       none -> pid_to_list(C);
+%% 	       _ -> FriendlyName
+%% 	   end,
+%%     Line = lists:flatten(io_lib:format("~30s SUSP~5wMB", [Name, M])),
+%%     io:fwrite(standard_error, "\n~s\e[K", [lists:sublist(Line, Cols-1)]),
+%%     1;
 paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
+				   suspended=Suspended,
 				   task=Task0,
 				   friendly_name=FriendlyName,
 				   progress=Progress}) ->
     S = time_to_s(get_time() - Start),
-    case process_info(C, memory) of
-	{memory, Mem} -> ok;
+    case process_info(C, reachable_memory) of
+	{reachable_memory, Mem} -> ok;
 	_ -> Mem = 0
     end,
     M = Mem div 1000000,
@@ -269,7 +295,10 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
     P = case Progress of undefined -> "";
 	    {Now, Total} -> io_lib:format(": ~w/~w", [Now, Total])
 	end,
-    Line = lists:flatten(io_lib:format("~30s~4ws~5wMB ~s~s~s",
-				       [Name, S, M, Text, Task, P])),
+    Time = case Suspended of true -> " SUSP"; false ->
+		   io_lib:format("~4ws", [S])
+	   end,
+    Line = lists:flatten(io_lib:format("~30s~s~5wMB ~s~s~s",
+				       [Name, Time, M, Text, Task, P])),
     io:fwrite(standard_error, "\n~s\e[K", [lists:sublist(Line, Cols-1)]),
     1.

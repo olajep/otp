@@ -330,7 +330,7 @@ updateWKL(SdiNr, SDIS, SdiSpan, WKL) ->
   case sdiSpanIsShort(vector_sub(SDIS, SdiNr), SdiSpan) of
     true -> WKL;
     false ->
-      hipe_timing_server:inc_progress(-1),
+      hipe_timing_server:inc_total(1),
       [SdiNr|WKL]
   end.
 
