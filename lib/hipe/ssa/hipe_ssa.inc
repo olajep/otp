@@ -1,3 +1,4 @@
+%% -*- Erlang -*-
 %% -*- erlang-indent-level: 2 -*-
 %%
 %% %CopyrightBegin%
@@ -38,6 +39,7 @@
 -include("../main/hipe.hrl").
 -include("../flow/cfg.hrl").              %% needed for the specs
 -include("../ssa/hipe_ssa_liveness.inc"). %% needed for dead code removal
+-include("../flow/liveness.hrl").         %% needed for liveset_member/2
 
 %%----------------------------------------------------------------------
 %%
@@ -286,7 +288,7 @@ checkPhiNeeds(CFG, [Node|DFofX], HasAlready, Work,
   case getCount(Node, HasAlready) < IterCount of
     true ->
       LiveIn = ?LIVENESS:livein(Liveness, Node),
-      case lists:member(Var, LiveIn) of
+      case liveset_member(Var, LiveIn) of
 	true ->
 	  CFG2 = insertPhiCode(CFG, Node, Var),
 	  HasAlready2 = gb_trees:enter(Node, IterCount, HasAlready),

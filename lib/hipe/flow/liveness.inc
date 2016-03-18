@@ -54,6 +54,8 @@
 -opaque liveness() :: gb_trees:tree().
 -export_type([liveness/0]).
 
+-export_type([liveset/0, liveset/1]).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
 %% Interface functions that MUST be implemented in the including file
@@ -339,8 +341,10 @@ print_blocks([], _Liveness, _Cfg) ->
 %%
 -type liveset(A) :: ordsets:set(A).
 -type liveset()  :: liveset(any()).
--compile({inline, [liveset_new/0, liveset_from_list/1, liveset_union/2,
-		   liveset_subtract/2]}).
+
+-compile({inline, [liveset_new/0, liveset_union/2, liveset_subtract/2,
+		   liveset_from_list/1]}).
+-compile({nowarn_unused_function, [liveset_from_list/1]}).
 
 -spec liveset_new() -> liveset().
 liveset_new() -> ordsets:new().

@@ -46,6 +46,10 @@
 -include("../x86/hipe_x86.hrl").
 -include("../rtl/hipe_literals.hrl").
 
+-define(LIVENESS, ?HIPE_X86_LIVENESS).
+-include("../flow/liveness.hrl").
+-undef(LIVENESS).
+
 frame(Defun, _Options) ->
   Formals = fix_formals(hipe_x86:defun_formals(Defun)),
   Temps0 = all_temps(hipe_x86:defun_code(Defun), Formals),
@@ -74,7 +78,7 @@ do_blocks(CFG, Context) ->
 
 do_blocks([Label|Labels], CFG, Context) ->
   Liveness = context_liveness(Context),
-  LiveOut = ?HIPE_X86_LIVENESS:liveout(Liveness, Label),
+  LiveOut = liveset_to_list(?HIPE_X86_LIVENESS:liveout(Liveness, Label)),
   Block = hipe_x86_cfg:bb(CFG, Label),
   Code = hipe_bb:code(Block),
   NewCode = do_block(Code, LiveOut, Context),

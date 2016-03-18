@@ -142,7 +142,7 @@ $(EBIN)/hipe_icode_mulret.beam: ../main/hipe.hrl hipe_icode_primops.hrl
 $(EBIN)/hipe_icode_primops.beam: hipe_icode_primops.hrl
 $(EBIN)/hipe_icode_range.beam: ../main/hipe.hrl ../flow/cfg.hrl hipe_icode_primops.hrl
 $(EBIN)/hipe_icode_split_arith.beam: ../main/hipe.hrl hipe_icode.hrl ../flow/cfg.hrl
-$(EBIN)/hipe_icode_ssa.beam: ../main/hipe.hrl ../ssa/hipe_ssa.inc ../ssa/hipe_ssa_liveness.inc
+$(EBIN)/hipe_icode_ssa.beam: ../main/hipe.hrl ../ssa/hipe_ssa.inc ../flow/liveness.hrl ../ssa/hipe_ssa_liveness.inc
 $(EBIN)/hipe_icode_ssa_const_prop.beam: ../main/hipe.hrl hipe_icode_primops.hrl ../flow/cfg.hrl ../ssa/hipe_ssa_const_prop.inc
 $(EBIN)/hipe_icode_ssa_copy_prop.beam: ../flow/cfg.hrl ../ssa/hipe_ssa_copy_prop.inc
 $(EBIN)/hipe_icode_type.beam: hipe_icode_primops.hrl ../flow/cfg.hrl hipe_icode_type.hrl

@@ -168,7 +168,8 @@ $(EBIN)/hipe_rtl_ssa_avail_expr.beam: ../main/hipe.hrl hipe_rtl.hrl
 $(EBIN)/hipe_rtl_ssa_const_prop.beam: ../main/hipe.hrl hipe_rtl.hrl \
 	../flow/cfg.hrl ../ssa/hipe_ssa_const_prop.inc
 $(EBIN)/hipe_rtl_ssa.beam: hipe_rtl.hrl \
-	../main/hipe.hrl ../ssa/hipe_ssa_liveness.inc ../ssa/hipe_ssa.inc
+	../main/hipe.hrl ../ssa/hipe_ssa_liveness.inc ../ssa/hipe_ssa.inc \
+	../flow/liveness.hrl
 $(EBIN)/hipe_rtl_ssapre.beam: ../main/hipe.hrl hipe_rtl.hrl
 $(EBIN)/hipe_rtl_symbolic.beam: hipe_rtl.hrl hipe_literals.hrl \
 	../icode/hipe_icode_primops.hrl
