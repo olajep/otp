@@ -1122,9 +1122,10 @@ help_hiper() ->
 
 help_options() ->
   HostArch = erlang:system_info(hipe_architecture),
-  O1 = expand_options([o1], HostArch),
-  O2 = expand_options([o2], HostArch),
-  O3 = expand_options([o3], HostArch),
+  O0 = expand_options([o0] ++ ?COMPILE_DEFAULTS, HostArch),
+  O1 = expand_options([o1] ++ ?COMPILE_DEFAULTS, HostArch),
+  O2 = expand_options([o2] ++ ?COMPILE_DEFAULTS, HostArch),
+  O3 = expand_options([o3] ++ ?COMPILE_DEFAULTS, HostArch),
   io:format("HiPE Compiler Options\n" ++
 	    " Boolean-valued options generally have corresponding " ++
 	    "aliases `no_...',\n" ++
@@ -1143,15 +1144,16 @@ help_options() ->
 	    "   pp_x86 = pp_native,\n" ++
 	    "   pp_amd64 = pp_native,\n" ++
 	    "   pp_ppc = pp_native,\n" ++
-	    "   o0,\n" ++
-	    "   o1 = ~p,\n" ++
+	    "   o0 = ~p,\n" ++
+	    "   o1 = ~p ++ o0,\n" ++
 	    "   o2 = ~p ++ o1,\n" ++
 	    "   o3 = ~p ++ o2.\n",
 	    [ordsets:from_list([verbose, debug, time, load, pp_beam,
 				pp_icode, pp_rtl, pp_native, pp_asm,
 				timeout]),
 	     expand_options([pp_all], HostArch),
-	     O1 -- [o1],
+	     O0 -- [o0],
+	     (O1 -- O0) -- [o1],
 	     (O2 -- O1) -- [o2],
 	     (O3 -- O2) -- [o3]]),
   ok.
@@ -1410,7 +1412,7 @@ o2_opts(TargetArch) ->
 	    icode_type, icode_inline_bifs, rtl_lcm,
 	    rtl_ssa, rtl_ssa_const_prop,
 	    spillmin_color, use_indexing, remove_comments,
-	    concurrent_comp, binary_opt | o1_opts(TargetArch)],
+	    binary_opt, {regalloc,coalescing} | o1_opts(TargetArch)],
   case TargetArch of
     T when T =:= amd64 orelse T =:= ppc64 -> % 64-bit targets
       [icode_range | Common];
@@ -1420,7 +1422,7 @@ o2_opts(TargetArch) ->
 
 o3_opts(TargetArch) ->
   %% no point checking for target architecture since this is checked in 'o1'
-  [icode_range, {regalloc,coalescing} | o2_opts(TargetArch)].
+  [icode_range | o2_opts(TargetArch)].
 
 %% Note that in general, the normal form for options should be positive.
 %% This is a good programming convention, so that tests in the code say
@@ -1484,7 +1486,8 @@ opt_basic_expansions() ->
   [{pp_all, [pp_beam, pp_icode, pp_rtl, pp_native]}].
 
 opt_expansions(TargetArch) ->
-  [{o1, o1_opts(TargetArch)},
+  [{o0, o0_opts(TargetArch)},
+   {o1, o1_opts(TargetArch)},
    {o2, o2_opts(TargetArch)},
    {o3, o3_opts(TargetArch)},
    {to_llvm, llvm_opts(o3)},
@@ -1524,11 +1527,19 @@ expand_kt2(Opts) ->
 
 -spec expand_options(comp_options(), hipe_architecture()) -> comp_options().
 
-expand_options(Opts, TargetArch) ->
+expand_options(Opts0, TargetArch) ->
+  Opts1 = proplists:normalize(Opts0, [{aliases, opt_aliases()}]),
+  Opts = normalise_opt_options(Opts1),
   proplists:normalize(Opts, [{negations, opt_negations()},
-			     {aliases, opt_aliases()},
 			     {expand, opt_basic_expansions()},
 			     {expand, opt_expansions(TargetArch)}]).
+
+normalise_opt_options([o0|Opts]) -> [o0] ++ (Opts -- [o0, o1, o2, o3]);
+normalise_opt_options([o1|Opts]) -> [o1] ++ (Opts -- [o0, o1, o2, o3]);
+normalise_opt_options([o2|Opts]) -> [o2] ++ (Opts -- [o0, o1, o2, o3]);
+normalise_opt_options([o3|Opts]) -> [o3] ++ (Opts -- [o0, o1, o2, o3]);
+normalise_opt_options([O|Opts]) -> [O|normalise_opt_options(Opts)];
+normalise_opt_options([]) -> [].
 
 -spec check_options(comp_options()) -> 'ok'.
 
