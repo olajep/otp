@@ -732,7 +732,27 @@ pi_pid2proc(Process *c_p, Eterm pid, ErtsProcLocks info_locks)
 			     pid, info_locks);
 }
 
-
+static Uint
+off_heap_size(Process *rp)
+{
+    Uint size = rp->off_heap.overhead;
+    struct erl_off_heap_header *ptr = rp->off_heap.first;
+    for(; ptr; ptr = ptr->next) {
+	if (is_binary_header(ptr->thing_word)) {
+	    ProcBin *pb_ptr = (ProcBin*)ptr;
+	    ASSERT(((ptr->thing_word) & (_TAG_HEADER_MASK)) == _TAG_HEADER_REFC_BIN);
+	    if (pb_ptr->val->orig_size > 0)
+		size += pb_ptr->val->orig_size;
+	    if (pb_ptr->val->orig_size > (1024*1024*1024)) {
+		erts_fprintf(stderr, "Enormous binary of size %#lx\n",
+			     (long int)pb_ptr->val->orig_size);
+	    }
+	} else {
+	    /* size += ptr->size; */
+	}
+    }
+    return size;
+}
 
 BIF_RETTYPE
 process_info_aux(Process *BIF_P,
@@ -1460,7 +1480,7 @@ process_info_aux(Process *BIF_P,
 	Uint hsz = 3;
 	Uint size = erts_process_memory(rp);
 	if (item == am_reachable_memory)
-	    size += rp->off_heap.overhead;
+	    size += off_heap_size(rp);
 	(void) erts_bld_uint(NULL, &hsz, size);
 	hp = HAlloc(BIF_P, hsz);
 	res = erts_bld_uint(&hp, NULL, size);

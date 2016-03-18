@@ -190,7 +190,7 @@ handle_cast({end_progress, Id}, State0) ->
 	      end, Id, State0),
     noreply_repaint(State);
 handle_cast({msg, Txt0}, State) ->
-    Txt = re:replace(Txt0, "\n", "\n\e[K"),
+    Txt = re:replace(Txt0, "\n", "\e[K\n"),
     io:fwrite(standard_error, "~s", [Txt]),
     noreply_repaint(State);
 handle_cast(_Msg, State) ->
@@ -242,24 +242,38 @@ get_time() -> erlang:monotonic_time().
 
 time_to_s(T) -> erlang:convert_time_unit(T, native, seconds).
 
-repaint(State = #state{clients=Clients, last_lines=LastLines}) ->
-    {ok, Cols} = io:columns(standard_error),
-    io:fwrite(standard_error, "\nWorkers:\e[K", []),
-    Lines = lists:foldl(fun({C, I}, S) ->
-				paint_client(Cols, C, I) + S
-			end, 0, maps:to_list(Clients)),
-    Lines2 = case LastLines - Lines of
-		 Pos when Pos > 0 ->
-		     io:fwrite(standard_error, "~s",
-			       [["\n\e[K" || _ <- lists:seq(1, Pos)]]),
-		     LastLines;
-		 _ -> Lines
-	     end,
-    io:fwrite(standard_error, "\n\e[~wA\e[K", [Lines2+2]),
-    State#state{last_lines = Lines}.
+repaint(State = #state{clients=Clients0, last_lines=LastLines}) ->
+    case lists:filter(fun is_to_be_painted/1, maps:to_list(Clients0)) of
+	[] ->
+	    case LastLines of
+		Pos when Pos > 0 ->
+		    io:fwrite(standard_error, "~s",
+			      [["\n\e[K" || _ <- lists:seq(1, Pos)]]),
+		    io:fwrite(standard_error, "\e[~wA\e[K", [Pos]);
+		_ -> ok
+	    end,
+	    State#state{last_lines=0};
+	Clients ->
+	    {ok, Cols} = io:columns(standard_error),
+	    io:fwrite(standard_error, "\nWorkers:\e[K", []),
+	    Lines = lists:foldl(fun({C, I}, S) ->
+					paint_client(Cols, C, I) + S
+				end, 0, Clients),
+	    Lines2 = case LastLines - Lines of
+			 Pos when Pos > 0 ->
+			     io:fwrite(standard_error, "~s",
+				       [["\n\e[K" || _ <- lists:seq(1, Pos)]]),
+			     LastLines;
+			 _ -> Lines
+		     end,
+	    io:fwrite(standard_error, "\n\e[~wA\e[K", [Lines2+2]),
+	    State#state{last_lines = Lines}
+    end.
 
-paint_client(_, _, #client_info{stack=[]}) -> 0;
-%% paint_client(_, _, #client_info{suspended=true}) -> 0;
+is_to_be_painted({_, #client_info{stack=[]}}) -> false;
+is_to_be_painted({_, #client_info{suspended=true}}) -> false;
+is_to_be_painted({_, #client_info{}}) -> true.
+
 %% paint_client(Cols, C, #client_info{suspended=true,
 %% 				   friendly_name=FriendlyName}) ->
 %%     case process_info(C, reachable_memory) of
@@ -280,11 +294,11 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
 				   friendly_name=FriendlyName,
 				   progress=Progress}) ->
     S = time_to_s(get_time() - Start),
-    case process_info(C, reachable_memory) of
-	{reachable_memory, Mem} -> ok;
-	_ -> Mem = 0
-    end,
-    M = Mem div 1000000,
+    M = case process_info(C, reachable_memory) of
+	    {reachable_memory, Mem} ->
+		io_lib:format("~5wMB", [Mem div (1024*1024)]);
+	    _ -> "   DEAD"
+	end,
     Task = case Task0 of none -> ""; _ ->
 		   [": ", Task0]
 	   end,
@@ -298,7 +312,7 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
     Time = case Suspended of true -> " SUSP"; false ->
 		   io_lib:format("~4ws", [S])
 	   end,
-    Line = lists:flatten(io_lib:format("~30s~s~5wMB ~s~s~s",
+    Line = lists:flatten(io_lib:format("~30s~s~s ~s~s~s",
 				       [Name, Time, M, Text, Task, P])),
     io:fwrite(standard_error, "\n~s\e[K", [lists:sublist(Line, Cols-1)]),
     1.

@@ -71,8 +71,7 @@ assemble(CompiledCode, Closures, Exports, Options) ->
 	  || {MFA, Defun} <- CompiledCode],
   %%
   {ConstAlign,ConstSize,ConstMap,RefsFromConsts} =
-    ?option_time(hipe_pack_constants:pack_constants(Code, ?HIPE_X86_REGISTERS:alignment()),
-		 ?X86STR" pack constants", Options),
+    hipe_pack_constants:pack_constants(Code, ?HIPE_X86_REGISTERS:alignment()),
   %%
   Translated = ?option_time(translate(Code, ConstMap, Options),
 			    ?X86STR" translate", Options),
@@ -85,12 +84,9 @@ assemble(CompiledCode, Closures, Exports, Options) ->
   %% ?when_option(verbose, Options,
   %%	       ?debug_msg("Constants are ~w bytes\n",[ConstSize])),
   %%
-  SC = ?option_time(hipe_pack_constants:slim_constmap(ConstMap),
-		    ?X86STR" slim_constmap", Options),
-  DataRelocs = ?option_time(hipe_pack_constants:mk_data_relocs(RefsFromConsts, LabelMap),
-		    ?X86STR" mk_data_relocs", Options),
-  SSE = ?option_time(hipe_pack_constants:slim_sorted_exportmap(ExportMap,Closures,Exports),
-		     ?X86STR" slim_sorted_exportmap", Options),
+  SC = hipe_pack_constants:slim_constmap(ConstMap),
+  DataRelocs = hipe_pack_constants:mk_data_relocs(RefsFromConsts, LabelMap),
+  SSE = hipe_pack_constants:slim_sorted_exportmap(ExportMap,Closures,Exports),
   SlimRefs = ?option_time(hipe_pack_constants:slim_refs(AccRefs),
 			  ?X86STR" slim_refs", Options),
   Bin = term_to_binary([{?VERSION_STRING(),?HIPE_ERTS_CHECKSUM},
@@ -102,7 +98,7 @@ assemble(CompiledCode, Closures, Exports, Options) ->
 			0,[] % ColdCodeSize, SlimColdRefs
 		       ]),
   %%
-  %% ?when_option(time, Options, ?stop_timer("x86 assembler")),
+  ?when_option(time, Options, ?stop_timer("x86 assembler")),
   Bin.
 
 %%%
