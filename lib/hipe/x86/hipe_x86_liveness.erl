@@ -46,7 +46,7 @@ cfg_succ(CFG, L) -> hipe_x86_cfg:succ(CFG, L).
 uses(Insn) -> ?HIPE_X86_DEFUSE:insn_use(Insn).
 defines(Insn) -> ?HIPE_X86_DEFUSE:insn_def(Insn).
 liveout_no_succ() ->
-  ordsets:from_list(lists:map(fun({Reg,Type}) ->
+  liveset_from_list(lists:map(fun({Reg,Type}) ->
 				  hipe_x86:mk_temp(Reg, Type)
 			      end,
 			      ?HIPE_X86_REGISTERS:live_at_return())).

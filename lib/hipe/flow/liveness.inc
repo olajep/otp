@@ -54,6 +54,8 @@
 -opaque liveness() :: gb_trees:tree().
 -export_type([liveness/0]).
 
+-export_type([liveset/0, liveset/1]).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
 %% Interface functions that MUST be implemented in the including file
@@ -127,8 +129,9 @@ doit_once([], Liveness, Changed) ->
   {Liveness, Changed};
 doit_once([L|Ls], Liveness, Changed) ->
   LiveOut = liveout(Liveness, L),
-  Kill = ordsets:subtract(LiveOut, kill(L, Liveness)),
-  LiveIn = ordsets:union(Kill, gen(L,Liveness)),
+  {Gen, Kill0} = genkill(L, Liveness),
+  Kill = liveset_subtract(LiveOut, Gen),
+  LiveIn = liveset_union(Kill, Kill0),
   {NewLiveness, ChangedP} = update_livein(L, LiveIn, Liveness),
   Le = length(LiveIn),
   Max = get(hipe_largest_liveset),
@@ -143,8 +146,9 @@ doit_once([], Liveness, Changed) ->
   {Liveness, Changed};
 doit_once([L|Ls], Liveness, Changed) ->
   LiveOut = liveout(Liveness, L),
-  Kill = ordsets:subtract(LiveOut, kill(L, Liveness)),
-  LiveIn = ordsets:union(Kill, gen(L,Liveness)),
+  {Gen, Kill0} = genkill(L, Liveness),
+  Kill = liveset_subtract(LiveOut, Kill0),
+  LiveIn = liveset_union(Kill, Gen),
   {NewLiveness, ChangedP} = update_livein(L, LiveIn, Liveness),
   doit_once(Ls, NewLiveness, Changed+ChangedP).
 -endif.
@@ -192,7 +196,7 @@ update_livein(Label, NewLiveIn, Liveness) ->
 %%
 %% LiveOut for a block is the union of the successors LiveIn
 %%
--spec liveout(liveness(), _) -> [_].
+-spec liveout(liveness(), _) -> liveset(_).
 
 liveout(Liveness, L) ->
   Succ = successors(L, Liveness),
@@ -204,30 +208,27 @@ liveout(Liveness, L) ->
   end.
 
 liveout1(Labels, Liveness) ->
-  liveout1(Labels, Liveness, ordsets:new()).
+  liveout1(Labels, Liveness, liveset_new()).
 
 liveout1([], _Liveness, Live) ->
   Live;
 liveout1([L|Ls], Liveness,Live) ->
-  liveout1(Ls, Liveness, ordsets:union(livein(Liveness, L), Live)).
+  liveout1(Ls, Liveness, liveset_union(livein(Liveness, L), Live)).
 
 successors(L, Liveness) ->
   {_GK, _LiveIn, Successors} = liveness_lookup(L, Liveness),
   Successors.
 
--spec livein(liveness(), _) -> [_].
+-compile({inline, [livein/2, genkill/2]}).
+-spec livein(liveness(), _) -> liveset(_).
 
 livein(Liveness, L) ->
   {_GK, LiveIn, _Successors} = liveness_lookup(L, Liveness),
   LiveIn.
 
-kill(L, Liveness) ->
-  {{_Gen, Kill}, _LiveIn, _Successors} = liveness_lookup(L, Liveness),
-  Kill.
-
-gen(L, Liveness) ->
-  {{Gen, _Kill}, _LiveIn, _Successors} = liveness_lookup(L, Liveness),
-  Gen.
+genkill(L, Liveness) ->
+  {GenKill, _LiveIn, _Successors} = liveness_lookup(L, Liveness),
+  GenKill.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -247,19 +248,19 @@ init([L|Ls], CFG) ->
   Code = hipe_bb:code(BB),
   Succ = cfg_succ(CFG, L),
   Transfer = make_bb_transfer(Code, Succ),
-  [{L, {Transfer, ordsets:new(), Succ}} | init(Ls, CFG)].
+  [{L, {Transfer, liveset_new(), Succ}} | init(Ls, CFG)].
 
 
 make_bb_transfer([], _Succ) ->
-  {ordsets:new(), ordsets:new()};   % {Gen, Kill}
+  {liveset_new(), liveset_new()};   % {Gen, Kill}
 make_bb_transfer([I|Is], Succ) ->
   {Gen, Kill} = make_bb_transfer(Is, Succ),
-  InstrGen = ordsets:from_list(uses(I)),
-  InstrKill = ordsets:from_list(defines(I)),
-  Gen1 = ordsets:subtract(Gen, InstrKill),
-  Gen2 = ordsets:union(Gen1, InstrGen),
-  Kill1 = ordsets:union(Kill, InstrKill),
-  Kill2 = ordsets:subtract(Kill1, InstrGen),
+  InstrGen = liveset_from_list(uses(I)),
+  InstrKill = liveset_from_list(defines(I)),
+  Gen1 = liveset_subtract(Gen, InstrKill),
+  Gen2 = liveset_union(Gen1, InstrGen),
+  Kill1 = liveset_union(Kill, InstrKill),
+  Kill2 = liveset_subtract(Kill1, InstrGen),
   {Gen2, Kill2}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -333,3 +334,26 @@ print_blocks([], _Liveness, _Cfg) ->
   ok.
 
 -endif. % PRETTY_PRINT
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% Liveset ADT
+%%
+-type liveset(A) :: ordsets:ordset(A).
+-type liveset()  :: liveset(any()).
+
+-compile({inline, [liveset_new/0, liveset_union/2, liveset_subtract/2,
+		   liveset_from_list/1]}).
+-compile({nowarn_unused_function, [liveset_from_list/1]}).
+
+-spec liveset_new() -> liveset().
+liveset_new() -> ordsets:new().
+
+-spec liveset_from_list([A]) -> liveset(A).
+liveset_from_list(L) -> ordsets:from_list(L).
+
+-spec liveset_union(liveset(A), liveset(B)) -> liveset(A | B).
+liveset_union(A, B) -> ordsets:union(A, B).
+
+-spec liveset_subtract(liveset(A), liveset()) -> liveset(R) when R :: A.
+liveset_subtract(A, B) -> ordsets:subtract(A, B).

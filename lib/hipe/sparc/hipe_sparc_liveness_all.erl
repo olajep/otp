@@ -33,7 +33,7 @@ cfg_succ(CFG, L) -> hipe_sparc_cfg:succ(CFG, L).
 uses(Insn) -> hipe_sparc_defuse:insn_use_all(Insn).
 defines(Insn) -> hipe_sparc_defuse:insn_def_all(Insn).
 liveout_no_succ() ->
-  ordsets:from_list(lists:map(fun({Reg,Type}) ->
+  liveset_from_list(lists:map(fun({Reg,Type}) ->
 				  hipe_sparc:mk_temp(Reg, Type)
 			      end,
 			      hipe_sparc_registers:live_at_return())).
