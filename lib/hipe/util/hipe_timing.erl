@@ -48,20 +48,23 @@ start(Text, Mod) when is_atom(Mod) ->
   Space = [$| || _ <- Timers],
   Total = start_timer(),
   put(hipe_timers, [Total|Timers]),
-  ?msg("[@~7w]" ++ Space ++ "> ~s~n", [Total,Text]).
+  Msg = io_lib:format(Space ++ "> ~s", [Text]),
+  hipe_timing_server:push(self(), Msg),
+  ?msg("[@~7w]~s~n", [Total, Msg]).
 
 -spec stop(string(), atom()) -> 'ok'.
 
 stop(Text, Mod) when is_atom(Mod) ->
   {Total,_Last} = erlang:statistics(runtime),
+  hipe_timing_server:pop(self()),
   case get(hipe_timers) of
     [StartTime|Timers] -> 
       Space = [$| || _ <- Timers],
       put(hipe_timers,Timers),
-      ?msg("[@~7w]" ++ Space ++ "< ~s: ~w~n", [Total, Text, Total-StartTime]);
+      ?msg("[@~7w]" ++ Space ++ "< ~s: ~wms~n", [Total, Text, Total-StartTime]);
     _ ->
       put(hipe_timers, []),
-      ?msg("[@~7w]< ~s: ~w~n", [Total, Text, Total])
+      ?msg("[@~7w]< ~s: ~wms~n", [Total, Text, Total])
   end.
 
 -spec start_optional_timer(string(), atom()) -> 'ok'.

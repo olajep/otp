@@ -93,7 +93,8 @@ compile_icode(MFA, LinearIcode, Options, Servers) ->
 %%
 %%---------------------------------------------------------------------
 
-compile_icode(MFA, LinearIcode0, Options, Servers, DebugState) ->  
+compile_icode(MFA, LinearIcode0, Options, Servers, DebugState) ->
+  hipe_timing_server:friendly_name(MFA),
   %% Set up gensym with the right ranges for this function.
   {LMin,LMax} = hipe_icode:icode_label_range(LinearIcode0),
   hipe_gensym:set_label_range(icode, LMin, LMax+1),
@@ -278,7 +279,8 @@ icode_ssa_type(IcodeSSA, MFA, Options, Servers) ->
       pp(AnnIcode1, MFA, icode, pp_typed_icode, Options, Servers),
       AnnIcode2 = 
 	case proplists:get_bool(inline_fp, Options) of
-	  true -> hipe_icode_fp:cfg(AnnIcode1);
+	  true -> ?option_time(hipe_icode_fp:cfg(AnnIcode1),
+			       "SSA Inline FP", Options);
 	  false -> AnnIcode1
 	end,
       AnnIcode3 = icode_range_analysis(AnnIcode2, MFA, Options, Servers),
@@ -385,8 +387,10 @@ icode_to_rtl(MFA, Icode, Options, Servers) ->
   pp(LinearRTL, MFA, rtl_linear, pp_rtl_linear, Options, Servers),
   RtlCfg  = initialize_rtl_cfg(LinearRTL, Options),
   %% hipe_rtl_cfg:pp(RtlCfg),
-  RtlCfg0 = hipe_rtl_cfg:remove_unreachable_code(RtlCfg),
-  RtlCfg1 = hipe_rtl_cfg:remove_trivial_bbs(RtlCfg0),
+  ?option_time(RtlCfg0 = hipe_rtl_cfg:remove_unreachable_code(RtlCfg),
+	       "RTL Unreach", Options),
+  ?option_time(RtlCfg1 = hipe_rtl_cfg:remove_trivial_bbs(RtlCfg0),
+	       "RTL RM TRIV", Options),
   %% hipe_rtl_cfg:pp(RtlCfg1),
   RtlCfg2 = rtl_ssa(RtlCfg1, Options),
   RtlCfg3 = rtl_symbolic(RtlCfg2, Options),
@@ -404,8 +408,10 @@ icode_to_rtl(MFA, Icode, Options, Servers) ->
         hipe_llvm_liveness:analyze(RtlCfg4)
     end,
   pp(RtlCfg5, MFA, rtl, pp_rtl, Options, Servers),
-  LinearRTL1 = hipe_rtl_cfg:linearize(RtlCfg5),
-  LinearRTL2 = hipe_rtl_cleanup_const:cleanup(LinearRTL1),
+  ?option_time(LinearRTL1 = hipe_rtl_cfg:linearize(RtlCfg5),
+	       "RTL Linearize", Options),
+  ?option_time(LinearRTL2 = hipe_rtl_cleanup_const:cleanup(LinearRTL1),
+	       "RTL Cleanup", Options),
   %% hipe_rtl:pp(standard_io, LinearRTL2),
   {LinearRTL2, Roots}.
 

@@ -67,6 +67,12 @@
 -spec cfg(cfg()) -> cfg().
 
 cfg(Cfg) ->
+  %% {M,F,A}=Cfg#cfg.info#cfg_info.'fun',
+  %% io:fwrite(standard_error, "~w hipe_icode_fp starting on ~w:~w/~w\n",
+  %% 	    [self(), M,F,A]),
+  %% Start = erlang:monotonic_time(),
+  hipe_timing_server:begin_task(Cfg#cfg.info#cfg_info.'fun'),
+
   %%hipe_icode_cfg:pp(Cfg),
   NewCfg = annotate_fclearerror(Cfg),
   State = new_state(NewCfg),
@@ -76,6 +82,14 @@ cfg(Cfg) ->
   NewCfg1 = state__cfg(NewState2),
   %% hipe_icode_cfg:pp(NewCfg1),
   NewCfg2 = unannotate_fclearerror(NewCfg1),
+  %% io:fwrite(standard_error, "~w hipe_icode_fp on ~w:~w/~w ending after ~w ms "
+  %% 	    "(ems = ~w, fems = ~w)\n",
+  %% 	    [self(), M,F,A,
+  %% 	     erlang:convert_time_unit(erlang:monotonic_time() - Start,
+  %% 				      native, milli_seconds),
+  %% 	     map_size(NewState2#state.edge_map),
+  %% 	     map_size(NewState2#state.fp_ebb_map)]),
+  hipe_timing_server:end_task(),
   NewCfg2.
 
 %%--------------------------------------------------------------------

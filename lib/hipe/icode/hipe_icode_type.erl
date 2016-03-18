@@ -122,18 +122,42 @@ cfg(Cfg, MFA, Options, Servers) ->
 
 concurrent_cfg(Cfg, MFA, CompServer) ->
   CompServer ! {ready, {MFA, self()}},
-  {ArgsFun, CallFun, FinalFun} = do_analysis(Cfg, MFA),
+
+  %% {M,F,A}=Cfg#cfg.info#cfg_info.'fun',
+  %% io:fwrite(standard_error, "~w hipe_icode_type analysis on ~w:~w/~w\n",
+  %% 	    [self(), M,F,A]),
+  %% Start = erlang:monotonic_time(),
+  hipe_timing_server:begin_task("Analyze"),
+
+  {{ArgsFun, CallFun, FinalFun}, _ATime} = do_analysis(Cfg, MFA, 0),
+  %% io:fwrite(standard_error, "~w hipe_icode_type analysis on ~w:~w/~w"
+  %% 	    " ending after ~w ms using ~w ms\n",
+  %% 	    [self(), M,F,A,
+  %% 	     erlang:convert_time_unit(erlang:monotonic_time() - Start,
+  %% 				      native, milli_seconds),
+  %% 	     erlang:convert_time_unit(ATime, native, milli_seconds)]),
+  %% Start2 = erlang:monotonic_time(),
+  hipe_timing_server:end_task(),
+  hipe_timing_server:begin_task("Rewrite"),
+
   Ans = do_rewrite(Cfg, MFA, ArgsFun, CallFun, FinalFun),
+  %% io:fwrite(standard_error, "~w hipe_icode_type rewrite on ~w:~w/~w"
+  %% 	    " ending after ~w ms\n",
+  %% 	    [self(), M,F,A,
+  %% 	     erlang:convert_time_unit(erlang:monotonic_time() - Start2,
+  %% 				      native, milli_seconds)]),
+  hipe_timing_server:end_task(),
   CompServer ! {done_rewrite, MFA},
   Ans.
 
-do_analysis(Cfg, MFA) ->
+do_analysis(Cfg, MFA, TimeAcc) ->
   receive
-    {analyse, {ArgsFun,CallFun,FinalFun}} ->
-      analyse(Cfg, {MFA,ArgsFun,CallFun,FinalFun}),
-      do_analysis(Cfg, MFA);
-    {done, {_NewArgsFun,_NewCallFun,_NewFinalFun} = Done} ->
-      Done
+    {analyse, {ArgsFun, CallFun, FinalFun}} ->
+      Start = erlang:monotonic_time(),
+      analyse(Cfg, {MFA, ArgsFun, CallFun, FinalFun}),
+      do_analysis(Cfg, MFA, TimeAcc + (erlang:monotonic_time() - Start));
+    {done, {_NewArgsFun, _NewCallFun, _NewFinalFun} = T} ->
+      {T, TimeAcc}
   end.
 
 do_rewrite(Cfg, MFA, ArgsFun, CallFun, FinalFun) ->

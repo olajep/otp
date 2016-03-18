@@ -719,6 +719,8 @@ compile_finish({Mod, Exports, Icode}, WholeModule, Options) ->
 %% and returns `{ok, {TargetArch, Binary}}' or `{error, Reason, Stack}'.
 
 finalize(OrigList, Mod, Exports, WholeModule, Opts) ->
+  _ = hipe_timing_server:start(),
+
   List = icode_multret(OrigList, Mod, Opts, Exports),
   {T1Compile,_} = erlang:statistics(runtime),
   CompiledCode =

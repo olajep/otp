@@ -96,6 +96,7 @@ handle_restart_call(MFA, {Queue, Busy} = QB) ->
   end.
 
 handle_ready(MFA, Pid, {Queue, Busy}, PM) ->
+  hipe_timing_server:suspend(Pid),
   {gb_trees:insert(MFA, Pid, PM), {Queue, Busy -- [MFA]}}.
 
 handle_restart_done(MFA, {Queue, Busy}, CG) ->
@@ -107,8 +108,9 @@ handle_no_change_done(MFA, {Queue, Busy}) ->
 
 last_action(PM, ServerPid, Mod, All) ->
   lists:foreach(fun (MFA) ->
-		    gb_trees:get(MFA, PM) ! {done, final_funs(ServerPid, Mod)},
-		    receive 
+		    hipe_timing_server:resume(Pid = gb_trees:get(MFA, PM)),
+		    Pid ! {done, final_funs(ServerPid, Mod)},
+		    receive
 		      {done_rewrite, MFA} -> ok
 		    end
 		end, All).
@@ -148,8 +150,10 @@ safe_get_res(MFA, Pid, Mod) ->
 get_res(MFA, Pid) ->
   Ref = make_ref(),
   Pid ! {get_return, MFA, self(), Ref},
+  hipe_timing_server:suspend(self()),
   receive
     {Ref, Types} ->
+      hipe_timing_server:resume(self()),
       Types
   end.
 
@@ -170,7 +174,8 @@ update_call_type(MFA, NewTypes, Pid) ->
   end.
 
 restart_fun(MFA, PM, All, ServerPid) ->
-  gb_trees:get(MFA, PM) ! {analyse, analysis_funs(All, ServerPid)},
+  hipe_timing_server:resume(Pid = gb_trees:get(MFA, PM)),
+  Pid ! {analyse, analysis_funs(All, ServerPid)},
   ok.
 
 analysis_funs(All, Pid) ->
@@ -193,6 +198,7 @@ analysis_funs(All, Pid) ->
 		  Ans
 	      end,
   FinalFun = fun (MFA, RetTypes) ->
+		 hipe_timing_server:suspend(self()),
 		 case update_return_type(MFA, RetTypes, Pid) of
 		   do_restart ->
 		     Self ! {restart_done, MFA},

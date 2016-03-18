@@ -40,8 +40,22 @@
 -spec cfg(cfg()) -> cfg().
 
 cfg(Cfg1) ->
+  %% {M,F,A}=Cfg1#cfg.info#cfg_info.'fun',
+  %% io:fwrite(standard_error, "~w hipe_icode_bincomp starting on ~w:~w/~w\n",
+  %% 	    [self(), M,F,A]),
+  %% Start = erlang:monotonic_time(),
+  hipe_timing_server:begin_task(Cfg1#cfg.info#cfg_info.'fun'),
+
   StartLbl = hipe_icode_cfg:start_label(Cfg1),
-  find_bs_get_integer([StartLbl], Cfg1, set_from_list([StartLbl])).
+  Res = find_bs_get_integer([StartLbl], Cfg1, set_from_list([StartLbl])),
+
+  %% io:fwrite(standard_error, "~w hipe_icode_bincomp on ~w:~w/~w ending after ~w ms\n",
+  %% 	    [self(), M,F,A,
+  %% 	     erlang:convert_time_unit(erlang:monotonic_time() - Start,
+  %% 				      native, milli_seconds)]),
+  hipe_timing_server:end_task(),
+
+  Res.
 
 find_bs_get_integer([Lbl|Rest], Cfg, Visited) ->
   BB = hipe_icode_cfg:bb(Cfg, Lbl),
