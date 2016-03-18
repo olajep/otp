@@ -757,9 +757,24 @@ pp_hook(Node, Ctxt, Cont) ->
     map ->
       pp_map(Node, Ctxt, Cont);
     literal ->
-      case is_map(cerl:concrete(Node)) of
-	true -> pp_map(Node, Ctxt, Cont);
-	false -> Cont(Node, Ctxt)
+      case cerl:concrete(Node) of
+	V when is_map(V) -> pp_map(Node, Ctxt, Cont);
+	V when is_bitstring(V) ->
+	  Val = fun(I) when is_integer(I) -> I;
+		   (B) when is_bitstring(B) ->
+		    BZ = bit_size(B), <<BV:BZ>> = B, BV
+		end,
+	  Sz = fun(I) when is_integer(I) -> 8;
+		  (B) when is_bitstring(B) -> bit_size(B)
+	       end,
+	  pp_hook(cerl:c_binary([cerl:c_bitstr(cerl:abstract(Val(B)),
+					       cerl:abstract(Sz(B)),
+					       cerl:abstract(1),
+					       cerl:abstract(integer),
+					       cerl:abstract([unsigned, big]))
+				 || B <- bitstring_to_list(V)]),
+		  Ctxt, Cont);
+	_ -> Cont(Node, Ctxt)
       end;
     _ ->
       Cont(Node, Ctxt)
