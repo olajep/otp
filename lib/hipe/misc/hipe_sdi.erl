@@ -257,7 +257,9 @@ update_long(N, SDIS, SPAN, PARENTS, LONG) ->
   WKL = initWKL(N-1, SDIS, SPAN, []),
   ?opt_stop_timer("SDI init_wkl"),
   ?opt_start_timer("SDI process_wkl"),
+  hipe_timing_server:start_progress(length(WKL)),
   Res = processWKL(WKL, SDIS, SPAN, PARENTS, LONG),
+  hipe_timing_server:end_progress(),
   ?opt_stop_timer("SDI process_wkl"),
   Res.
 
@@ -327,7 +329,9 @@ updateParent(Parent, Child, Incr, SDIS, SPAN, WKL) ->
 updateWKL(SdiNr, SDIS, SdiSpan, WKL) ->
   case sdiSpanIsShort(vector_sub(SDIS, SdiNr), SdiSpan) of
     true -> WKL;
-    false -> [SdiNr|WKL]
+    false ->
+      hipe_timing_server:inc_progress(-1),
+      [SdiNr|WKL]
   end.
 
 -compile({inline, sdiSpanIsShort/2}). %% Only called once

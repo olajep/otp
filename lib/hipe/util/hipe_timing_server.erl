@@ -8,6 +8,7 @@
 	 begin_task/1, begin_task/2, end_task/0,
 	 suspend/1, resume/1,
 	 friendly_name/1, friendly_name/2,
+	 start_progress/1, inc_progress/1, end_progress/0,
 	 msg/2]).
 
 %% gen_server callbacks
@@ -20,7 +21,8 @@
 	  stack = []           :: [{string(), integer()}],
 	  task = none          :: none | string(),
 	  suspended = false    :: boolean(),
-	  friendly_name = none :: none | string()
+	  friendly_name = none :: none | string(),
+	  progress             :: undefined | {integer(), integer()}
 	 }).
 -type client_info() :: #client_info{}.
 
@@ -84,6 +86,18 @@ friendly_name(Msg, Args) ->
     Id = self(),
     gen_server:cast(?SERVER, {friendly_name, Id, io_lib:format(Msg, Args)}).
 
+start_progress(Amount) ->
+    Id = self(),
+    gen_server:cast(?SERVER, {start_progress, Id, Amount}).
+
+inc_progress(Amount) ->
+    Id = self(),
+    gen_server:cast(?SERVER, {inc_progress, Id, Amount}).
+
+end_progress() ->
+    Id = self(),
+    gen_server:cast(?SERVER, {end_progress, Id}).
+
 msg(Msg, Args) ->
     case whereis(?SERVER) of
 	undefined -> io:format(Msg, Args);
@@ -144,6 +158,25 @@ handle_cast({friendly_name, Id, Name}, State0) ->
     State = update_client(fun(Cli) ->
 				  Cli#client_info{friendly_name=Name}
 			  end, Id, State0),
+    noreply_repaint(State);
+handle_cast({start_progress, Id, Total}, State0) ->
+    State = maybe_update_client(
+	      fun(Cli=#client_info{}) ->
+		      Cli#client_info{progress={0, Total}}
+	      end, Id, State0),
+    noreply_repaint(State);
+handle_cast({inc_progress, Id, Amount}, State0) ->
+    State = maybe_update_client(
+	      fun(Cli=#client_info{progress={Now, Total}}) ->
+		      Cli#client_info{progress={Now + Amount, Total}};
+		 (Cli) -> Cli#client_info{progress={Amount, 0}}
+	      end, Id, State0),
+    noreply_repaint(State);
+handle_cast({end_progress, Id}, State0) ->
+    State = maybe_update_client(
+	      fun(Cli=#client_info{}) ->
+		      Cli#client_info{progress=undefined}
+	      end, Id, State0),
     noreply_repaint(State);
 handle_cast({msg, Txt0}, State) ->
     Txt = re:replace(Txt0, "\n", "\n\e[K"),
@@ -217,8 +250,9 @@ repaint(State = #state{clients=Clients, last_lines=LastLines}) ->
 paint_client(_, _, #client_info{suspended=true}) -> 0;
 paint_client(_, _, #client_info{stack=[]}) -> 0;
 paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
-			     task=Task0,
-			     friendly_name=FriendlyName}) ->
+				   task=Task0,
+				   friendly_name=FriendlyName,
+				   progress=Progress}) ->
     S = time_to_s(get_time() - Start),
     case process_info(C, memory) of
 	{memory, Mem} -> ok;
@@ -232,7 +266,10 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
 	       none -> pid_to_list(C);
 	       _ -> FriendlyName
 	   end,
-    Line = lists:flatten(io_lib:format("~30s~4ws~5wMB ~s~s",
-				       [Name, S, M, Text, Task])),
+    P = case Progress of undefined -> "";
+	    {Now, Total} -> io_lib:format(": ~w/~w", [Now, Total])
+	end,
+    Line = lists:flatten(io_lib:format("~30s~4ws~5wMB ~s~s~s",
+				       [Name, S, M, Text, Task, P])),
     io:fwrite(standard_error, "\n~s\e[K", [lists:sublist(Line, Cols-1)]),
     1.
