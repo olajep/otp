@@ -25,7 +25,8 @@
 	  progress              :: undefined | {integer(), integer()},
 	  tag                   :: char(),
 	  mon                   :: monitor(),
-	  mem = 0               :: non_neg_integer()
+	  mem = 0               :: non_neg_integer(),
+	  cum = 0               :: non_neg_integer()
 	 }).
 -type client_info() :: #client_info{}.
 
@@ -160,17 +161,20 @@ handle_cast({pop_msg, Id, End, MsgStr, DefaultTime}, State0) ->
 	      fun(Cli=#client_info{stack=Stack, tag=Tag, mon=Mon,
 				   suspended=Suspended}) ->
 		      case Stack of
-			  [{_,Start}|T] ->
-			      MB = monitor_pop_max(Mon) div (1024*1024),
-			      MS = case Suspended of
+			  [{_,Start}|Tl] ->
+			      {MaxMem, Alloc} = monitor_pop_max(Mon),
+			      Time = case Suspended of
 				       true -> Start;
-				       false -> time_to_ms(End - Start)
+				       false -> End - Start
 				   end;
-			  T=[] -> MS = DefaultTime, MB = 0
+			  Tl=[] ->
+			      Time = time_from_ms(DefaultTime),
+			      Alloc = MaxMem = 0
 		      end,
-		      io:format(?MSGTAG "~s ~s: ~wMB ~wms\e[K~n",
-				[[Tag], MsgStr, MB, MS]),
-		      Cli#client_info{stack=T}
+		      io:format(?MSGTAG "~s ~s: ~s ~s ~s\e[K~n",
+				[[Tag], MsgStr, format_bytes(MaxMem),
+				 format_bytes(Alloc), format_time(Time)]),
+		      Cli#client_info{stack=Tl}
 	      end, Id, State0),
     noreply_repaint(State);
 handle_cast({pop, Id}, State0) ->
@@ -251,9 +255,10 @@ handle_cast(_Msg, State) ->
 
 handle_info(refresh_timer_tick, State) ->
     noreply_repaint(State);
-handle_info({mem_changed, Id, Mem}, State) ->
-    noreply_repaint(maybe_update_client(fun(Cli)->Cli#client_info{mem=Mem}end,
-					Id, State));
+handle_info({mem_changed, Id, Mem, TaskCum}, State) ->
+    noreply_repaint(maybe_update_client(
+		      fun(Cli)->Cli#client_info{mem=Mem,cum=TaskCum}end,
+		      Id, State));
 handle_info({new_alias, Id, New}, State=#state{aliases=Aliases}) ->
     noreply(State#state{aliases=Aliases#{New => Id}});
 handle_info({drop_alias, Id, Dead}, State=#state{aliases=Aliases})
@@ -345,6 +350,11 @@ get_time() -> erlang:monotonic_time().
 
 time_to_s(T) -> erlang:convert_time_unit(T, native, seconds).
 time_to_ms(T) -> erlang:convert_time_unit(T, native, milli_seconds).
+time_from_ms(MS) -> erlang:convert_time_unit(MS, milli_seconds, native).
+
+format_time(T) -> io_lib:format("~wms", [time_to_ms(T)]).
+
+format_bytes(B) -> io_lib:format("~wMB", [B div (1024 * 1024)]).
 
 repaint(State = #state{clients=Clients0, last_lines=LastLines}) ->
     case lists:filter(fun is_to_be_painted/1, maps:to_list(Clients0)) of
@@ -360,7 +370,8 @@ repaint(State = #state{clients=Clients0, last_lines=LastLines}) ->
 	Clients ->
 	    case io:columns(standard_error) of
 		{ok, Cols} ->
-		    io:fwrite(standard_error, "\nWorkers:\e[K", []),
+		    io:fwrite(standard_error, "\nWorkers:                        "
+			      " Time CumMem CurMem Task\e[K", []),
 		    Lines = lists:foldl(fun({C, I}, S) ->
 						paint_client(Cols, C, I) + S
 					end, 0, Clients),
@@ -399,11 +410,13 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
 				   friendly_name=FriendlyName,
 				   progress=Progress,
 				   tag=Tag,
-				   mem=Mem}) ->
+				   mem=Mem,
+				   cum=Cum}) ->
     S = time_to_s(get_time() - Start),
+    A = io_lib:format("~7s", [format_bytes(Cum)]),
     M = case Mem of
 	    0 -> "   DEAD";
-	    Mem -> io_lib:format("~5wMB", [Mem div (1024*1024)])
+	    Mem -> io_lib:format("~7s", [format_bytes(Mem)])
 	end,
     Task = case Task0 of none -> ""; _ ->
 		   [": ", Task0]
@@ -418,22 +431,41 @@ paint_client(Cols, C, #client_info{stack=[{Text, Start}|_],
     Time = case Suspended of true -> " SUSP"; false ->
 		   io_lib:format("~4ws", [S])
 	   end,
-    Line = lists:flatten(io_lib:format("~30s ~s~s~s ~s~s~s",
-				       [Name, [Tag], Time, M, Text, Task, P])),
+    Line = lists:flatten(io_lib:format("~30s ~s~s~s~s ~s~s~s",
+				       [Name, [Tag], Time, A, M, Text, Task, P])),
     io:fwrite(standard_error, "\n~s\e[K", [lists:sublist(Line, Cols-1)]),
     1.
 
 
 %% =============================================================================
 %% Memory monitoring daemon
-%% Tracks the current and maximum memory use of a process and all its children.
+%% Tracks the current, cumulative, and maximum memory use of a process and all
+%% its children.
 -type monitor() :: pid().
 -define(MONITOR_POLL_INTERVAL_MS, 250).
 -define(WORDSIZE, erlang:system_info(wordsize)).
+
 -record(memory_sample, {
 	  total = 0   :: integer(),
-	  procs = #{} :: #{pid() => {Heap::integer(), PBins::_,
-				     BinVHeap::integer()}}
+	  procs = #{} :: #{pid() => {
+				HeapUse::integer(), OldHeapUse::integer(),
+				Heap::integer(), PBins::_,
+				BinVHeap::integer()}}
+	 }).
+
+-record(mon_state, {
+	  server  :: pid(),                     % Upstream timing server; the
+						% process registred to ?SERVER
+	  id      :: pid(),                     % Identifier for the monitor;
+						% pid of root process
+	  cum = 0 :: non_neg_integer(),         % Cumulative allocated heap
+						% space
+	  procs	  :: #{pid() => boolean()},     % Current processes, and whether
+						% they are currently in GC
+	  mem	  :: #memory_sample{},          % Last memory sample
+	  max	  :: [{Max::non_neg_integer(),  % Stack of tasks; max lifetime
+		       StartCum			% total and cum use when the
+		       ::non_neg_integer()},...]% task started
 	 }).
 
 -spec monitor_memory(pid()) -> {ok, monitor()} | {already_traced, pid()}.
@@ -464,10 +496,10 @@ stop_monitor(Mon) ->
 monitor_push_max(Mon) when is_pid(Mon) ->
     Mon ! push_max, ok.
 
--spec monitor_pop_max(monitor()) -> non_neg_integer().
+-spec monitor_pop_max(monitor()) -> {non_neg_integer(), non_neg_integer()}.
 monitor_pop_max(Mon) when is_pid(Mon) ->
     try monitor_call(Mon, pop_max)
-    catch {monitor_down, _} -> 0
+    catch {monitor_down, _} -> {0, 0}
     end.
 
 monitor_call(Mon, Call) when is_pid(Mon) ->
@@ -508,133 +540,177 @@ monitor_multicall_receive(MonRefs, DownAction) ->
     receive
 	{Ref, Answer} when ?IS_KEY_GUARD(Ref, MonRefs) ->
 	    demonitor(Ref, [flush]),
-	    [Answer | monitor_multicall_receive(maps:remove(Ref, MonRefs), DownAction)];
+	    [Answer | monitor_multicall_receive(
+			maps:remove(Ref, MonRefs), DownAction)];
 	{'DOWN', Ref, process, Mon, Info} when ?IS_KEY_GUARD(Ref, MonRefs) ->
 	    #{Ref := Mon} = MonRefs, %% Sanity
-	    [DownAction(Info) | monitor_multicall_receive(maps:remove(Ref, MonRefs), DownAction)]
+	    [DownAction(Info) | monitor_multicall_receive(
+				  maps:remove(Ref, MonRefs), DownAction)]
      end.
 
 monitor_entry(Server, Process) ->
     {ok, _} = timer:send_after(?MONITOR_POLL_INTERVAL_MS, timeout),
     #memory_sample{total=MemT} = Mem = monitor_get_initial(Process),
-    Server ! {mem_changed, Process, MemT * ?WORDSIZE},
-    monitor_loop(Server, Process, #{Process => false}, Mem, [MemT]).
+    Server ! {mem_changed, Process, MemT * ?WORDSIZE, 0},
+    monitor_loop(#mon_state{server=Server, id=Process, mem=Mem, max=[{MemT, 0}],
+			    procs=#{Process => false}}).
 
-monitor_loop(Server, Id, Procs, Mem = #memory_sample{total=MemT}, [Max|Maxs]=M) ->
-    {NewProcs, NewMem, NewM} =
+monitor_loop(#mon_state{server=Server, id=Id, procs=Procs, cum=Cum,
+			mem = Mem = #memory_sample{total=MemT},
+			max = [{Max,StartCum}|Maxs]=M} = State) ->
+    NewState
+	= #mon_state{procs=NewProcs, mem=NewMem, max=NewM=[{_,NewStartCum}|_],
+		     cum=NewCum} =
 	receive
 	    %% Calls
 	    {poll, Client, Ref} ->
 		Client ! {Ref, MemT * ?WORDSIZE},
-		{Procs, Mem, M};
+		State;
 	    {pop_max, Client, Ref} ->
-		#memory_sample{total=NewT} = New = monitor_get(Procs, Mem),
+		{#memory_sample{total=NewT} = New, NewCum0}
+		    = monitor_get(Procs, Mem, Cum),
 		Max1 = max(Max, NewT),
-		Client ! {Ref, Max1 * ?WORDSIZE},
-		[NewMax|NewMaxs] = Maxs,
-		{Procs, New, [max(NewMax, Max1)|NewMaxs]};
+		Client ! {Ref, {Max1 * ?WORDSIZE,
+				(NewCum0-StartCum) * ?WORDSIZE}},
+		[{NewMax,NewStartCum0}|NewMaxs] = Maxs,
+		State#mon_state{
+		  mem=New, max=[{max(NewMax, Max1),NewStartCum0}|NewMaxs],
+		  cum = NewCum0};
 	    {knows_child, Child, Client, Ref} ->
 	    	case Procs of
 	    	    #{Child := _} -> Client ! {Ref, {true, Id}};
 	    	    _ -> Client ! {Ref, false}
-	    	end,
-	    	{Procs, Mem, M};
+		end,
+		State;
 	    %% Casts
 	    push_max ->
-		#memory_sample{total=NewT} = New = monitor_get(Procs, Mem),
-		{Procs, New, [NewT|M]};
+		{#memory_sample{total=NewT} = New, NewCum0}
+		    = monitor_get(Procs, Mem, Cum),
+		State#mon_state{mem=New, max=[{NewT,NewCum0}|M], cum=NewCum0};
 	    die -> exit(normal);
 	    %% Others
 	    {trace, _, spawn, New, _} ->
 		Server ! {new_alias, Id, New},
-		{Procs#{New => false}, Mem, M};
+		State#mon_state{procs=Procs#{New => false}};
 	    {trace, Proc, exit, _} ->
 		Server ! {drop_alias, Id, Proc},
 		#memory_sample{procs=MProcs} = Mem,
-		{maps:remove(Proc, Procs),
-		 Mem#memory_sample{procs=maps:remove(Proc, MProcs)},
-		 M};
+		State#mon_state{
+		  procs=maps:remove(Proc, Procs),
+		  mem=Mem#memory_sample{procs=maps:remove(Proc, MProcs)}};
 	    {trace, Whom, What, Arg} ->
-		{NewProcs1, NewMem1 = #memory_sample{total=NewT}} =
-		    monitor_handle_trace(Whom, What, Arg, Procs, Mem),
-		{NewProcs1, NewMem1, [max(NewT, Max)|Maxs]};
-	    {trace, _, _, _, _} -> {Procs, Mem, M}; %% Ignore
+		{NewCum1, NewProcs1, NewMem1 = #memory_sample{total=NewT}} =
+		    monitor_handle_trace(Whom, What, Arg, Cum, Procs, Mem),
+		State#mon_state{cum=NewCum1, procs=NewProcs1, mem=NewMem1,
+				max=[{max(NewT, Max),StartCum}|Maxs]};
+	    {trace, _, _, _, _} -> State; %% Ignore
 	    timeout ->
-		#memory_sample{total=NewT} = New = monitor_get(Procs, Mem),
+		{#memory_sample{total=NewT} = New, NewCum0}
+		    = monitor_get(Procs, Mem, Cum),
 		{ok, _} = timer:send_after(?MONITOR_POLL_INTERVAL_MS, timeout),
-		{Procs, New, [max(NewT, Max)|Maxs]};
+		State#mon_state{mem=New, max=[{max(NewT, Max),StartCum}|Maxs],
+				cum=NewCum0};
 	    Unexpected ->
 		error({unexpected_message, Unexpected})
 	end,
-    case NewMemT = NewMem#memory_sample.total of
-	MemT -> ok;
-	_ -> Server ! {mem_changed, Id, NewMemT * ?WORDSIZE}
+    case {NewMemT = NewMem#memory_sample.total, Cum-StartCum,
+	  NewCum-NewStartCum}
+    of
+	{MemT, Same, Same} -> ok;
+	{_, _, TaskCum} ->
+	    [{_, NewStartCum}|_] = NewM,
+	    Server ! {mem_changed, Id, NewMemT * ?WORDSIZE, TaskCum * ?WORDSIZE}
     end,
     case {map_size(NewProcs), NewM} of
 	{0, [_]} -> ok; %% Exit, nothing more to do
-	_ -> monitor_loop(Server, Id, NewProcs, NewMem, NewM)
+	_ -> monitor_loop(NewState)
     end.
 
 monitor_get_initial(Proc) ->
-    case process_info(Proc, [total_heap_size, binary]) of
+    case
+	try process_info(Proc, [total_heap_size, binary, heap_use])
+	catch error:badarg -> process_info(Proc, [total_heap_size, binary])
+	end
+    of
 	undefined ->
 	    %% Dead already, we will either receive 'die' or a trace message
 	    %% saying that Process has exited, and exit at that point
 	    #memory_sample{};
-	[{total_heap_size, Mem}, {binary, PBins}] ->
+	[{total_heap_size, Mem}, {binary, PBins} | Tl] ->
+	    HU = case Tl of [] -> 0; [{heap_use, HU0}] -> HU0 end,
 	    PBinSum = lists:sum([Size || {_,_,Size} <- PBins]) div ?WORDSIZE,
 	    #memory_sample{total = Mem + PBinSum, 
-			   procs=#{Proc=>{Mem,PBins,PBinSum}}}
+			   procs=#{Proc=>{HU,0,Mem,PBins,PBinSum}}}
     end.
 
-monitor_get(Procs, _Old = #memory_sample{procs=OldProcSamples}) ->
-    {Heaps, BinDelta, Bins, ProcSamples}
-	= monitor_get_collect(maps:to_list(Procs), 0, 0, #{}, OldProcSamples),
-    #memory_sample{
-       total = Heaps + BinDelta +
-	   lists:sum([Size || {_,_,Size} <- maps:values(Bins)]),
-       procs = ProcSamples
-      }.
+monitor_get(Procs, _Old = #memory_sample{procs=OldProcSamples}, OldCum) ->
+    {Heaps, BinDelta, Cum, Bins, ProcSamples}
+	= monitor_get_collect(maps:to_list(Procs), 0, 0, OldCum, #{},
+			      OldProcSamples),
+    {#memory_sample{
+	total = Heaps + BinDelta +
+	    lists:sum([Size || {_,_,Size} <- maps:values(Bins)]),
+	procs = ProcSamples
+       }, Cum}.
 
-monitor_get_collect([], Heaps, BinDelta, Bins, PS) -> {Heaps, BinDelta, Bins, PS};
-monitor_get_collect([{Proc, true} | Procs], Heaps0, BinDelta0, Bins0, PS) ->
-    %% If we call process_info while it is garbage collecting, we will block.
-    %% Reuse old info.
-    #{Proc := {Mem, PBins, PBinSum}} = PS,
-    OldPBinSum = (lists:sum([Size || {_,_,Size} <- PBins])div?WORDSIZE),
-    monitor_get_collect(Procs, Heaps0 + Mem, BinDelta0 - OldPBinSum + PBinSum,
-			lists:foldl(fun(B={Id,_,_}, Bins1) -> Bins1#{Id=>B} end,
-				    Bins0, PBins),
-			PS);
-monitor_get_collect([{Proc, false} | Procs], Heaps0, BinDelta, Bins0, PS0) ->
-    {Bins, Heaps, PS} =
-	case process_info(Proc, [total_heap_size, binary]) of
-	    [{total_heap_size, Mem}, {binary, PBins}] ->
+monitor_get_collect([], Heaps, BinDelta, Cum, Bins, PS) ->
+    {Heaps, BinDelta, Cum, Bins, PS};
+monitor_get_collect([{Proc,false}|Procs], Heaps0, BinDelta, Cum0, Bins0,
+		    PS0) ->
+    {Bins, Heaps, Cum, PS} =
+	case
+	    try process_info(Proc, [total_heap_size, binary, heap_use])
+	    catch error:badarg -> process_info(Proc, [total_heap_size, binary])
+	    end
+	of
+	    [{total_heap_size, Mem}, {binary, PBins} | Tl] ->
+		#{Proc := {OldHU, OHU, _, _, _}} = PS0,
+		HU = case Tl of [] -> OldHU; [{heap_use, HU0}] -> HU0 end,
 		PBinSum = lists:sum([Size || {_,_,Size} <- PBins]),
 		{lists:foldl(fun(B={Id,_,_}, Bins1) -> Bins1#{Id=>B} end,
 			     Bins0, PBins),
-		 Mem + Heaps0, PS0#{Proc=>{Mem,PBins,PBinSum div?WORDSIZE}}};
-	    undefined -> {Bins0, Heaps0, PS0}
-	    end,
-    monitor_get_collect(Procs, Heaps, BinDelta, Bins, PS).
+		 Mem + Heaps0, Cum0 + (HU - OldHU),
+		 PS0#{Proc=>{HU, OHU, Mem, PBins, PBinSum div ?WORDSIZE}}};
+	    undefined -> {Bins0, Heaps0, Cum0, PS0}
+	end,
+    monitor_get_collect(Procs, Heaps, BinDelta, Cum, Bins, PS);
+monitor_get_collect([{Proc,true}|Procs], Heaps0, BinDelta0, Cum, Bins0, PS) ->
+    %% If we call process_info while it is garbage collecting, we will block.
+    %% Reuse old info.
+    #{Proc := {_, _, Mem, PBins, PBinSum}} = PS,
+    OldPBinSum = (lists:sum([Size || {_,_,Size} <- PBins])div?WORDSIZE),
+    monitor_get_collect(Procs, Heaps0 + Mem, BinDelta0 - OldPBinSum + PBinSum,
+			Cum,
+			lists:foldl(fun(B={Id,_,_}, Bins1) -> Bins1#{Id=>B} end,
+				    Bins0, PBins),
+			PS).
 
-monitor_handle_trace(Proc, gc_start, Info, Procs, Mem) ->
-    {Procs#{Proc := true}, monitor_update_ms(Proc, Info, Mem)};
-monitor_handle_trace(Proc, gc_end, Info, Procs, Mem) ->
-    {Procs#{Proc := false}, monitor_update_ms(Proc, Info, Mem)};
-monitor_handle_trace(_, _, _, Procs, Mem) -> {Procs, Mem}.
+monitor_handle_trace(Proc, gc_start, Info, Cum, Procs, Mem) ->
+    monitor_update_ms(Proc, true, Info, Cum, Procs, Mem);
+monitor_handle_trace(Proc, gc_end, Info, Cum, Procs, Mem) ->
+    monitor_update_ms(Proc, false, Info, Cum, Procs, Mem);
+monitor_handle_trace(_, _, _, Cum, Procs, Mem) -> {Cum, Procs, Mem}.
 
-monitor_update_ms(Proc,Info,Mem=#memory_sample{total=OldTotal,procs=MProcs}) ->
+monitor_update_ms(Proc,Start,Info,OldCum,Procs,
+		  Mem=#memory_sample{total=OldTotal,procs=MProcs}) ->
     case MProcs of
-	#{Proc := {OldHeap, OldPBins, OldPBinSum}} -> ok;
+	#{Proc := {OldHU, OldOHU, OldHeap, OldPBins, OldPBinSum}} -> ok;
 	#{} ->
 	    %% Just spawned, make up some values
-	    OldHeap = OldPBinSum = 0,
+	    OldHU = OldOHU = OldHeap = OldPBinSum = 0,
 	    OldPBins = []
     end,
     #{heap_block_size := HS, old_heap_block_size := OHS, bin_vheap_size := BVS,
-      mbuf_size := MBS, bin_old_vheap_size := OBVS} = maps:from_list(Info),
+      mbuf_size := MBS, bin_old_vheap_size := OBVS,
+      heap_size := HU, old_heap_size := OHU} = maps:from_list(Info),
     Heap = HS + OHS + MBS,
     PBinSum = BVS + OBVS,
-    Mem#memory_sample{total=OldTotal - OldHeap - OldPBinSum + Heap + PBinSum,
-		      procs=MProcs#{Proc => {Heap, OldPBins, PBinSum}}}.
+    Cum = case Start of
+	      true  -> OldCum + (HU - OldHU) + (OHU - OldOHU);
+	      false -> OldCum + (OldHU - HU) + (OldOHU - OHU)
+	  end,
+    {Cum,
+     Procs#{Proc := Start},
+     Mem#memory_sample{
+       total=OldTotal - OldHeap - OldPBinSum + Heap + PBinSum,
+       procs=MProcs#{Proc => {HU, OHU, Heap, OldPBins, PBinSum}}}}.
