@@ -1639,9 +1639,10 @@ lift_list_to_pos_empty(?list(Content, Termination, _)) ->
 %%    V is equal to DefaultKey.
 %%  * DefaultKey must be the empty type iff DefaultValue is the empty type.
 %%  * DefaultKey must not be a singleton type.
-%%  * For every pair {K, 'optional', ?none} in Pairs, K must be a subtype of
-%%    DefaultKey, and DefaultKey - K must not be representable; i.e.
+%%  * For every key K in Pairs, DefaultKey - K must not be representable; i.e.
 %%    t_subtract(DefaultKey, K) must return DefaultKey.
+%%  * For every pair {K, 'optional', ?none} in Pairs, K must be a subtype of
+%%    DefaultKey.
 %%  * Pairs must be sorted and not contain any duplicate keys.
 %%
 %% These invariants ensure that equal map types are represented by equal terms.
@@ -1665,14 +1666,16 @@ t_map(L) ->
 -spec t_map(t_map_dict(), erl_type(), erl_type()) -> erl_type().
 
 t_map(Pairs0, DefK0, DefV0) ->
+  DefK1 = lists:foldl(fun({K,_,_},Acc)->t_subtract(Acc,K)end, DefK0, Pairs0),
+  {DefK2, DefV1} =
+    case t_is_none_or_unit(DefK1) orelse t_is_none_or_unit(DefV0) of
+      true  -> {?none, ?none};
+      false -> {DefK1, DefV0}
+    end,
   {Pairs1, DefK, DefV}
-    = case t_is_singleton(DefK0) of
-	true ->
-	  {case lists:keymember(DefK0, 1, Pairs0) of
-	     true -> Pairs0;
-	     false -> mapdict_insert({DefK0, ?opt, DefV0}, Pairs0)
-	   end, ?none, ?none};
-	false -> {Pairs0, DefK0, DefV0}
+    = case t_is_singleton(DefK2) of
+	true  -> {mapdict_insert({DefK2, ?opt, DefV1}, Pairs0), ?none, ?none};
+	false -> {Pairs0,                                       DefK2, DefV1}
       end,
   Pairs = normalise_map_optionals(Pairs1, DefK, DefV),
   %% Validate invariants of the map representation.
@@ -1680,11 +1683,7 @@ t_map(Pairs0, DefK0, DefV0) ->
   %% we might as well save us some future pain and do this even without
   %% define(DEBUG, true).
   try
-    validate_map_elements(Pairs),
-    case {t_is_none_or_unit(DefK), t_is_none_or_unit(DefV)} of
-      {Same, Same} -> ok;
-      _ -> error({badarg, bad_default_keys})
-    end
+    validate_map_elements(Pairs)
   catch error:badarg ->      error(badarg,      [Pairs0,DefK0,DefV0]);
 	error:{badarg, E} -> error({badarg, E}, [Pairs0,DefK0,DefV0])
   end,
