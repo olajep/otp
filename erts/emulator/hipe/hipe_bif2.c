@@ -183,6 +183,12 @@ BIF_RETTYPE hipe_bifs_debug_native_called_2(BIF_ALIST_2)
     BIF_RET(am_ok);
 }
 
+BIF_RETTYPE hipe_bifs_debug_native_returned_2(BIF_ALIST_2)
+{
+    erts_printf("hipe_debug_native_returned: %T: %T\r\n", BIF_ARG_1, BIF_ARG_2);
+    BIF_RET(am_ok);
+}
+
 /* Stub-BIF for LLVM:
  * Reloads BP, SP (in llvm unwind label) */
 

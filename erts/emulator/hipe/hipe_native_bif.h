@@ -118,6 +118,8 @@ Eterm hipe_check_get_msg(Process*);
 
 AEXTERN(BIF_RETTYPE,nbif_hipe_bifs_debug_native_called,(Process*,Eterm,Eterm));
 BIF_RETTYPE hipe_bifs_debug_native_called_2(BIF_ALIST_2);
+AEXTERN(BIF_RETTYPE,nbif_hipe_bifs_debug_native_returned,(Process*,Eterm,Eterm));
+BIF_RETTYPE hipe_bifs_debug_native_returned_2(BIF_ALIST_2);
 
 /*
  * SMP-specific stuff

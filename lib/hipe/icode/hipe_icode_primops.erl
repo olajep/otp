@@ -139,6 +139,7 @@ is_safe({hipe_bs_primop, bs_init_writable}) -> true;
 is_safe(#mkfun{}) -> true;
 is_safe(#unsafe_element{}) -> true;
 is_safe(#unsafe_update_element{}) -> true;
+is_safe(debug_native_returned) -> false;
 is_safe(debug_native_called) -> false.
 
 
@@ -239,6 +240,7 @@ fails({hipe_bs_primop, bs_init_writable}) -> true;
 fails(#mkfun{}) -> false;
 fails(#unsafe_element{}) -> false;
 fails(#unsafe_update_element{}) -> false;
+fails(debug_native_returned) -> false;
 fails(debug_native_called) -> false;
 %% Apparently, we are calling fails/1 for all MFAs which are compiled.
 %% This is weird and we should restructure the compiler to avoid
@@ -729,6 +731,8 @@ type(Primop, Args) ->
       erl_types:t_any();
     debug_native_called ->
       erl_types:t_any();
+    debug_native_returned ->
+      erl_types:t_any();
     {M, F, A} ->
       erl_bif_types:type(M, F, A, Args)
   end.
@@ -900,6 +904,8 @@ type(Primop) ->
     #closure_element{} ->
       erl_types:t_any();
     redtest ->
+      erl_types:t_any();
+    debug_native_returned ->
       erl_types:t_any();
     debug_native_called ->
       erl_types:t_any();

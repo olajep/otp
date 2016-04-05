@@ -167,6 +167,7 @@ gc_bif_interface_1(nbif_hipe_bifs_show_nstack_1, hipe_show_nstack_1)
 gc_bif_interface_1(nbif_hipe_bifs_show_pcb_1, hipe_bifs_show_pcb_1)
 gc_bif_interface_0(nbif_hipe_bifs_nstack_used_size_0, hipe_bifs_nstack_used_size_0)
 gc_bif_interface_2(nbif_hipe_bifs_debug_native_called, hipe_bifs_debug_native_called_2)
+gc_bif_interface_2(nbif_hipe_bifs_debug_native_returned, hipe_bifs_debug_native_returned_2)
 
 /*
  * Arithmetic operators called indirectly by the HiPE compiler.

@@ -69,6 +69,21 @@ mk_debug_calltrace({_M,_F,A}=MFA, Env, Code) ->
 				[MFAVar,ArgTup]),
     {[MkMfa,MkArgTup,Call | Code], Env}.
 
+mk_debug_rettrace(MFA, Env, []) -> {[], Env};
+mk_debug_rettrace(MFA, Env0, [Instr|Code0]) ->
+  {Code, Env} = mk_debug_rettrace(MFA, Env0, Code0),
+  case hipe_icode:is_return(Instr) of
+    false -> {[Instr|Code], Env};
+    true ->
+      MFAVar = mk_var(new),
+      Ignore = mk_var(new),
+      MkMfa = hipe_icode:mk_move(MFAVar,hipe_icode:mk_const(MFA)),
+      [RetVar] = hipe_icode:return_vars(Instr),
+      Call = hipe_icode:mk_primop([Ignore], debug_native_returned,
+				  [MFAVar,RetVar]),
+      {[MkMfa,Call,Instr | Code], Env}
+  end.
+
 -endif.
 
 -ifdef(IO_FORMAT_CALL_TRACE).
@@ -151,7 +166,10 @@ trans_mfa_code(M,F,A, FunBeamCode, ClosureInfo) ->
   MFA = {M,F,A},
   %% Debug code
   ?IF_DEBUG_LEVEL(5,
-		  {Code3,_Env3} = mk_debug_calltrace(MFA, Env1, Code2),
+		  (begin
+		     {Code3_0,Env3_0} = mk_debug_calltrace(MFA, Env1, Code2),
+		     {Code3,_Env3} = mk_debug_rettrace(MFA, Env3_0, Code3_0)
+		   end),
 		  {Code3,_Env3} = {Code2,Env1}),
   %% For stack optimization
   Leafness = leafness(Code3),
