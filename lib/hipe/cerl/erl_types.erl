@@ -1658,7 +1658,7 @@ lift_list_to_pos_empty(?list(Content, Termination, _)) ->
 t_map() ->
   t_map([], t_any(), t_any()).
 
--spec t_map([t_map_pair()]) -> erl_type().
+-spec t_map([{erl_type(), erl_type()}]) -> erl_type().
 
 t_map(L) ->
   lists:foldl(fun t_map_put/2, t_map(), L).
