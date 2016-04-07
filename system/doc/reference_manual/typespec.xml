@@ -175,7 +175,7 @@
   <p>
     The general form of maps is <c>#{PairList}</c>. The key types in
     <c>PairList</c> are allowed to overlap, and if they do, the leftmost pair
-    takes precedence. A map value does not beling to this type if contains a key
+    takes precedence. A map value does not belong to this type if contains a key
     that is not in <c>PairList</c>.
   </p>
   <p>
