@@ -1415,10 +1415,10 @@ get_bif_constr({erlang, is_integer, 1}, Dst, [Arg], State) ->
   get_bif_test_constr(Dst, Arg, t_integer(), State);
 get_bif_constr({erlang, is_list, 1}, Dst, [Arg], State) ->
   get_bif_test_constr(Dst, Arg, t_maybe_improper_list(), State);
-get_bif_constr({erlang, is_number, 1}, Dst, [Arg], State) ->
-  get_bif_test_constr(Dst, Arg, t_number(), State);
 get_bif_constr({erlang, is_map, 1}, Dst, [Arg], State) ->
   get_bif_test_constr(Dst, Arg, t_map(), State);
+get_bif_constr({erlang, is_number, 1}, Dst, [Arg], State) ->
+  get_bif_test_constr(Dst, Arg, t_number(), State);
 get_bif_constr({erlang, is_pid, 1}, Dst, [Arg], State) ->
   get_bif_test_constr(Dst, Arg, t_pid(), State);
 get_bif_constr({erlang, is_port, 1}, Dst, [Arg], State) ->
