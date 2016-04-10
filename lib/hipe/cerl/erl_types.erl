@@ -1650,7 +1650,8 @@ lift_list_to_pos_empty(?list(Content, Termination, _)) ->
 -define(mand, mandatory).
 -define(opt, optional).
 
--type t_map_pair() :: {erl_type(), ?mand | ?opt, erl_type()}.
+-type t_map_mandatoriness() :: ?mand | ?opt.
+-type t_map_pair() :: {erl_type(), t_map_mandatoriness(), erl_type()}.
 -type t_map_dict() :: [t_map_pair()].
 
 -spec t_map() -> erl_type().
@@ -1786,8 +1787,9 @@ mapdict_insert(E={_,_,_}, T) -> [E|T].
 %% Merges the pairs of two maps together. Missing pairs become (?opt, DefV) or
 %% (?opt, ?none), depending on whether K \in DefK.
 -spec map_pairwise_merge(fun((erl_type(),
-			      ?mand|?opt, erl_type(),
-			      ?mand|?opt, erl_type()) -> t_map_pair() | false),
+			      t_map_mandatoriness(), erl_type(),
+			      t_map_mandatoriness(), erl_type())
+			     -> t_map_pair() | false),
 			 erl_type(), erl_type()) -> t_map_dict().
 map_pairwise_merge(F, ?map(APairs, ADefK, ADefV),
 		       ?map(BPairs, BDefK, BDefV)) ->
@@ -1813,8 +1815,8 @@ map_pairwise_merge(F, As0, ADefK, ADefV, Bs0, BDefK, BDefV) ->
 %% Folds over the pairs in two maps simultaneously in reverse key order. Missing
 %% pairs become (?opt, DefV) or (?opt, ?none), depending on whether K \in DefK.
 -spec map_pairwise_merge_foldr(fun((erl_type(),
-				    ?mand|?opt, erl_type(),
-				    ?mand|?opt, erl_type(),
+				    t_map_mandatoriness(), erl_type(),
+				    t_map_mandatoriness(), erl_type(),
 				    Acc) -> Acc),
 			       Acc, erl_type(), erl_type()) -> Acc.
 
@@ -2860,12 +2862,7 @@ t_inf(?map(_, ADefK, ADefV) = A, ?map(_, BDefK, BDefV) = B, _Opaques) ->
   %% is ?none.
   case lists:any(fun({_,?mand,?none})->true; ({_,_,_}) -> false end, Pairs) of
     true -> t_none();
-    false ->
-      case {t_inf(ADefK, BDefK), t_inf(ADefV, BDefV)} of
-	{DefK0, DefV0} when DefK0 =/= ?none, DefV0 =/= ?none ->
-	  t_map(Pairs, DefK0, DefV0);
-	_ -> t_map(Pairs, ?none, ?none)
-      end
+    false -> t_map(Pairs, t_inf(ADefK, BDefK), t_inf(ADefV, BDefV))
   end;
 t_inf(?matchstate(Pres1, Slots1), ?matchstate(Pres2, Slots2), _Opaques) ->
   ?matchstate(t_inf(Pres1, Pres2), t_inf(Slots1, Slots2));
