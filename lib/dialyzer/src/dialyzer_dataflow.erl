@@ -1100,13 +1100,14 @@ handle_map(Tree,Map,State) ->
     false ->
       {State2, Map2, TypePairs, ExactKeys} =
 	traverse_map_pairs(Pairs, Map1, State1, t_none(), [], []),
-      try lists:foldl(fun({KV,assoc,_},Acc) -> erl_types:t_map_put(KV,Acc);
-			 ({KV,exact,KVTree},Acc) ->
-			  case t_is_none(T=erl_types:t_map_update(KV,Acc)) of
-			    true -> throw({none, Acc, KV, KVTree});
-			    false -> T
-			  end
-		      end, ArgType1, TypePairs)
+      InsertPair = fun({KV,assoc,_},Acc) -> erl_types:t_map_put(KV,Acc);
+		      ({KV,exact,KVTree},Acc) ->
+		       case t_is_none(T=erl_types:t_map_update(KV,Acc)) of
+			 true -> throw({none, Acc, KV, KVTree});
+			 false -> T
+		       end
+		   end,
+      try lists:foldl(InsertPair, ArgType1, TypePairs)
       of ResT ->
 	  BindT = t_map([{K, t_any()} || K <- ExactKeys]),
 	  case bind_pat_vars_reverse([Arg], [BindT], [], Map2, State2) of
@@ -1117,7 +1118,7 @@ handle_map(Tree,Map,State) ->
 	  Msg2 = {map_update, [format_type(MapType, State2),
 			       format_type(K, State2)]},
 	  {state__add_warning(State2, ?WARN_MAP_CONSTRUCTION, KVTree, Msg2),
-	   Map2,t_none()}
+	   Map2, t_none()}
       end
   end.
 
@@ -1877,10 +1878,9 @@ handle_guard_call(Guard, Map, Env, Eval, State) ->
     {erlang, F, 1} when F =:= is_atom; F =:= is_boolean;
 			F =:= is_binary; F =:= is_bitstring;
 			F =:= is_float; F =:= is_function;
-			F =:= is_integer; F =:= is_list;
+			F =:= is_integer; F =:= is_list; F =:= is_map;
 			F =:= is_number; F =:= is_pid; F =:= is_port;
-			F =:= is_reference; F =:= is_tuple;
-			F =:= is_map ->
+			F =:= is_reference; F =:= is_tuple ->
       handle_guard_type_test(Guard, F, Map, Env, Eval, State);
     {erlang, is_function, 2} ->
       handle_guard_is_function(Guard, Map, Env, Eval, State);
