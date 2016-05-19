@@ -23,6 +23,10 @@
 
 #include "index.h"
 
+#ifdef HIPE
+#include "hipe_module.h"
+#endif
+
 struct erl_module_instance {
     BeamCodeHeader* code_hdr;
     int code_length;		/* Length of loaded code in bytes. */
@@ -30,6 +34,9 @@ struct erl_module_instance {
     struct erl_module_nif* nif;
     int num_breakpoints;
     int num_traced_exports;
+#ifdef HIPE
+    HipeModule *hipe_code;
+#endif
 };
 
 typedef struct erl_module {

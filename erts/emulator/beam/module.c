@@ -85,6 +85,10 @@ static Module* module_alloc(Module* tmpl)
     obj->old.num_breakpoints  = 0;
     obj->curr.num_traced_exports = 0;
     obj->old.num_traced_exports = 0;
+#ifdef HIPE
+    obj->curr.hipe_code = NULL;
+    obj->old.hipe_code = NULL;
+#endif
     return obj;
 }
 

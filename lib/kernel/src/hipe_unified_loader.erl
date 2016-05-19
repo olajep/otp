@@ -215,14 +215,16 @@ load_common(Mod, Bin, Beam, OldReferencesToPatch, Architecture) ->
       put(closures_to_patch, []),
       WordSize = word_size(Architecture),
       WriteWord = write_word_fun(WordSize),
+      LoaderState = hipe_bifs:alloc_loader_state(Mod),
       %% Create data segment
       {ConstAddr,ConstMap2} =
-	create_data_segment(ConstAlign, ConstSize, ConstMap, WriteWord),
+	create_data_segment(ConstAlign, ConstSize, ConstMap, WriteWord,
+			    LoaderState),
       %% Find callees for which we may need trampolines.
       CalleeMFAs = find_callee_mfas(Refs, Architecture),
       %% Write the code to memory.
       {CodeAddress,Trampolines} =
-	enter_code(CodeSize, CodeBinary, CalleeMFAs, Mod, Beam),
+	enter_code(CodeSize, CodeBinary, CalleeMFAs, Mod, Beam, LoaderState),
       %% Construct CalleeMFA-to-trampoline mapping.
       TrampolineMap = mk_trampoline_map(CalleeMFAs, Trampolines,
                                         Architecture),
@@ -259,7 +261,7 @@ load_common(Mod, Bin, Beam, OldReferencesToPatch, Architecture) ->
 	  AddressesOfClosuresToPatch =
 	    calculate_addresses(ClosurePatches, CodeAddress, Addresses),
 	  export_funs(Addresses),
-	  export_funs(Mod, MD5, BeamBinary,
+	  export_funs(Mod, LoaderState, MD5, BeamBinary,
                       Addresses, AddressesOfClosuresToPatch)
       end,
       %% Redirect references to the old module to the new module's BEAM stub.
@@ -443,9 +445,9 @@ export_funs([FunDef | Addresses]) ->
 export_funs([]) ->
   ok.
 
-export_funs(Mod, MD5, Beam, Addresses, ClosuresToPatch) ->
+export_funs(Mod, LoaderState, MD5, Beam, Addresses, ClosuresToPatch) ->
   Fs = [{F,A,Address} || #fundef{address=Address, mfa={_M,F,A}} <- Addresses],
-  Mod = code:make_stub_module(Mod, Beam, {Fs,ClosuresToPatch,MD5}),
+  Mod = code:make_stub_module(LoaderState, Beam, {Fs,ClosuresToPatch,MD5}),
   ok.
 
 %%========================================================================
@@ -702,9 +704,9 @@ bif_address(Name) when is_atom(Name) ->
 %% memory, and produces a ConstMap2 mapping each constant's ConstNo to
 %% its runtime address, tagged if the constant is a term.
 %%
-create_data_segment(DataAlign, DataSize, DataList, WriteWord) ->
+create_data_segment(DataAlign, DataSize, DataList, WriteWord, LoaderState) ->
   %%io:format("create_data_segment: \nDataAlign: ~p\nDataSize: ~p\nDataList: ~p\n",[DataAlign,DataSize,DataList]),
-  DataAddress = hipe_bifs:alloc_data(DataAlign, DataSize),
+  DataAddress = hipe_bifs:alloc_data(DataAlign, DataSize, LoaderState),
   enter_data(DataList, [], DataAddress, DataSize, WriteWord).
 
 enter_data(List, ConstMap2, DataAddress, DataSize, WriteWord) ->
@@ -960,10 +962,11 @@ assert_local_patch(Address) when is_integer(Address) ->
 
 %% Beam: nil() | binary()  (used as a flag)
 
-enter_code(CodeSize, CodeBinary, CalleeMFAs, Mod, Beam) ->
+enter_code(CodeSize, CodeBinary, CalleeMFAs, Mod, Beam, LoaderState) ->
   true = byte_size(CodeBinary) =:= CodeSize,
   hipe_bifs:update_code_size(Mod, Beam, CodeSize),
-  {CodeAddress,Trampolines} = hipe_bifs:enter_code(CodeBinary, CalleeMFAs),
+  {CodeAddress,Trampolines} = hipe_bifs:enter_code(CodeBinary, CalleeMFAs,
+						   LoaderState),
   ?init_assert_patch(CodeAddress, byte_size(CodeBinary)),
   {CodeAddress,Trampolines}.
 
