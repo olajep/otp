@@ -759,7 +759,8 @@ set_default_trace_pattern(Eterm module)
 }
 
 static ERTS_INLINE int
-check_mod_funs(Process *p, ErlOffHeap *off_heap, char *area, size_t area_size)
+check_mod_funs(Process *p, ErlOffHeap *off_heap, char *area, size_t area_size,
+	       char *narea, size_t narea_size)
 {
     struct erl_off_heap_header* oh;
     for (oh = off_heap->first; oh; oh = oh->next) {
@@ -767,6 +768,10 @@ check_mod_funs(Process *p, ErlOffHeap *off_heap, char *area, size_t area_size)
 	    ErlFunThing* funp = (ErlFunThing*) oh;
 	    if (ErtsInArea(funp->fe->address, area, area_size))
 		return !0;
+#ifdef HIPE
+	    if (ErtsInArea(funp->native_address, narea, narea_size))
+		return !0;
+#endif
 	}
     }
     return 0;
@@ -791,6 +796,8 @@ check_process_code(Process* rp, Module* modp, Uint flags, int *redsp, int fcalls
     int need_gc = 0;
     ErtsMessage *msgp;
     ErlHeapFragment *hfrag;
+    void *nat_start = NULL;
+    Uint nat_size = 0;
 
 #define ERTS_ORDINARY_GC__ (1 << 0)
 #define ERTS_LITERAL_GC__  (1 << 1)
@@ -801,6 +808,12 @@ check_process_code(Process* rp, Module* modp, Uint flags, int *redsp, int fcalls
     start = (BeamInstr*) modp->old.code_hdr;
     mod_start = (char *) start;
     mod_size = modp->old.code_length;
+#ifdef HIPE
+    if (modp->old.hipe_code) {
+	nat_start = modp->old.hipe_code->text_segment;
+	nat_size = modp->old.hipe_code->text_segment_size;
+    }
+#endif
 
     /*
      * Check if current instruction or continuation pointer points into module.
@@ -819,6 +832,16 @@ check_process_code(Process* rp, Module* modp, Uint flags, int *redsp, int fcalls
 	}
     }
 
+#ifdef HIPE
+    /*
+     * Check all continuation pointers stored on the native stack if the module
+     * has native code.
+     */
+    if (nat_size && nstack_any_cps_in_segment(rp, nat_start, nat_size)) {
+	return am_true;
+    }
+#endif
+
     /* 
      * Check all continuation pointers stored in stackdump
      * and clear exception stackdump if there is a pointer
@@ -835,8 +858,16 @@ check_process_code(Process* rp, Module* modp, Uint flags, int *redsp, int fcalls
 	    rp->ftrace = NIL;
 	} else {
 	    int i;
+	    char *area_start = mod_start;
+	    Uint area_size = mod_size;
+#ifdef HIPE
+	    if (rp->freason & EXF_NATIVE) {
+		area_start = nat_start;
+		area_size = nat_size;
+	    }
+#endif
 	    for (i = 0;  i < s->depth;  i++) {
-		if (ErtsInArea(s->trace[i], mod_start, mod_size)) {
+		if (ErtsInArea(s->trace[i], area_start, area_size)) {
 		    rp->freason = EXC_NULL;
 		    rp->fvalue = NIL;
 		    rp->ftrace = NIL;
@@ -885,7 +916,8 @@ check_process_code(Process* rp, Module* modp, Uint flags, int *redsp, int fcalls
             ErlHeapFragment *hf;
             Uint lit_sz;
             for (hf=hfrag; hf; hf = hf->next) {
-                if (check_mod_funs(rp, &hfrag->off_heap, mod_start, mod_size))
+		if (check_mod_funs(rp, &hfrag->off_heap, mod_start, mod_size,
+				   nat_start, nat_size))
                     return am_true;
                 lit_sz = hfrag_literal_size(&hf->mem[0], &hf->mem[hf->used_size],
                                             literals, lit_bsize);
@@ -911,7 +943,8 @@ check_process_code(Process* rp, Module* modp, Uint flags, int *redsp, int fcalls
     while (1) {
 
 	/* Check heap, stack etc... */
-	if (check_mod_funs(rp, &rp->off_heap, mod_start, mod_size))
+	if (check_mod_funs(rp, &rp->off_heap, mod_start, mod_size,
+			       nat_start, nat_size))
 	    goto try_gc;
         if (!(flags & ERTS_CPC_COPY_LITERALS)) {
             /* Process ok. May contain old literals but we will be called
@@ -948,7 +981,8 @@ check_process_code(Process* rp, Module* modp, Uint flags, int *redsp, int fcalls
 	for (hfrag = rp->mbuf; hfrag; hfrag = hfrag->next) {
 	    Eterm *hp, *hp_end;
 	    /* Off heap lists should already have been moved into process */
-	    ASSERT(!check_mod_funs(rp, &hfrag->off_heap, mod_start, mod_size));
+	    ASSERT(!check_mod_funs(rp, &hfrag->off_heap, mod_start, mod_size,
+				   nat_start, nat_size));
 
 	    hp = &hfrag->mem[0];
 	    hp_end = &hfrag->mem[hfrag->used_size];
@@ -966,7 +1000,8 @@ check_process_code(Process* rp, Module* modp, Uint flags, int *redsp, int fcalls
             hfrag = erts_message_to_heap_frag(msgp);
 	    for (; hfrag; hfrag = hfrag->next) {
 		Eterm *hp, *hp_end;
-		ASSERT(!check_mod_funs(rp, &hfrag->off_heap, mod_start, mod_size));
+		ASSERT(!check_mod_funs(rp, &hfrag->off_heap, mod_start, mod_size,
+				       nat_start, nat_size));
 
 		hp = &hfrag->mem[0];
 		hp_end = &hfrag->mem[hfrag->used_size];
@@ -1282,6 +1317,7 @@ BIF_RETTYPE erts_internal_purge_module_1(BIF_ALIST_1)
 	 * Any code to purge?
 	 */
 	if (!modp->old.code_hdr) {
+	    ASSERT(!modp->old.hipe_code);
             ERTS_BIF_PREP_RET(ret, am_false);
 	}
 	else {
@@ -1317,6 +1353,11 @@ BIF_RETTYPE erts_internal_purge_module_1(BIF_ALIST_1)
 	    modp->old.code_hdr = NULL;
 	    modp->old.code_length = 0;
 	    modp->old.catches = BEAM_CATCHES_NIL;
+#ifdef HIPE
+	    if (modp->old.hipe_code)
+		hipe_free_module(modp->old.hipe_code);
+	    modp->old.hipe_code = NULL;
+#endif
 	    erts_remove_from_ranges(code);
 	    ERTS_BIF_PREP_RET(ret, am_true);
 	}
@@ -1386,6 +1427,9 @@ delete_code(Module* modp)
     modp->curr.code_length = 0;
     modp->curr.catches = BEAM_CATCHES_NIL;
     modp->curr.nif = NULL;
+#ifdef HIPE
+    modp->curr.hipe_code = NULL;
+#endif
 
 }
 
