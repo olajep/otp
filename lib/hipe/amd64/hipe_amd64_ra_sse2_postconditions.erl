@@ -95,21 +95,28 @@ do_fp_unop(I, TempMap, Strategy) ->
 %%% Fix an fmove op.
 do_fmove(I, TempMap, Strategy) ->
   #fmove{src=Src,dst=Dst} = I,
-  case is_mem_opnd(Dst, TempMap) and is_mem_opnd(Src, TempMap) of
+  case
+    (is_mem_opnd(Src, TempMap) andalso is_mem_opnd(Dst, TempMap))
+    orelse (is_mem_opnd(Src, TempMap) andalso (not is_float_temp(Dst)))
+    orelse ((not is_float_temp(Src)) andalso is_mem_opnd(Dst, TempMap))
+  of
     true ->
-      Tmp = clone(Src, Strategy),
+      Tmp = spill_temp(double, Strategy),
       {[#fmove{src=Src, dst=Tmp},I#fmove{src=Tmp,dst=Dst}],
        true};
     false ->
       {[I], false}
   end.
 
+is_float_temp(#x86_temp{type=Type}) -> Type =:= double;
+is_float_temp(#x86_mem{}) -> false.
+
 %%% Check if an operand denotes a memory cell (mem or pseudo).
 
 is_mem_opnd(Opnd, TempMap) ->
   case Opnd of
     #x86_mem{} -> true;
-    #x86_temp{} ->
+    #x86_temp{type=double} ->
       Reg = hipe_x86:temp_reg(Opnd),
       case hipe_x86:temp_is_allocatable(Opnd) of
 	true ->
