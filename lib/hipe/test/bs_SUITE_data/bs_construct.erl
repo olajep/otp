@@ -279,27 +279,60 @@ bad_floats() ->
 %% (incorrectly) signed.
 
 huge_binaries() ->
-  AlmostIllegal = id(<<0:(id((1 bsl 32)-8))>>),
+  case free_mem() of
+    MB when MB =:= undefined;
+	    is_integer(MB), MB > 600 ->
+      id(<<0:(id((1 bsl 32)-8))>>),
+      garbage_collect(),
+      id(<<0:(id((1 bsl 31)-1))>>);
+    MB when is_integer(MB), MB > 300 ->
+      id(<<0:(id((1 bsl 31)-1))>>),
+      garbage_collect(),
+      test_server:comment("Limit huge binaries to 256 MB");
+    _ ->
+      test_server:comment("Limit huge binaries to 128 MB")
+  end,
+  QuarterIllegal = id(<<0:(id((1 bsl 30)-8))>>),
   case erlang:system_info(wordsize) of
-    4 -> huge_binaries_32(AlmostIllegal);
+    4 -> huge_binaries_32(QuarterIllegal);
     8 -> ok
   end,
   garbage_collect(),
-  id(<<0:(id((1 bsl 31)-1))>>),
-  id(<<0:(id((1 bsl 30)-1))>>),
-  garbage_collect(),
   ok.
 
-huge_binaries_32(AlmostIllegal) ->
+huge_binaries_32(QuarterIllegal) ->
   %% Attempt construction of too large binary using bs_init/1 (which takes the
   %% number of bytes as an argument, which should be compared to the maximum
   %% size in bytes).
-  {'EXIT',{system_limit,_}} = (catch <<0:32,AlmostIllegal/binary>>),
+  {'EXIT',{system_limit,_}} =
+    (catch <<0:56,QuarterIllegal/binary,QuarterIllegal/binary,
+	     QuarterIllegal/binary,QuarterIllegal/binary>>),
   %% Attempt construction of too large binary using bs_init/1 with a size in
   %% bytes that has the msb set (and would be negative if it was signed).
   {'EXIT',{system_limit,_}} =
-    (catch <<0:8, AlmostIllegal/binary, AlmostIllegal/binary,
-	     AlmostIllegal/binary, AlmostIllegal/binary,
-	     AlmostIllegal/binary, AlmostIllegal/binary,
-	     AlmostIllegal/binary, AlmostIllegal/binary>>),
+    (catch <<0:104, QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary,
+	     QuarterIllegal/binary, QuarterIllegal/binary>>),
   ok.
+
+free_mem() ->
+    {ok,Apps} = application:ensure_all_started(os_mon),
+    Mem = memsup:get_system_memory_data(),
+    [ok = application:stop(App)||App <- Apps],
+    case proplists:get_value(free_memory,Mem) of
+        undefined -> undefined;
+        Val -> Val div 1024
+    end.
