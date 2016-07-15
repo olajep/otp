@@ -89,6 +89,7 @@ bif hipe_bifs:remove_refs_from/1
 bif hipe_bifs:redirect_referred_from/1
 
 bif hipe_bifs:alloc_loader_state/1
+bif hipe_bifs:prepare_stub_module/3
 
 # atoms used by add_ref/2
 atom call

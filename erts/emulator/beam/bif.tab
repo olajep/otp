@@ -433,7 +433,6 @@ bif erts_debug:lock_counters/1
 
 bif code:get_chunk/2
 bif code:module_md5/1
-bif code:make_stub_module/3
 bif code:is_module_native/1
 
 #

@@ -56,6 +56,11 @@ hipe_loader_state_dtor(Binary* magic)
     stp->data_segment = NULL;
     stp->data_segment_size = 0;
 
+    if (stp->beam_stub_magic
+	&& erts_refc_dectest(&stp->beam_stub_magic->refc, 0) == 0)
+	erts_bin_free(stp->beam_stub_magic);
+    stp->beam_stub_magic = NULL;
+
     stp->module = NIL;
 }
 
@@ -78,6 +83,7 @@ Binary *hipe_alloc_loader_state(Eterm module)
     stp->text_segment_size = 0;
     stp->data_segment = NULL;
     stp->data_segment_size = 0;
+    stp->beam_stub_magic = NULL;
 
     return magic;
 }
@@ -98,4 +104,18 @@ hipe_get_loader_state(Binary *magic)
 	return NULL;
 
     return (HipeLoaderState*) ERTS_MAGIC_BIN_DATA(magic);
+}
+
+BIF_RETTYPE hipe_bifs_prepare_stub_module_3(BIF_ALIST_3)
+{
+    HipeLoaderState *stp;
+
+    if (!ERTS_TERM_IS_MAGIC_BINARY(BIF_ARG_1)
+	|| (stp = hipe_get_loader_state
+	    (((ProcBin*)binary_val(BIF_ARG_1))->val)) == NULL
+	|| is_not_atom(stp->module)) {
+	BIF_ERROR(BIF_P, BADARG);
+    }
+
+    return erts_prepare_stub_module(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
 }

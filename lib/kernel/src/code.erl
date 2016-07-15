@@ -100,7 +100,7 @@
 
 %%% BIFs
 
--export([get_chunk/2, is_module_native/1, make_stub_module/3, module_md5/1]).
+-export([get_chunk/2, is_module_native/1, module_md5/1]).
 
 -spec get_chunk(Bin, Chunk) ->
                        binary() | undefined when
@@ -114,14 +114,6 @@ get_chunk(_, _) ->
       Module :: module().
 
 is_module_native(_) ->
-    erlang:nif_error(undef).
-
--spec make_stub_module(Module, Beam, Info) -> Module when
-      Module :: module(),
-      Beam :: binary(),
-      Info :: {list(), list(), binary()}.
-
-make_stub_module(_, _, _) ->
     erlang:nif_error(undef).
 
 -spec module_md5(binary()) -> binary() | undefined.

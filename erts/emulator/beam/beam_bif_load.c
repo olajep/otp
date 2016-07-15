@@ -69,50 +69,6 @@ BIF_RETTYPE code_is_module_native_1(BIF_ALIST_1)
     return res;
 }
 
-BIF_RETTYPE code_make_stub_module_3(BIF_ALIST_3)
-{
-    Module* modp;
-    Eterm res, mod;
-
-    if (!ERTS_TERM_IS_MAGIC_BINARY(BIF_ARG_1) ||
-	is_not_atom(mod = erts_module_for_prepared_code
-		    (((ProcBin*)binary_val(BIF_ARG_1))->val))) {
-	BIF_ERROR(BIF_P, BADARG);
-    }
-
-    if (!erts_try_seize_code_write_permission(BIF_P)) {
-	ERTS_BIF_YIELD3(bif_export[BIF_code_make_stub_module_3],
-			BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
-    }
-
-    erts_smp_proc_unlock(BIF_P, ERTS_PROC_LOCK_MAIN);
-    erts_smp_thr_progress_block();
-
-    modp = erts_get_module(mod, erts_active_code_ix());
-
-    if (modp && modp->curr.num_breakpoints > 0) {
-	ASSERT(modp->curr.code_hdr != NULL);
-	erts_clear_module_break(modp);
-	ASSERT(modp->curr.num_breakpoints == 0);
-    }
-
-    erts_start_staging_code_ix(1);
-
-    res = erts_make_stub_module(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3);
-
-    if (res == mod) {
-	erts_end_staging_code_ix();
-	erts_commit_staging_code_ix();
-    }
-    else {
-	erts_abort_staging_code_ix();
-    }
-    erts_smp_thr_progress_unblock();
-    erts_smp_proc_lock(BIF_P, ERTS_PROC_LOCK_MAIN);
-    erts_release_code_write_permission();
-    return res;
-}
-
 BIF_RETTYPE
 prepare_loading_2(BIF_ALIST_2)
 {

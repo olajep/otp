@@ -485,6 +485,8 @@ static Eterm stub_insert_new_code(Process *c_p, ErtsProcLocks c_p_locks,
 				  Eterm group_leader, Eterm module,
 				  BeamCodeHeader* code, Uint size,
 				  HipeModule *hipe_code);
+static Eterm finish_stub_module(Binary *hipe_magic, Process* p,
+				ErtsProcLocks p_locks, Eterm* modp);
 static int init_iff_file(LoaderState* stp, byte* code, Uint size);
 static int scan_iff_file(LoaderState* stp, Uint* chunk_types,
 			 Uint num_types, Uint num_mandatory);
@@ -770,10 +772,17 @@ erts_finish_loading(Binary* magic, Process* c_p,
 		    ErtsProcLocks c_p_locks, Eterm* modp)
 {
     Eterm retval = NIL;
-    LoaderState* stp = ERTS_MAGIC_BIN_DATA(magic);
+    LoaderState* stp;
     Module* mod_tab_p;
     struct erl_module_instance* inst_p;
     Uint size;
+
+#ifdef HIPE
+    if (hipe_get_loader_state(magic) != NULL)
+	return finish_stub_module(magic, c_p, c_p_locks, modp);
+#endif
+    ASSERT(ERTS_MAGIC_BIN_DESTRUCTOR(magic) == loader_state_dtor);
+    stp = ERTS_MAGIC_BIN_DATA(magic);
 
     /*
      * No other process may run since we will update the export
@@ -6273,13 +6282,12 @@ patch_funentries(Eterm Patchlist)
  */
 
 Eterm
-erts_make_stub_module(Process* p, Eterm hipe_magic_bin, Eterm Beam, Eterm Info)
+erts_prepare_stub_module(Process* p, Eterm hipe_magic_bin, Eterm Beam, Eterm Info)
 {
     Binary* magic;
     Binary* hipe_magic;
     LoaderState* stp;
     HipeLoaderState* hipe_stp;
-    HipeModule *hipe_code;
     BeamInstr Funcs;
     BeamInstr Patchlist;
     Eterm MD5Bin;
@@ -6290,7 +6298,6 @@ erts_make_stub_module(Process* p, Eterm hipe_magic_bin, Eterm Beam, Eterm Info)
     byte* info;
     Sint n;
     int code_size;
-    int rval;
     Sint i;
     byte* temp_alloc = NULL;
     byte* bytes;
@@ -6302,7 +6309,6 @@ erts_make_stub_module(Process* p, Eterm hipe_magic_bin, Eterm Beam, Eterm Info)
      */
     magic = erts_alloc_loader_state();
     stp = ERTS_MAGIC_BIN_DATA(magic);
-    hipe_code = erts_alloc(ERTS_ALC_T_HIPE, sizeof(*hipe_code));
 
     if (!ERTS_TERM_IS_MAGIC_BINARY(hipe_magic_bin) ||
 	!(hipe_magic = ((ProcBin*)binary_val(hipe_magic_bin))->val,
@@ -6491,6 +6497,46 @@ erts_make_stub_module(Process* p, Eterm hipe_magic_bin, Eterm Beam, Eterm Info)
       erts_free_aligned_binary_bytes(tmp);
     }
 
+    if (!patch_funentries(Patchlist)) {
+	goto error;
+    }
+
+    /* */
+    stp->hdr = code_hdr;
+    stp->loaded_size = code_size;
+    hipe_stp->beam_stub_magic = magic;
+
+    return hipe_stp->module;
+
+ error:
+    erts_free_aligned_binary_bytes(temp_alloc);
+    free_loader_state(magic);
+    BIF_ERROR(p, BADARG);
+}
+
+static Eterm
+finish_stub_module(Binary *hipe_magic, Process* p,
+		   ErtsProcLocks p_locks, Eterm* modp)
+{
+    LoaderState* stp;
+    HipeLoaderState* hipe_stp;
+    HipeModule *hipe_code;
+    BeamInstr* fp;
+    Sint n;
+    Eterm rval = NIL;
+    Sint i;
+
+    hipe_stp = hipe_get_loader_state(hipe_magic);
+    if (!hipe_stp || !is_atom(hipe_stp->module) || !hipe_stp->beam_stub_magic) {
+	hipe_free_loader_state(hipe_magic);
+	BIF_ERROR(p, BADARG);
+    }
+
+    stp = ERTS_MAGIC_BIN_DATA(hipe_stp->beam_stub_magic);
+    hipe_code = erts_alloc(ERTS_ALC_T_HIPE, sizeof(*hipe_code));
+
+    n = stp->hdr->num_functions;
+
     /*
      * Initialise HiPE module
      */
@@ -6502,40 +6548,35 @@ erts_make_stub_module(Process* p, Eterm hipe_magic_bin, Eterm Beam, Eterm Info)
      * Insert the module in the module table.
      */
 
-    rval = stub_insert_new_code(p, 0, p->group_leader, hipe_stp->module,
-				code_hdr, code_size, hipe_code);
+    rval = stub_insert_new_code(p, p_locks, p->group_leader, hipe_stp->module,
+				stp->hdr, stp->loaded_size, hipe_code);
     if (rval != NIL) {
-	goto error;
+	erts_free(ERTS_ALC_T_HIPE, hipe_code);
+	hipe_free_loader_state(hipe_magic);
+	return rval;
     }
 
     /*
      * Export all stub functions and insert the correct type of HiPE trap.
      */
 
-    fp = code_base;
+    fp = (BeamInstr*) &stp->hdr->functions[n+1];
     for (i = 0; i < n; i++) {
 	stub_final_touch(stp, fp);
 	fp += WORDS_PER_FUNCTION;
     }
 
-    if (patch_funentries(Patchlist)) {
-	Eterm mod = hipe_stp->module;
-	/* Prevent code from being freed */
-	hipe_stp->text_segment = 0;
-	hipe_stp->data_segment = 0;
+    /* if (patch_funentries(hipe_stp->Patchlist)) */
+    *modp = hipe_stp->module;
 
-	erts_free_aligned_binary_bytes(temp_alloc);
-	free_loader_state(magic);
-	hipe_free_loader_state(hipe_magic);
+    /* Prevent code from being freed */
+    stp->hdr = NULL;
+    hipe_stp->text_segment = 0;
+    hipe_stp->data_segment = 0;
 
-	return mod;
-    }
+    hipe_free_loader_state(hipe_magic);
 
- error:
-    erts_free(ERTS_ALC_T_HIPE, hipe_code);
-    erts_free_aligned_binary_bytes(temp_alloc);
-    free_loader_state(magic);
-    BIF_ERROR(p, BADARG);
+    return rval;
 }
 
 #undef WORDS_PER_FUNCTION

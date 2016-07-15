@@ -447,7 +447,8 @@ export_funs([]) ->
 
 export_funs(Mod, LoaderState, MD5, Beam, Addresses, ClosuresToPatch) ->
   Fs = [{F,A,Address} || #fundef{address=Address, mfa={_M,F,A}} <- Addresses],
-  Mod = code:make_stub_module(LoaderState, Beam, {Fs,ClosuresToPatch,MD5}),
+  Mod = hipe_bifs:prepare_stub_module(LoaderState, Beam, {Fs,ClosuresToPatch,MD5}),
+  ok = erlang:finish_loading([LoaderState]),
   ok.
 
 %%========================================================================
