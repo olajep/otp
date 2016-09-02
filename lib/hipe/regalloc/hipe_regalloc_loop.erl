@@ -38,19 +38,22 @@ ra_fp(CFG, Liveness, Options, RegAllocMod, TargetMod, TargetCtx) ->
 ra_common(CFG0, Liveness0, SpillIndex, Options, RegAllocMod, TargetMod,
 	  TargetCtx) ->
   ?inc_counter(ra_calls_counter, 1),
-  SpillLimit0 = TargetMod:number_of_temporaries(CFG0, TargetCtx),
+  {CFG1, Liveness1, SpillGrouping} =
+    do_range_split(CFG0, Liveness0, TargetMod, TargetCtx, Options),
+  SpillLimit0 = TargetMod:number_of_temporaries(CFG1, TargetCtx),
   {Coloring, _, CFG, Liveness} =
-    call_allocator_initial(CFG0, Liveness0, SpillLimit0, SpillIndex, Options,
+    call_allocator_initial(CFG1, Liveness1, SpillLimit0, SpillIndex, Options,
 			   RegAllocMod, TargetMod, TargetCtx),
   %% The first iteration, the hipe_regalloc_prepass may create new temps, these
   %% should not end up above SpillLimit.
   SpillLimit = TargetMod:number_of_temporaries(CFG, TargetCtx),
-  alloc(Coloring, CFG, Liveness, SpillLimit, SpillIndex, Options,
+  alloc(Coloring, CFG, Liveness, SpillLimit, SpillIndex, SpillGrouping, Options,
 	RegAllocMod, TargetMod, TargetCtx).
 
-alloc(Coloring, CFG0, Liveness, SpillLimit, SpillIndex, Options,
+alloc(Coloring0, CFG0, Liveness, SpillLimit, SpillIndex, SpillGrouping, Options,
       RegAllocMod, TargetMod, TargetCtx) ->
   ?inc_counter(ra_iteration_counter, 1),
+  Coloring = combine_spills(Coloring0, SpillGrouping),
   {CFG, DidSpill} = TargetMod:check_and_rewrite(CFG0, Coloring, TargetCtx),
   case DidSpill of
     false -> %% No new temps, we are done.
@@ -74,8 +77,8 @@ alloc(Coloring, CFG0, Liveness, SpillLimit, SpillIndex, Options,
       {NewColoring, _NewSpillIndex} =
 	call_allocator(CFG, Liveness, SpillLimit, SpillIndex, Options,
 		       RegAllocMod, TargetMod, TargetCtx),
-      alloc(NewColoring, CFG, Liveness, SpillLimit, SpillIndex, Options,
-	    RegAllocMod, TargetMod, TargetCtx)
+      alloc(NewColoring, CFG, Liveness, SpillLimit, SpillIndex, SpillGrouping,
+	    Options, RegAllocMod, TargetMod, TargetCtx)
   end.
 
 call_allocator_initial(CFG, Liveness, SpillLimit, SpillIndex, Options,
@@ -102,3 +105,16 @@ call_allocator(CFG, Liveness, SpillLimit, SpillIndex, Options, RegAllocMod,
       RegAllocMod:regalloc(CFG, Liveness, SpillIndex, SpillLimit, TargetMod,
 			   TargetCtx, Options)
   end.
+
+do_range_split(CFG0, Liveness0, TgtMod, TgtCtx, Options) ->
+  case proplists:get_bool(ra_range_split, Options) of
+    true ->
+      {CFG, Grouping} = hipe_range_split:split(CFG0, Liveness0),
+      {CFG, TgtMod:analyze(CFG, TgtCtx), {split_enabled, Grouping}};
+    false ->
+      {CFG0, Liveness0, split_disabled}
+  end.
+
+combine_spills(Alloc, split_disabled) -> Alloc;
+combine_spills(Alloc, {split_enabled, Grouping}) ->
+  hipe_range_split:combine_spills(Alloc, Grouping).
