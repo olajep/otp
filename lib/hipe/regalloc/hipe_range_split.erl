@@ -60,7 +60,7 @@
 
 %% Tasks:
 %%  * DSETS partitioning of program space at clobber points.
-%%    Partitions: {entry, Lb} | {exit, Lb} | {internal, Lb, No}
+%%    Partitions: {entry, Lb} | {exit, Lb}
 %%    Internal parts are not included in DSETS (they will never be unioned with
 %%    any other part, and they are not known in the beginning. dsets_find/2
 %%    could be extended to understand them and return them as their own
@@ -98,8 +98,7 @@ split(CFG0, Liveness, TargetMod, TargetContext) ->
 %%
 %% Compute program space partitioning, collect information required by the
 %% heuristic.
--type part_key() :: {entry | exit, label()}
-		  | {internal, label(), No :: pos_integer()}.
+-type part_key() :: {entry | exit, label()}.
 -type part_dsets() :: dsets(part_key()).
 %%-type part_dsets_map() :: #{part_key() => part_key()}.
 %%-type ducounts() :: #{part_key() => ducount()}.
@@ -134,21 +133,26 @@ scan_bbs([], _CFG, _Liveness, _Target, DUCounts, Edges, DSets, Temps) ->
   {DUCounts, Edges, DSets, Temps};
 scan_bbs([L|Ls], CFG, Liveness, Target, DUCounts0, Edges0, DSets0, Temps0) ->
   Code = hipe_bb:code(bb(CFG, L, Target)),
-  DCParts = scan_bb(Code, Target, ducount_new(), []),
   Temps = collect_temps(Code, Target, Temps0),
-  DSets = case DCParts of
-	    [_] -> dsets_union({entry,L}, {exit,L}, DSets0);
-	    [_,_|_] ->
-	      lists:foldl(fun dsets_insert/2, DSets0,
-			  [{internal, L, No}
-			   || No <- lists:seq(1, length(DCParts)-2)])
-	  end,
-  DUCounts = attribute_ducounts(DCParts, L, DUCounts0),
-  Liveout = liveout(Liveness, L, Target),
-  LiveParts = scan_bb_rev(lists:reverse(Code), Target, Liveout, []),
-  ?ASSERT(length(LiveParts) + 1 =:= length(DCParts)),
-  Edges = add_edges(LiveParts, L, {entry, L}, 1, Edges0),
+  LastI = lists:last(Code),
+  {DSets, Edges, EntryCode} =
+    case defines_all_alloc(LastI, Target) of
+      false ->
+	{dsets_union({entry,L}, {exit,L}, DSets0), Edges0, Code};
+      true ->
+	Liveout = liveout(Liveness, L, Target),
+	LiveBefore = liveness_step(LastI, Target, Liveout),
+	Edges1 = edges_insert({entry,L}, {exit,L}, LiveBefore,
+			      edges_insert({exit,L}, {entry,L}, Liveout,
+					   Edges0)),
+	{DSets0, Edges1, lists_init(Code)}
+    end,
+  DUCount = scan_bb(EntryCode, Target, ducount_new()),
+  DUCounts = DUCounts0#{{entry,L} => DUCount},
   scan_bbs(Ls, CFG, Liveness, Target, DUCounts, Edges, DSets, Temps).
+
+lists_init([_]) -> [];
+lists_init([E|Es]) -> [E|lists_init(Es)].
 
 collect_temps([], _Target, Temps) -> Temps;
 collect_temps([I|Is], Target, Temps0) ->
@@ -159,48 +163,12 @@ collect_temps([I|Is], Target, Temps0) ->
   Temps = lists:foldl(Fun, lists:foldl(Fun, Temps0, TDef), TUse),
   collect_temps(Is, Target, Temps).
 
-attribute_ducounts([Only], L, DUCounts) ->
-  DUCounts#{{entry, L} => Only};
-attribute_ducounts([Entry|Cs], L, DUCounts) ->
-  attribute_ducounts_1(Cs, L, 1, DUCounts#{{entry, L} => Entry}).
-
-attribute_ducounts_1([Exit], L, _IntNo, DUCounts) ->
-  DUCounts#{{exit, L} => Exit};
-attribute_ducounts_1([Int|Cs], L, IntNo, DUCounts) ->
-  attribute_ducounts_1(Cs, L, IntNo+1, DUCounts#{{internal,L,IntNo} => Int}).
-
 %% Scans the code forwards, collecting def/use counts
-scan_bb([], _Target, DUCount, Parts) -> lists:reverse([DUCount | Parts]);
-scan_bb([I|Is], Target, DUCount0, Parts) ->
-  case defines_all_alloc(I, Target) of
-    true ->
-      scan_bb(Is, Target, ducount_new(), [DUCount0 | Parts]);
-    false ->
-      {Def, Use} = reg_def_use(I, Target),
-      DUCount = ducount_add(Use, ducount_add(Def, DUCount0)),
-      scan_bb(Is, Target, DUCount, Parts)
-  end.
-
-%% Scans the code backwards, collecting sets of regs live over edges
-scan_bb_rev([], _Target, _Livein, Parts) -> Parts;
-scan_bb_rev([I|Is], Target, Live0, Parts0) ->
-  Live = liveness_step(I, Target, Live0),
-  Parts =
-    case defines_all_alloc(I, Target) of
-      true -> [{Live, Live0} | Parts0];
-      false -> Parts0
-    end,
-  scan_bb_rev(Is, Target, Live, Parts).
-
-add_edges([], _L, _Prev, _IntNo, Edges) -> Edges;
-add_edges([{LiveBefore, LiveAfter}|Ls], L, Prev, IntNo, Edges0) ->
-  Now = case Ls of
-	  [] -> {exit, L};
-	  [_|_] -> {internal, L, IntNo}
-	end,
-  add_edges(Ls, L, Now, IntNo+1,
-	    edges_insert(Prev, Now, LiveBefore,
-			 edges_insert(Now, Prev, LiveAfter, Edges0))).
+scan_bb([], _Target, DUCount) -> DUCount;
+scan_bb([I|Is], Target, DUCount0) ->
+  {Def, Use} = reg_def_use(I, Target),
+  DUCount = ducount_add(Use, ducount_add(Def, DUCount0)),
+  scan_bb(Is, Target, DUCount).
 
 liveness_step(I, Target, Liveout) ->
   {Def, Use} = reg_def_use(I, Target),
@@ -251,87 +219,30 @@ rewrite(CFG, Target, Liveness, DSets, Renames, Temps) ->
 
 rewrite_bbs([], _Target, _Liveness, _DSets, _Renames, _Temps, CFG) -> CFG;
 rewrite_bbs([L|Ls], Target, Liveness, DSets, Renames, Temps, CFG0) ->
-  Code0Rev = lists:reverse(_Code0=hipe_bb:code(BB = bb(CFG0, L, Target))),
-  Parts = partition_code(Code0Rev, Target, [], []),
+  Code0Rev = lists:reverse(Code0=hipe_bb:code(BB = bb(CFG0, L, Target))),
   Liveout0 = liveout(Liveness, L, Target),
-  ExitRen = maps:get(maps:get({exit,L},DSets), Renames),
-  PartsRev0 = lists:reverse(Parts),
-  {Ren, Liveout, InitCodeAcc, PartsRev, CFG} =
-    case
-      case PartsRev0 of
-	[[LastI]|_] -> defines_all_alloc(LastI, Target);
-	_ -> false
-      end
-    of
+  EntryRen = maps:get(maps:get({entry,L},DSets), Renames),
+  {Code, CFG} =
+    case defines_all_alloc(hd(Code0Rev), Target) of
+      false ->
+	Fun = rewrite_subst_fun(Target, EntryRen),
+	Code1 = lists:map(fun(I) -> subst_temps(Fun, I, Target) end, Code0),
+	{Code1, CFG0};
       true ->
-	%% The case when a bb ends with a call instruction is special, because
-	%% we are not allowed to add code after the call; instead, we add the
-	%% restores at the start of the successor blocks.
-	%% XXX: The heuristic does not consider this case; if this BB has
-	%% multiple successors, it should be considered more expensive to
-	%% restore here.
-	[[CallI0]|RestPartsRev] = PartsRev0,
-	?ASSERT(defines_all_alloc(CallI0, Target)),
+	ExitRen = maps:get(maps:get({exit,L},DSets), Renames),
+	CallI0 = hd(Code0Rev),
 	Restores = mk_restores(ExitRen, Liveout0, Temps, Target),
 	Succ = hipe_gen_cfg:succ(CFG0, L),
 	{CallI, CFG1} = inject_restores(Succ, Restores, Target, CallI0, CFG0),
-	%% Run rewrite_parts without the last call instruction, so that it does
-	%% not try to add restores after it. To compensate, we add not only the
-	%% call instruction, but the spills that should proceed it to the
-	%% initial accumulator.
 	Liveout1 = liveness_step(CallI, Target, Liveout0),
-	LastInternalRen =
-	  maps:get(maps:get(next_part(length(Parts)-1,L),DSets), Renames),
-	Spills = mk_spills(LastInternalRen, Liveout1, Temps, Target),
-	%% To maintain the invariant that all but the last partition of parts
-	%% ends with a call instruction, we
-	{LastInternalRen, Liveout1, Spills ++ [CallI], RestPartsRev, CFG1};
-      false ->
-	{ExitRen, Liveout0, [], PartsRev0, CFG0}
+	Spills = mk_spills(EntryRen, Liveout1, Temps, Target),
+	Fun = rewrite_subst_fun(Target, EntryRen),
+	Code1Rev = lists:map(fun(I) -> subst_temps(Fun, I, Target) end,
+			     tl(Code0Rev)),
+	{lists:reverse(Code1Rev, Spills ++ [CallI]), CFG1}
     end,
-  %% case Parts =/= [_Code0] of false -> ok; true ->
-  %%     io:fwrite(standard_error, "Code0: ~p~nParts: ~p~nPartsRev: ~p~nCode: ",
-  %% 		[_Code0, Parts, PartsRev])
-  %% end,
-  Code = rewrite_parts(PartsRev, Target, Liveout, DSets, Renames,
-		       Temps, L, length(PartsRev)-1, Ren, InitCodeAcc),
-  %% case Parts =/= [_Code0] of false -> ok; true ->
-  %%     io:fwrite(standard_error, "~p~n", [Code])
-  %% end,
   rewrite_bbs(Ls, Target, Liveness, DSets, Renames, Temps,
 	      update_bb(CFG, L, hipe_bb:code_update(BB, Code), Target)).
-
-%% lists_init([_]) -> [];
-%% lists_init([E|Es]) -> [E|lists_init(Es)].
-
-partition_code([], _Target, Cur, Acc) -> [Cur|Acc];
-partition_code([I|Is], Target, Cur, Acc) ->
-  case defines_all_alloc(I, Target) of
-    false -> partition_code(Is, Target, [I|Cur], Acc);
-    true  -> partition_code(Is, Target, [], [[I|Cur]|Acc])
-  end.
-
-rewrite_parts([], _Target, _Liveout, _DSets, _Renames, _Temps, _L, 0, _Ren,
-	      Acc) ->
-  Acc; % Only when a BB contained only a lone call instruction
-rewrite_parts([Entry], Target, _Liveout, _DSets, _Renames, _Temps, _L, 0, Ren,
-	      Acc) ->
-  SubstFun = rewrite_subst_fun(Target, Ren),
-  lists:map(fun(I) -> subst_temps(SubstFun, I, Target) end, Entry) ++ Acc;
-rewrite_parts([Part|Ps], Target, Liveout0, DSets, Renames, Temps, L, IntNo, Ren,
-	      Acc) ->
-  SubstFun = rewrite_subst_fun(Target, Ren),
-  {Insns, Livein1, CallI, Livein} =
-    rewrite_part(lists:reverse(Part), Target, Liveout0, SubstFun, []),
-  NextPart = maps:get(next_part(IntNo, L), DSets),
-  NextRen = maps:get(NextPart, Renames),
-  Spills = mk_spills(NextRen, Livein, Temps, Target),
-  Restores = mk_restores(Ren, Livein1, Temps, Target),
-  rewrite_parts(Ps, Target, Livein, DSets, Renames, Temps, L, IntNo-1, NextRen,
-		Spills ++ [CallI | Restores ++ Insns ++ Acc]).
-
-next_part(1, L) -> {entry, L};
-next_part(IntNo, L) -> {internal, L, IntNo-1}.
 
 rewrite_subst_fun(Target, Ren) ->
   fun(Temp) ->
@@ -354,23 +265,14 @@ mk_restores(Ren, Liveout, Temps, Target) ->
      mk_move(Temp, update_reg_nr(NewName, Temp, Target), Target)
    end || {Reg, NewName} <- maps:to_list(Ren), lists:member(Reg, Liveout)].
 
-rewrite_part([CallI], Target, Liveout, _SubstFun, Acc) ->
-  Livein = liveness_step(CallI, Target, Liveout),
-  ?ASSERT(defines_all_alloc(CallI, Target)),
-  {Acc, Liveout, CallI, Livein};
-rewrite_part([I0|Is], Target, Liveout, SubstFun, Acc) ->
-  ?ASSERT(not defines_all_alloc(I0, Target)),
-  I = subst_temps(SubstFun, I0, Target),
-  Livein = liveness_step(I0, Target, Liveout),
-  rewrite_part(Is, Target, Livein, SubstFun, [I|Acc]).
-
 inject_restores(_Succs, [], _Target, CFI, CFG) -> {CFI, CFG}; % optimisation
 inject_restores([], _Restores, _Target, CFI, CFG) -> {CFI, CFG};
 inject_restores([L|Ls], Restores, Target, CFI0, CFG0) ->
   RestBBLbl = new_label(Target),
   Code = Restores ++ [mk_goto(L, Target)],
-  %% io:fwrite(standard_error, "Injecting restore block ~w before ~w~n~p~n",
-  %% 	    [RestBBLbl, L, Code]),
+  io:fwrite(standard_error, "Injecting restore block ~w before ~w~n",
+	    [RestBBLbl, L]),
+  %% io:fwrite(standard_error, "~p~n", [Code]),
   CFI = redirect_jmp(CFI0, L, RestBBLbl, Target),
   CFG = update_bb(CFG0, RestBBLbl, hipe_bb:mk_bb(Code), Target),
   inject_restores(Ls, Restores, Target, CFI, CFG).
@@ -435,13 +337,6 @@ edges_query(Temp, Part, Edges) ->
 
 -spec dsets_new([E]) -> dsets(E).
 dsets_new(Elems) -> maps:from_list([{E,{root,0}} || E <- Elems]).
-
--spec dsets_insert(E, dsets(E)) -> dsets(E).
-dsets_insert(E, DS) ->
-  case DS of
-    #{E := _} -> error(badarg, [E, DS]);
-    #{} -> DS#{E => {root,0}}
-  end.
 
 -spec dsets_find(E, dsets(E)) -> {E, dsets(E)}.
 dsets_find(E, DS0) ->
