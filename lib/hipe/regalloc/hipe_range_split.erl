@@ -235,11 +235,12 @@ rewrite_bbs([L|Ls], Target, Liveness, DSets, Renames, Temps, CFG0) ->
 	Succ = hipe_gen_cfg:succ(CFG0, L),
 	{CallI, CFG1} = inject_restores(Succ, Restores, Target, CallI0, CFG0),
 	Liveout1 = liveness_step(CallI, Target, Liveout0),
-	Spills = mk_spills(EntryRen, Liveout1, Temps, Target),
+	SpillMap = mk_spillmap(EntryRen, Liveout1, Temps, Target),
 	Fun = rewrite_subst_fun(Target, EntryRen),
 	Code1Rev = lists:map(fun(I) -> subst_temps(Fun, I, Target) end,
 			     tl(Code0Rev)),
-	{lists:reverse(Code1Rev, Spills ++ [CallI]), CFG1}
+	Code2 = lift_spills(Code1Rev, Target, SpillMap, [CallI]),
+	{Code2, CFG1}
     end,
   rewrite_bbs(Ls, Target, Liveness, DSets, Renames, Temps,
 	      update_bb(CFG, L, hipe_bb:code_update(BB, Code), Target)).
@@ -253,10 +254,10 @@ rewrite_subst_fun(Target, Ren) ->
       end
   end.
 
-mk_spills(Ren, Livein, Temps, Target) ->
+mk_spillmap(Ren, Livein, Temps, Target) ->
   [begin
      Temp = maps:get(Reg, Temps),
-     mk_move(update_reg_nr(NewName, Temp, Target), Temp, Target)
+     {NewName, mk_move(update_reg_nr(NewName, Temp, Target), Temp, Target)}
    end || {Reg, NewName} <- maps:to_list(Ren), lists:member(Reg, Livein)].
 
 mk_restores(Ren, Liveout, Temps, Target) ->
@@ -276,6 +277,18 @@ inject_restores([L|Ls], Restores, Target, CFI0, CFG0) ->
   CFI = redirect_jmp(CFI0, L, RestBBLbl, Target),
   CFG = update_bb(CFG0, RestBBLbl, hipe_bb:mk_bb(Code), Target),
   inject_restores(Ls, Restores, Target, CFI, CFG).
+
+%% Heuristic. Move spills up until we meet the edge of the BB or a definition or
+%% use of that temp.
+lift_spills([], _Target, SpillMap, Acc) ->
+  [SpillI || {_, SpillI} <- SpillMap] ++ Acc;
+lift_spills([I|Is], Target, SpillMap0, Acc) ->
+  {Def, Use} = reg_def_use(I, Target),
+  DefUse = Def ++ Use,
+  {Spills0, SpillMap} =
+    lists:partition(fun({Reg,_}) -> lists:member(Reg, DefUse) end, SpillMap0),
+  Spills = [SpillI || {_, SpillI} <- Spills0],
+  lift_spills(Is, Target, SpillMap, [I|Spills ++ Acc]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec combine_spills(hipe_map(), spill_grouping()) -> hipe_map().
