@@ -109,7 +109,7 @@ call_allocator(CFG, Liveness, SpillLimit, SpillIndex, Options, RegAllocMod,
 do_range_split(CFG0, Liveness0, TgtMod, TgtCtx, Options) ->
   case proplists:get_bool(ra_range_split, Options) of
     true ->
-      {CFG, Grouping} = hipe_range_split:split(CFG0, Liveness0),
+      {CFG, Grouping} = hipe_range_split:split(CFG0, Liveness0, TgtMod, TgtCtx),
       {CFG, TgtMod:analyze(CFG, TgtCtx), {split_enabled, Grouping}};
     false ->
       {CFG0, Liveness0, split_disabled}
