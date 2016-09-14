@@ -159,11 +159,7 @@ def_dataf_once([L|Ls], CFG, Defs0, Changed0) ->
   AddPreds =
     fun(Defset1) ->
 	lists:foldl(fun(P, Defset2) ->
-			defset_union(
-			  case maps:get(P, Defs0) of
-			    {call, _PButlast, PDefset} -> PDefset;
-			    PDefset -> PDefset
-			  end, Defset2)
+			defset_union(defout(P, Defs0), Defset2)
 		    end, Defset1, hipe_gen_cfg:pred(CFG, L))
     end,
   Defset =
@@ -177,11 +173,11 @@ def_dataf_once([L|Ls], CFG, Defs0, Changed0) ->
 	    end,
   def_dataf_once(Ls, CFG, Defs0#{L := Defset}, Changed).
 
-%% defout(L, Defs) ->
-%%   case maps:get(L, Defs) of
-%%     {call, _DefButLast, Defout} -> Defout;
-%%     Defout -> Defout
-%%   end.
+defout(L, Defs) ->
+  case maps:get(L, Defs) of
+    {call, _DefButLast, Defout} -> Defout;
+    Defout -> Defout
+  end.
 
 defbutlast(L, Defs) ->
   case maps:get(L, Defs) of
@@ -200,7 +196,7 @@ defset_add_list([],     D) -> D;
 defset_add_list([E|Es], D) -> defset_add_list(Es, D#{E => []}).
 
 defset_intersect_ordset([], _D) -> [];
-defset_intersect_ordset([E|Es],D) ->
+defset_intersect_ordset([E|Es], D) ->
   case maps:is_key(E,D) of
     true -> [E|defset_intersect_ordset(Es,D)];
     false ->   defset_intersect_ordset(Es,D)
@@ -471,7 +467,7 @@ edges_map_roots_1({A, Es}, DSets0) ->
 
 -spec edges_query(temp(), part_key(), edges()) -> [part_key()].
 edges_query(Temp, Part, Edges) ->
-  Es = maps:get(Part, Edges, []), % All parts have edges
+  Es = maps:get(Part, Edges, []),
   [B || {B, Live} <- Es, maps:is_key(Temp, Live)].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -580,68 +576,19 @@ ducount_merge_1([{T,AC}|Ts], DUCount0) ->
 ?TGT_IFACE_1(defines_all_alloc).
 ?TGT_IFACE_1(is_precoloured).
 ?TGT_IFACE_1(labels).
-%% bb(CFG, L, {TgtMod,TgtCtx}) ->
-%%   TgtMod:bb(CFG, L, TgtCtx).
-
-%% def(I, {TgtMod,TgtCtx}) ->
-%%   TgtMod:def(I, TgtCtx).
-
-%% def_use(I, {TgtMod,TgtCtx}) ->
-%%   TgtMod:def_use(I, TgtCtx).
-
-%% defines_all_alloc(I, {TgtMod,TgtCtx}) ->
-%%   TgtMod:defines_all_alloc(I, TgtCtx).
-
-%% is_precoloured(Reg, {TgtMod,TgtCtx}) ->
-%%   TgtMod:is_precoloured(Reg, TgtCtx).
-
-%% labels(CFG, {TgtMod,TgtCtx}) ->
-%%   TgtMod:labels(CFG, TgtCtx).
-
-liveout(Liveness, L, Target={TgtMod,TgtCtx}) ->
-  ordsets:from_list(reg_names(TgtMod:liveout(Liveness, L, TgtCtx), Target)).
-
 ?TGT_IFACE_1(mk_goto).
 ?TGT_IFACE_2(mk_move).
 ?TGT_IFACE_0(new_label).
 ?TGT_IFACE_0(new_reg_nr).
 ?TGT_IFACE_3(redirect_jmp).
-
-%% mk_goto(Label, {TgtMod,TgtCtx}) ->
-%%   TgtMod:mk_goto(Label, TgtCtx).
-
-%% mk_move(Src, Dst, {TgtMod,TgtCtx}) ->
-%%   TgtMod:mk_move(Src, Dst, TgtCtx).
-
-%% new_label({TgtMod,TgtCtx}) ->
-%%   TgtMod:new_label(TgtCtx).
-
-%% new_reg_nr({TgtMod,TgtCtx}) ->
-%%   TgtMod:new_reg_nr(TgtCtx).
-
-%% redirect_jmp(JmpInsn, ToOld, ToNew, {TgtMod,TgtCtx}) ->
-%%   TgtMod:redirect_jmp(JmpInsn, ToOld, ToNew, TgtCtx).
-
-reg_names(Regs, {TgtMod,TgtCtx}) ->
-  [TgtMod:reg_nr(X,TgtCtx) || X <- Regs].
-
 ?TGT_IFACE_1(reg_nr).
 ?TGT_IFACE_1(reverse_postorder).
 ?TGT_IFACE_2(subst_temps).
 ?TGT_IFACE_3(update_bb).
 ?TGT_IFACE_2(update_reg_nr).
 
-%% reg_nr(Temp, {TgtMod,TgtCtx}) ->
-%%   TgtMod:reg_nr(Temp, TgtCtx).
+liveout(Liveness, L, Target={TgtMod,TgtCtx}) ->
+  ordsets:from_list(reg_names(TgtMod:liveout(Liveness, L, TgtCtx), Target)).
 
-%% reverse_postorder(CFG, {TgtMod,TgtCtx}) ->
-%%   TgtMod:reverse_postorder(CFG, TgtCtx).
-
-%% subst_temps(SubstFun, Instr, {TgtMod,TgtCtx}) ->
-%%   TgtMod:subst_temps(SubstFun, Instr, TgtCtx).
-
-%% update_bb(CFG, L, BB, {TgtMod,TgtCtx}) ->
-%%   TgtMod:update_bb(CFG, L, BB, TgtCtx).
-
-%% update_reg_nr(Nr, Temp, {TgtMod,TgtCtx}) ->
-%%   TgtMod:update_reg_nr(Nr, Temp, TgtCtx).
+reg_names(Regs, {TgtMod,TgtCtx}) ->
+  [TgtMod:reg_nr(X,TgtCtx) || X <- Regs].
