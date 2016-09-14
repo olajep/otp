@@ -101,7 +101,7 @@ do_insn(I, LiveOut, Context, FPoff) ->
     #imul{} ->
       {[do_imul(I, Context, FPoff)], FPoff};
     #move{} ->
-      {[do_move(I, Context, FPoff)], FPoff};
+      {do_move(I, Context, FPoff), FPoff};
     #movsx{} ->
       {[do_movsx(I, Context, FPoff)], FPoff};
     #movzx{} ->
@@ -161,11 +161,15 @@ do_imul(I, Context, FPoff) ->
   Src = conv_opnd(Src0, FPoff, Context),
   I#imul{src=Src}.
 
-do_move(I, Context, FPoff) ->
-  #move{src=Src0,dst=Dst0} = I,
+do_move(I0, Context, FPoff) ->
+  #move{src=Src0,dst=Dst0} = I0,
   Src = conv_opnd(Src0, FPoff, Context),
   Dst = conv_opnd(Dst0, FPoff, Context),
-  I#move{src=Src,dst=Dst}.
+  I = I0#move{src=Src,dst=Dst},
+  case Src =:= Dst of
+    true -> []; % omit move-to-self
+    false -> [I]
+  end.
 
 do_movsx(I, Context, FPoff) ->
   #movsx{src=Src0,dst=Dst0} = I,

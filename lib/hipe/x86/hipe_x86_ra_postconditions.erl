@@ -197,10 +197,15 @@ do_lea(I, TempMap, Strategy) ->
 
 do_move(I, TempMap, Strategy) ->
   #move{src=Src0,dst=Dst0} = I,
-  {FixSrc, Src, FixDst, Dst, DidSpill} =
-    do_check_byte_move(Src0, Dst0, TempMap, Strategy),
-  {FixSrc ++ FixDst ++ [I#move{src=Src,dst=Dst}],
-   DidSpill}.
+  case spilled_to_same_slot(Src0, Dst0, TempMap) of
+    true ->
+      {[I], false};
+    false ->
+      {FixSrc, Src, FixDst, Dst, DidSpill} =
+	do_check_byte_move(Src0, Dst0, TempMap, Strategy),
+      {FixSrc ++ FixDst ++ [I#move{src=Src,dst=Dst}],
+       DidSpill}
+  end.
 
 -ifdef(HIPE_AMD64).
 
@@ -428,6 +433,16 @@ is_spilled(Temp, TempMap) ->
       end;
     false -> true
   end.
+
+spilled_to_same_slot(TempA=#x86_temp{}, TempB=#x86_temp{}, TempMap) ->
+  case {hipe_temp_map:find(hipe_x86:temp_reg(TempA), TempMap),
+	hipe_temp_map:find(hipe_x86:temp_reg(TempB), TempMap)}
+  of
+    {{spill, Slot}, {spill, Slot}} -> true;
+    {_, _} -> false
+  end;
+spilled_to_same_slot(_OperA, _OperB, _TempMap) ->
+  false.
 
 %%% Make Reg a clone of Dst (attach Dst's type to Reg).
 

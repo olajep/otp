@@ -51,7 +51,7 @@
 -define(DO_ASSERT, 1).
 -include("../main/hipe.hrl").
 
--opaque spill_grouping() :: [].
+-opaque spill_grouping() :: #{temp() => temp()}. % member => witness (like dset)
 -type cfg()              :: any().
 -type liveness()         :: any().
 -type target_module()    :: module().
@@ -90,27 +90,41 @@ split(CFG0, Liveness, TargetMod, TargetContext) ->
 
   Target = {TargetMod, TargetContext},
   Defs = def_analyse(CFG0, Target),
+
+  TDefs = erlang:monotonic_time(milli_seconds),
+
   %% io:fwrite(standard_error, "Defs: ~p~n",
   %% 	    [maps:map(fun(_,V)->maps:keys(V)end,Defs)]),
   {DUCounts, Edges, DSets0, Temps} = scan(CFG0, Liveness, Defs, Target),
   {DSets, _} = dsets_to_map(DSets0),
 
+  TScan = erlang:monotonic_time(milli_seconds),
   put(renames, 0),
   put(introduced, 0),
   put(saved, 0),
 
   Renames = decide(DUCounts, Edges, Target),
+  SpillGroup = mk_spillgroup(Renames),
+
+  TDecide = erlang:monotonic_time(milli_seconds),
   %% io:fwrite(standard_error, "Renames ~p~n", [Renames]),
+
   CFG = rewrite(CFG0, Target, Liveness, Defs, DSets, Renames, Temps),
 
-  Time = erlang:monotonic_time(milli_seconds) - TStart,
+  TEnd = erlang:monotonic_time(milli_seconds),
+  Time = TEnd - TStart,
   case (Time > 100) or ((RenC=erase(renames))>0) of false -> ok; true ->
       io:fwrite(standard_error,
-		"Split~5w ren,~5w intro,~5w sav,~5w ms, ~w:~w/~w~n",
-		[RenC,erase(introduced),erase(saved),Time,M,F,A])
+		"Split~5w ren,~5w intro,~5w sav,~4w ms"
+		" (~3w+~3w+~3w+~3w)"
+		", ~w:~w/~w~n",
+		[RenC,erase(introduced),erase(saved),Time,
+		 %% Defs+ Scan+ Decide+ Rewrite
+		 TDefs-TStart, TScan-TDefs, TDecide-TScan, TEnd-TDecide,
+		 M,F,A])
   end,
   %%error(notimpl).
-  {CFG, []}.
+  {CFG, SpillGroup}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Zeroth pass
@@ -221,7 +235,7 @@ defset_from_list(L) -> defset_add_list(L, defset_new()).
 -type part_key() :: {entry | exit, label()}.
 -type part_dsets() :: dsets(part_key()).
 %%-type part_dsets_map() :: #{part_key() => part_key()}.
-%%-type ducounts() :: #{part_key() => ducount()}.
+-type ducounts() :: #{part_key() => ducount()}.
 
 scan(CFG, Liveness, Defs, Target) ->
   Labels = labels(CFG, Target),
@@ -303,7 +317,10 @@ reg_def_use(I, Target) ->
 %% Second pass (not really pass :/)
 %%
 %% Decide which temps to split, in which parts, and pick new names for them.
+-type ren() :: #{temp() => temp()}.
+-type renames() :: #{label() => ren()}.
 
+-spec decide(ducounts(), edges(), target()) -> renames().
 decide(DUCounts, Edges, Target) ->
   %% io:fwrite(standard_error, "Deciding~n", []),
   decide_parts(maps:to_list(DUCounts), Edges, Target, #{}).
@@ -418,10 +435,35 @@ lift_spills([I|Is], Target, SpillMap0, Acc) ->
   lift_spills(Is, Target, SpillMap, [I|Spills ++ Acc]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec mk_spillgroup(renames()) -> spill_grouping().
+mk_spillgroup(Renames) ->
+  maps:fold(fun(_, Ren, Acc0) ->
+		maps:fold(fun(Orig, New, Acc1) ->
+			      Acc1#{Orig => Orig, New => Orig}
+			  end, Acc0, Ren)
+	    end, #{}, Renames).
+
 -spec combine_spills(hipe_map(), spill_grouping()) -> hipe_map().
-combine_spills(_Alloc, _Grouping) ->
-  %%error(notimpl).
-  _Alloc.
+combine_spills(Alloc, Grouping) ->
+  combine_spills_1(Alloc, Grouping, #{}).
+
+combine_spills_1([], _Grouping, _Subst) -> [];
+combine_spills_1([{_, {RegTag, _}}=A|As], Grouping, Subst)
+  when RegTag =:= 'reg'; RegTag =:= 'fp_reg' ->
+  [A|combine_spills_1(As, Grouping, Subst)];
+combine_spills_1([{Temp, {spill, Slot0}}=A0|As], Grouping, Subst0) ->
+  {A, Subst} =
+    case Grouping of
+      #{Temp := Witness} ->
+	case Subst0 of
+	  #{Witness := Slot} ->
+	    %% io:fwrite(standard_error, "Combined ~w -> ~w!~n", [Slot0, Slot]),
+	    {{Temp, {spill, Slot}}, Subst0};
+	  #{} -> {A0, Subst0#{Witness => Slot0}}
+	end;
+      #{} -> {A0, Subst0}
+    end,
+  [A|combine_spills_1(As, Grouping, Subst)].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Edges ADT
