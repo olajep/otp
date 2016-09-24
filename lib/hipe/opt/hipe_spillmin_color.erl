@@ -76,11 +76,13 @@ stackalloc(CFG, Live, _StackSlots, SpillIndex, _Options, TargetMod,
 	   TargetContext, TempMap) ->
   Target = {TargetMod, TargetContext},
   ?report2("building IG~n", []),
-  {IG, NumNodes} = build_ig(CFG, Live, Target, TempMap),
-  {Cols, MaxColors} = 
+  {IG, NumNodes, TempNames} = build_ig(CFG, Live, Target, TempMap),
+  {Cols0, MaxColors} =
     color_heuristic(IG, 0, NumNodes, NumNodes, NumNodes, Target, 1),
-  SortedCols = lists:sort(Cols),
-  {remap_temp_map(SortedCols, TempMap, SpillIndex), SpillIndex+MaxColors}.
+  %% We could use hipe_temp_map, except that it demands a target
+  Cols0Arr = array:from_orddict(orddict:from_list(Cols0)),
+  Cols = remap_temp_map(TempMap, Cols0Arr, TempNames, SpillIndex),
+  {Cols, SpillIndex+MaxColors}.
 
 %% Rounds a floating point value upwards
 ceiling(X) ->
@@ -153,15 +155,18 @@ color_heuristic(IG, Min, Max, Safe, MaxNodes, Target, MaxDepth) ->
 
 %% Returns a new temp map with the spilled temporaries mapped to stack slots,
 %% located after SpillIndex, according to Cols.
-remap_temp_map(Cols, TempMap, SpillIndex) ->
-  remap_temp_map0(Cols, hipe_temp_map:to_substlist(TempMap), SpillIndex).
+%% Cols = remap_temp_map(TempMap, Cols0Tup, TempNames, SpillIndex),
+remap_temp_map(TempMap, Cols, TempNames, SpillIndex) ->
+  TempMapList = hipe_temp_map:to_substlist(TempMap),
+  remap_temp_map0(TempMapList, Cols, TempNames, SpillIndex).
 
-remap_temp_map0([], _TempMap, _SpillIndex) ->
-  [];
-remap_temp_map0([{_M, {spill, N}}|Xs], [{TempNr, {spill,_}}|Ys], SpillIndex) ->
-  [{TempNr, {spill, SpillIndex + N-1}}|remap_temp_map0(Xs, Ys, SpillIndex)];
-remap_temp_map0(Cols, [_Y|Ys], SpillIndex) ->
-  remap_temp_map0(Cols, Ys, SpillIndex).
+remap_temp_map0([], _Cols, _TempNames, _SpillIndex) -> [];
+remap_temp_map0([{TempNr, {spill,_}}|Ys], Cols, TempNames, SpillIndex) ->
+  {spill, N} = array:get(maps:get(TempNr, TempNames), Cols),
+  [{TempNr, {spill, SpillIndex + N-1}}
+   |remap_temp_map0(Ys, Cols, TempNames, SpillIndex)];
+remap_temp_map0([_Y|Ys], Cols, TempNames, SpillIndex) ->
+  remap_temp_map0(Ys, Cols, TempNames, SpillIndex).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -176,27 +181,35 @@ build_ig(CFG, Live, Target, TempMap) ->
   catch error:Rsn -> exit({regalloc, build_ig, Rsn})
   end.
 
-%% Creates an ETS table consisting of the keys given in List, with the values
-%% being an integer which is the position of the key in List.
-%% [1,5,7] -> {1,0} {5,1} {7,2}
-%% etc.
-setup_ets(List) ->
-  setup_ets0(List, ets:new(tempMappingTable, []), 0).
+%% Creates an ETS table consisting of the spilled temps in TempMap mapped to a
+%% dense sequence of integers starting at 0. Temps that are spilled to the same
+%% slot in TempMap are mapped to the same integer.
+setup_ets(TempMap) ->
+  SubstList = hipe_temp_map:to_substlist(TempMap),
+  List = [{Temp, Slot} || {Temp, {spill, Slot}} <- SubstList],
+  Table = ets:new(tempMappingTable, []),
+  {N, TempNames} = setup_ets0(List, Table, #{}, #{}, 0),
+  {Table, N, TempNames}.
 
-setup_ets0([], Table, _N) ->
-  Table;
-setup_ets0([X|Xs], Table, N) ->
-  ets:insert(Table, {X, N}),
-  setup_ets0(Xs, Table, N+1).
+setup_ets0([], _Table, TempNames, _Slots, N) ->
+  ?ASSERT(map_size(_Slots) =:= N),
+  {N, TempNames};
+setup_ets0([{Temp, Slot}|Temps], Table, TempNames, Slots0, N0) ->
+  {Name, Slots, N} =
+    case Slots0 of
+      #{Slot := Name0} -> {Name0, Slots0, N0};
+      %% FIXME: use map syntax when ERL-266 is fixed
+      #{} -> {N0, maps:put(Slot, N0, Slots0), N0+1}
+    end,
+  ets:insert(Table, {Temp, Name}),
+  setup_ets0(Temps, Table, TempNames#{Temp => Name}, Slots, N).
 
 build_ig0(CFG, Live, Target, TempMap) ->
-  TempMapping = map_spilled_temporaries(TempMap),
-  TempMappingTable = setup_ets(TempMapping),
-  NumSpilled = length(TempMapping),
+  {TempMappingTable, NumSpilled, TempNames} = setup_ets(TempMap),
   IG = build_ig_bbs(labels(CFG, Target), CFG, Live, empty_ig(NumSpilled),
 		    Target, TempMap, TempMappingTable),
   ets:delete(TempMappingTable),
-  {normalize_ig(IG), NumSpilled}.
+  {normalize_ig(IG), NumSpilled, TempNames}.
 
 build_ig_bbs([], _CFG, _Live, IG, _Target, _TempMap, _TempMapping) ->
   IG;
@@ -236,17 +249,6 @@ list_map([], _Mapping, Acc) ->
 list_map([X|Xs], Mapping, Acc) ->
   {_Key, Val} = hd(ets:lookup(Mapping, X)),
   list_map(Xs, Mapping, [Val | Acc]).
-
-%% Returns an ordered list of spilled temporaries in TempMap
-map_spilled_temporaries(TempMap) ->
-  map_spilled_temporaries0(hipe_temp_map:to_substlist(TempMap)).
-
-map_spilled_temporaries0([]) ->
-  [];
-map_spilled_temporaries0([{N, {spill, _}}|Xs]) ->
-  [N | map_spilled_temporaries0(Xs)];
-map_spilled_temporaries0([_X|Xs]) ->
-  map_spilled_temporaries0(Xs).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
