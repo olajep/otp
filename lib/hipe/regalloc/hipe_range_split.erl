@@ -64,11 +64,6 @@
 
 %% Tasks:
 %%  * DSETS partitioning of program space at clobber points.
-%%    Partitions: {entry, Lb} | {exit, Lb}
-%%    Internal parts are not included in DSETS (they will never be unioned with
-%%    any other part, and they are not known in the beginning. dsets_find/2
-%%    could be extended to understand them and return them as their own
-%%    witnesses if need be.
 %%
 %%  **? Collect partition edges (clobber points) with liveset and/or clobberset?
 %%
@@ -243,14 +238,14 @@ defset_from_list(L) -> defset_add_list(L, defset_new()).
 %%
 %% Compute program space partitioning, collect information required by the
 %% heuristic.
--type part_key() :: {entry | exit, label()}.
+-type part_key() :: label().
 -type part_dsets() :: dsets(part_key()).
 %%-type part_dsets_map() :: #{part_key() => part_key()}.
 -type ducounts() :: #{part_key() => ducount()}.
 
 scan(CFG, Liveness, Weights, Defs, Target) ->
   Labels = labels(CFG, Target),
-  DSets0 = initial_dsets(CFG, Labels),
+  DSets0 = dsets_new(Labels),
   Edges0 = edges_new(),
   {DUCounts0, Edges1, DSets1, Temps} =
     scan_bbs(Labels, CFG, Liveness, Weights, Defs, Target, #{}, Edges0, DSets0,
@@ -269,13 +264,6 @@ collect_ducounts([{R,Ls}|RLs], DUCounts, Acc) ->
 			end, ducount_new(), Ls),
   collect_ducounts(RLs, DUCounts, Acc#{R => DUCount}).
 
-initial_dsets(CFG, Labels) ->
-  DSets0 = dsets_new([{Half, L} || L <- Labels, Half <- [entry,exit]]),
-  Edges = lists:append([[{L, S} || S <- hipe_gen_cfg:succ(CFG, L)]
-			|| L <- Labels]),
-  lists:foldl(fun({X, Y}, DS) -> dsets_union({exit,X}, {entry,Y}, DS) end,
-	      DSets0, Edges).
-
 scan_bbs([], _CFG, _Liveness, _Weights, _Defs, _Target, DUCounts, Edges, DSets,
 	 Temps) ->
   {DUCounts, Edges, DSets, Temps};
@@ -288,20 +276,24 @@ scan_bbs([L|Ls], CFG, Liveness, Weights, Defs, Target, DUCounts0, Edges0, DSets0
   {DSets, Edges, EntryCode} =
     case defines_all_alloc(LastI, Target) of
       false ->
-	{dsets_union({entry,L}, {exit,L}, DSets0), Edges0, Code};
+	DSets1 = lists:foldl(fun(S, DS) -> dsets_union(L, S, DS) end,
+			     DSets0, hipe_gen_cfg:succ(CFG, L)),
+	{DSets1, Edges0, Code};
       true ->
-	Liveout = liveout(Liveness, L, Target),
-	LiveBefore = liveness_step(LastI, Target, Liveout),
+	LiveBefore = liveness_step(LastI, Target, liveout(Liveness, L, Target)),
 	%% We can omit the spill of a temp that has not been defined since the
 	%% last time it was spilled
 	SpillSet = defset_intersect_ordset(LiveBefore, defbutlast(L, Defs)),
-	Edges1 = edges_insert({entry,L}, {exit,L}, Wt, SpillSet,
-			      edges_insert({exit,L}, {entry,L}, Wt, Liveout,
-					   Edges0)),
-	{DSets0, Edges1, hipe_bb:butlast(BB)}
+	Edges1 = edges_insert(L, L, Wt, SpillSet, Edges0),
+	Edges3 = lists:foldl(fun({S, BranchWt}, Edges2) ->
+				 SLivein = livein(Liveness, S, Target),
+				 SWt = weight_scaled(L, BranchWt, Weights),
+				 edges_insert(L, S, SWt, SLivein, Edges2)
+			     end, Edges1, branch_preds(LastI, Target)),
+	{DSets0, Edges3, hipe_bb:butlast(BB)}
     end,
   DUCount = scan_bb(EntryCode, Target, Wt, ducount_new()),
-  DUCounts = DUCounts0#{{entry,L} => DUCount},
+  DUCounts = DUCounts0#{L => DUCount},
   scan_bbs(Ls, CFG, Liveness, Weights, Defs, Target, DUCounts, Edges, DSets, Temps).
 
 collect_temps([], _Target, Temps) -> Temps;
@@ -330,9 +322,10 @@ reg_def_use(I, Target) ->
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+weight(L, Weights) -> weight_scaled(L, 1.0, Weights).
 -ifndef(USE_BB_WEIGHTS).
 compute_weights(_, _, _) -> [].
-weight(_L, _Weights) -> 1.0.
+weight_scaled(_L, _Scale, _Weights) -> 1.0.
 
 -else.
 compute_weights(CFG, TargetMod, TargetContext) ->
@@ -345,9 +338,9 @@ compute_weights(CFG, TargetMod, TargetContext) ->
   %% end
     .
 
-%% weight(_L, []) -> 1.0;
-weight(L, Weights) ->
-  Wt0 = hipe_bb_weights:weight(L, Weights),
+%% weight_scaled(_L, _Scale, []) -> 1.0;
+weight_scaled(L, Scale, Weights) ->
+  Wt0 = hipe_bb_weights:weight(L, Weights) * Scale,
   %% true = Wt > 0.0000000000000000001,
   Wt = erlang:min(erlang:max(Wt0, 0.0000000000000000001), 10000.0),
   %% math:sqrt(Wt).
@@ -404,8 +397,7 @@ rewrite_bbs([], _Target, _Liveness, _Defs, _DSets, _Renames, _Temps, CFG) ->
   CFG;
 rewrite_bbs([L|Ls], Target, Liveness, Defs, DSets, Renames, Temps, CFG0) ->
   Code0Rev = lists:reverse(Code0=hipe_bb:code(BB = bb(CFG0, L, Target))),
-  Liveout0 = liveout(Liveness, L, Target),
-  EntryRen = maps:get(maps:get({entry,L},DSets), Renames),
+  EntryRen = maps:get(maps:get(L,DSets), Renames),
   {Code, CFG} =
     case defines_all_alloc(hd(Code0Rev), Target) of
       false ->
@@ -413,12 +405,11 @@ rewrite_bbs([L|Ls], Target, Liveness, Defs, DSets, Renames, Temps, CFG0) ->
 	Code1 = lists:map(fun(I) -> subst_temps(Fun, I, Target) end, Code0),
 	{Code1, CFG0};
       true ->
-	ExitRen = maps:get(maps:get({exit,L},DSets), Renames),
 	CallI0 = hd(Code0Rev),
-	Restores = mk_restores(ExitRen, Liveout0, Temps, Target),
 	Succ = hipe_gen_cfg:succ(CFG0, L),
-	{CallI, CFG1} = inject_restores(Succ, Restores, Target, CallI0, CFG0),
-	Liveout1 = liveness_step(CallI, Target, Liveout0),
+	{CallI, CFG1} = inject_restores(Succ, Target, Liveness, DSets, Renames,
+					Temps, CallI0, CFG0),
+	Liveout1 = liveness_step(CallI, Target, liveout(Liveness, L, Target)),
 	Defout = defbutlast(L, Defs),
 	SpillMap = mk_spillmap(EntryRen, Liveout1, Defout, Temps, Target),
 	Fun = rewrite_subst_fun(Target, EntryRen),
@@ -452,17 +443,25 @@ mk_restores(Ren, Liveout, Temps, Target) ->
      mk_move(Temp, update_reg_nr(NewName, Temp, Target), Target)
    end || {Reg, NewName} <- maps:to_list(Ren), lists:member(Reg, Liveout)].
 
-inject_restores(_Succs, [], _Target, CFI, CFG) -> {CFI, CFG}; % optimisation
-inject_restores([], _Restores, _Target, CFI, CFG) -> {CFI, CFG};
-inject_restores([L|Ls], Restores, Target, CFI0, CFG0) ->
-  RestBBLbl = new_label(Target),
-  Code = Restores ++ [mk_goto(L, Target)],
-  %% io:fwrite(standard_error, "Injecting restore block ~w before ~w~n",
-  %% 	    [RestBBLbl, L]),
-  %% io:fwrite(standard_error, "~p~n", [Code]),
-  CFI = redirect_jmp(CFI0, L, RestBBLbl, Target),
-  CFG = update_bb(CFG0, RestBBLbl, hipe_bb:mk_bb(Code), Target),
-  inject_restores(Ls, Restores, Target, CFI, CFG).
+inject_restores([], _Target, _Liveness, _DSets, _Renames, _Temps, CFI, CFG) ->
+  {CFI, CFG};
+inject_restores([L|Ls], Target, Liveness, DSets, Renames, Temps, CFI0, CFG0) ->
+  Ren = maps:get(maps:get(L,DSets), Renames),
+  Livein = livein(Liveness, L, Target),
+  {CFI, CFG} =
+    case mk_restores(Ren, Livein, Temps, Target) of
+      [] -> {CFI0, CFG0}; % optimisation
+      Restores ->
+	RestBBLbl = new_label(Target),
+	Code = Restores ++ [mk_goto(L, Target)],
+	%% io:fwrite(standard_error, "Injecting restore block ~w before ~w~n",
+	%% 	    [RestBBLbl, L]),
+	%% io:fwrite(standard_error, "~p~n", [Code]),
+	CFI1 = redirect_jmp(CFI0, L, RestBBLbl, Target),
+	CFG1 = update_bb(CFG0, RestBBLbl, hipe_bb:mk_bb(Code), Target),
+	{CFI1, CFG1}
+    end,
+  inject_restores(Ls, Target, Liveness, DSets, Renames, Temps, CFI, CFG).
 
 %% Heuristic. Move spills up until we meet the edge of the BB or a definition of
 %% that temp.
@@ -669,8 +668,19 @@ ducount_merge_1([{T,AC}|Ts], DUCount0) ->
 ?TGT_IFACE_3(update_bb).
 ?TGT_IFACE_2(update_reg_nr).
 
+branch_preds(Instr, {TgtMod,TgtCtx}) ->
+  merge_sorted_preds(lists:keysort(1, TgtMod:branch_preds(Instr, TgtCtx))).
+
+livein(Liveness, L, Target={TgtMod,TgtCtx}) ->
+  ordsets:from_list(reg_names(TgtMod:livein(Liveness, L, TgtCtx), Target)).
+
 liveout(Liveness, L, Target={TgtMod,TgtCtx}) ->
   ordsets:from_list(reg_names(TgtMod:liveout(Liveness, L, TgtCtx), Target)).
+
+merge_sorted_preds([]) -> [];
+merge_sorted_preds([{L, P1}, {L, P2}|LPs]) ->
+  merge_sorted_preds([{L, P1+P2}|LPs]);
+merge_sorted_preds([LP|LPs]) -> [LP|merge_sorted_preds(LPs)].
 
 reg_names(Regs, {TgtMod,TgtCtx}) ->
   [TgtMod:reg_nr(X,TgtCtx) || X <- Regs].
