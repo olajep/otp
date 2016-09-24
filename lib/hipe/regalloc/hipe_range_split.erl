@@ -47,6 +47,7 @@
 -export_type([spill_grouping/0]).
 
 %% -compile(inline).
+-define(USE_BB_WEIGHTS,1).
 
 -define(DO_ASSERT, 1).
 -include("../main/hipe.hrl").
@@ -80,6 +81,10 @@
 %% Q: Do we need a partition refinement data structure? No, it does not do quite
 %% what we need. We want something akin to a graph, where we delete edges (by
 %% inserting splits) to partition the space. Can 'sofs' do that?
+%%
+%% Idea: Second "spill mode," where temps are spilled at definitions rather than
+%% exit edges. Heuristic decision based on similar "cost" as first spill mode.
+%% Q: Can we do the same to restores? Is there any benefit?
 
 -spec split(cfg(), liveness(), target_module(), target_context())
 	   -> {cfg(), spill_grouping()}.
@@ -88,6 +93,9 @@ split(CFG0, Liveness, TargetMod, TargetContext) ->
   %% io:fwrite(standard_error, "Splitting ~w:~w/~w~n", [M,F,A]),
   TStart = erlang:monotonic_time(milli_seconds),
 
+  Wts = compute_weights(CFG0, TargetMod, TargetContext),
+  TWt = erlang:monotonic_time(milli_seconds),
+
   Target = {TargetMod, TargetContext},
   Defs = def_analyse(CFG0, Target),
 
@@ -95,13 +103,13 @@ split(CFG0, Liveness, TargetMod, TargetContext) ->
 
   %% io:fwrite(standard_error, "Defs: ~p~n",
   %% 	    [maps:map(fun(_,V)->maps:keys(V)end,Defs)]),
-  {DUCounts, Edges, DSets0, Temps} = scan(CFG0, Liveness, Defs, Target),
+  {DUCounts, Edges, DSets0, Temps} = scan(CFG0, Liveness, Wts, Defs, Target),
   {DSets, _} = dsets_to_map(DSets0),
 
   TScan = erlang:monotonic_time(milli_seconds),
   put(renames, 0),
-  put(introduced, 0),
-  put(saved, 0),
+  put(introduced, 0.0),
+  put(saved, 0.0),
 
   Renames = decide(DUCounts, Edges, Target),
   SpillGroup = mk_spillgroup(Renames),
@@ -115,13 +123,16 @@ split(CFG0, Liveness, TargetMod, TargetContext) ->
   Time = TEnd - TStart,
   case (Time > 100) or ((RenC=erase(renames))>0) of false -> ok; true ->
       io:fwrite(standard_error,
-		"Split~5w ren,~5w intro,~5w sav,~4w ms"
-		" (~3w+~3w+~3w+~3w)"
+		%% "Split~4w pts,~4w ren,~5w intro,~5w sav,~4w ms"
+		"Split~4w,~4w,~6.2f,~6.2f,~4w ms"
+		" (~3w+~3w+~3w+~3w+~3w)"
 		", ~w:~w/~w~n",
-		[RenC,erase(introduced),erase(saved),Time,
-		 %% Defs+ Scan+ Decide+ Rewrite
-		 TDefs-TStart, TScan-TDefs, TDecide-TScan, TEnd-TDecide,
+		[erase(partitions),RenC,erase(introduced),erase(saved),Time,
+		 %% Weight+ Defs+ Scan+ Decide+ Rewrite
+		 TWt-TStart, TDefs-TWt, TScan-TDefs, TDecide-TScan, TEnd-TDecide,
 		 M,F,A])
+
+	%% ,io:fwrite(standard_error, "Wts: ~p~n", [Wts])
   end,
   %%error(notimpl).
   {CFG, SpillGroup}.
@@ -237,13 +248,15 @@ defset_from_list(L) -> defset_add_list(L, defset_new()).
 %%-type part_dsets_map() :: #{part_key() => part_key()}.
 -type ducounts() :: #{part_key() => ducount()}.
 
-scan(CFG, Liveness, Defs, Target) ->
+scan(CFG, Liveness, Weights, Defs, Target) ->
   Labels = labels(CFG, Target),
   DSets0 = initial_dsets(CFG, Labels),
   Edges0 = edges_new(),
   {DUCounts0, Edges1, DSets1, Temps} =
-    scan_bbs(Labels, CFG, Liveness, Defs, Target, #{}, Edges0, DSets0, #{}),
+    scan_bbs(Labels, CFG, Liveness, Weights, Defs, Target, #{}, Edges0, DSets0,
+	     #{}),
   {RLList, DSets2} = dsets_to_rllist(DSets1),
+  put(partitions, length(RLList)),
   %% io:fwrite(standard_error, "Partitioning: ~p~n", [RLList]),
   {Edges, DSets} = edges_map_roots(DSets2, Edges1),
   DUCounts = collect_ducounts(RLList, DUCounts0, #{}),
@@ -263,11 +276,13 @@ initial_dsets(CFG, Labels) ->
   lists:foldl(fun({X, Y}, DS) -> dsets_union({exit,X}, {entry,Y}, DS) end,
 	      DSets0, Edges).
 
-scan_bbs([], _CFG, _Liveness, _Defs, _Target, DUCounts, Edges, DSets, Temps) ->
+scan_bbs([], _CFG, _Liveness, _Weights, _Defs, _Target, DUCounts, Edges, DSets,
+	 Temps) ->
   {DUCounts, Edges, DSets, Temps};
-scan_bbs([L|Ls], CFG, Liveness, Defs, Target, DUCounts0, Edges0, DSets0,
+scan_bbs([L|Ls], CFG, Liveness, Weights, Defs, Target, DUCounts0, Edges0, DSets0,
 	 Temps0) ->
   Code = hipe_bb:code(BB = bb(CFG, L, Target)),
+  Wt = weight(L, Weights),
   Temps = collect_temps(Code, Target, Temps0),
   LastI = hipe_bb:last(BB),
   {DSets, Edges, EntryCode} =
@@ -280,14 +295,14 @@ scan_bbs([L|Ls], CFG, Liveness, Defs, Target, DUCounts0, Edges0, DSets0,
 	%% We can omit the spill of a temp that has not been defined since the
 	%% last time it was spilled
 	SpillSet = defset_intersect_ordset(LiveBefore, defbutlast(L, Defs)),
-	Edges1 = edges_insert({entry,L}, {exit,L}, SpillSet,
-			      edges_insert({exit,L}, {entry,L}, Liveout,
+	Edges1 = edges_insert({entry,L}, {exit,L}, Wt, SpillSet,
+			      edges_insert({exit,L}, {entry,L}, Wt, Liveout,
 					   Edges0)),
 	{DSets0, Edges1, hipe_bb:butlast(BB)}
     end,
-  DUCount = scan_bb(EntryCode, Target, ducount_new()),
+  DUCount = scan_bb(EntryCode, Target, Wt, ducount_new()),
   DUCounts = DUCounts0#{{entry,L} => DUCount},
-  scan_bbs(Ls, CFG, Liveness, Defs, Target, DUCounts, Edges, DSets, Temps).
+  scan_bbs(Ls, CFG, Liveness, Weights, Defs, Target, DUCounts, Edges, DSets, Temps).
 
 collect_temps([], _Target, Temps) -> Temps;
 collect_temps([I|Is], Target, Temps0) ->
@@ -299,11 +314,11 @@ collect_temps([I|Is], Target, Temps0) ->
   collect_temps(Is, Target, Temps).
 
 %% Scans the code forwards, collecting def/use counts
-scan_bb([], _Target, DUCount) -> DUCount;
-scan_bb([I|Is], Target, DUCount0) ->
+scan_bb([], _Target, _Wt, DUCount) -> DUCount;
+scan_bb([I|Is], Target, Wt, DUCount0) ->
   {Def, Use} = reg_def_use(I, Target),
-  DUCount = ducount_add(Use, ducount_add(Def, DUCount0)),
-  scan_bb(Is, Target, DUCount).
+  DUCount = ducount_add(Use, Wt, ducount_add(Def, Wt, DUCount0)),
+  scan_bb(Is, Target, Wt, DUCount).
 
 liveness_step(I, Target, Liveout) ->
   {Def, Use} = reg_def_use(I, Target),
@@ -312,6 +327,32 @@ liveness_step(I, Target, Liveout) ->
 reg_def_use(I, Target) ->
   {TDef, TUse} = def_use(I, Target),
   {reg_names(TDef,Target), reg_names(TUse,Target)}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-ifndef(USE_BB_WEIGHTS).
+compute_weights(_, _, _) -> [].
+weight(_L, _Weights) -> 1.0.
+
+-else.
+compute_weights(CFG, TargetMod, TargetContext) ->
+  %% try
+    hipe_bb_weights:compute(CFG, TargetMod, TargetContext)
+  %% catch error:E ->
+  %%     io:fwrite(standard_error, "BB weighting failed: ~p:~n~p~n",
+  %% 		[E, erlang:get_stacktrace()]),
+  %%     []
+  %% end
+    .
+
+%% weight(_L, []) -> 1.0;
+weight(L, Weights) ->
+  Wt0 = hipe_bb_weights:weight(L, Weights),
+  %% true = Wt > 0.0000000000000000001,
+  Wt = erlang:min(erlang:max(Wt0, 0.0000000000000000001), 10000.0),
+  %% math:sqrt(Wt).
+  math:pow(Wt, math:log(4*1.1*1.1)/math:log(100)).
+-endif.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Second pass (not really pass :/)
@@ -331,23 +372,24 @@ decide_parts([{Part,DUCount}|Ps], Edges, Target, Acc) ->
   decide_parts(Ps, Edges, Target, Acc#{Part => Spills}).
 
 decide_temps([], _Part, _Edges, _Target, Acc) -> Acc;
-decide_temps([{Temp, Count}|Ts], Part, Edges, Target, Acc0) ->
+decide_temps([{Temp, SpillGain}|Ts], Part, Edges, Target, Acc0) ->
   Es = edges_query(Temp, Part, Edges),
+  SpillCost = lists:sum(Es),
   Acc =
     case not is_precoloured(Temp, Target)
-      andalso length(Es) =< Count % Probably < is better; at least when we have
-				  % BB weighting
-      andalso Es =/= [] % Es = [] usually means the temp is local to the
-			% partition; hence no need to split it
+      andalso 1.1*SpillCost < SpillGain
+      %% Es = [] usually means the temp is local to the partition; hence no need
+      %% to split it
+      andalso Es =/= []
     of
       false -> Acc0;
       true ->
 	%% io:fwrite(standard_error, "Splitting range of temp ~w in part ~w, "
-	%% 	  "Count: ~w, Edges: ~w~n",
-	%% 	  [Temp, Part, Count, Es]),
+	%% 	  "SpillGain: ~w, Edges: ~w~n",
+	%% 	  [Temp, Part, SpillGain, Edges]),
 	put(renames, get(renames)+1),
-	put(introduced, get(introduced)+length(Es)),
-	put(saved, get(saved)+Count),
+	put(introduced, get(introduced)+SpillCost),
+	put(saved, get(saved)+SpillGain),
 	Acc0#{Temp => new_reg_nr(Target)}
   end,
   decide_temps(Ts, Part, Edges, Target, Acc).
@@ -422,15 +464,14 @@ inject_restores([L|Ls], Restores, Target, CFI0, CFG0) ->
   CFG = update_bb(CFG0, RestBBLbl, hipe_bb:mk_bb(Code), Target),
   inject_restores(Ls, Restores, Target, CFI, CFG).
 
-%% Heuristic. Move spills up until we meet the edge of the BB or a definition or
-%% use of that temp.
+%% Heuristic. Move spills up until we meet the edge of the BB or a definition of
+%% that temp.
 lift_spills([], _Target, SpillMap, Acc) ->
   [SpillI || {_, SpillI} <- SpillMap] ++ Acc;
 lift_spills([I|Is], Target, SpillMap0, Acc) ->
-  {Def, Use} = reg_def_use(I, Target),
-  DefUse = Def ++ Use,
+  Def = reg_defines(I, Target),
   {Spills0, SpillMap} =
-    lists:partition(fun({Reg,_}) -> lists:member(Reg, DefUse) end, SpillMap0),
+    lists:partition(fun({Reg,_}) -> lists:member(Reg, Def) end, SpillMap0),
   Spills = [SpillI || {_, SpillI} <- Spills0],
   lift_spills(Is, Target, SpillMap, [I|Spills ++ Acc]).
 
@@ -456,9 +497,7 @@ combine_spills_1([{Temp, {spill, Slot0}}=A0|As], Grouping, Subst0) ->
     case Grouping of
       #{Temp := Witness} ->
 	case Subst0 of
-	  #{Witness := Slot} ->
-	    %% io:fwrite(standard_error, "Combined ~w -> ~w!~n", [Slot0, Slot]),
-	    {{Temp, {spill, Slot}}, Subst0};
+	  #{Witness := Slot} -> {{Temp, {spill, Slot}}, Subst0};
 	  #{} -> {A0, Subst0#{Witness => Slot0}}
 	end;
       #{} -> {A0, Subst0}
@@ -474,15 +513,16 @@ combine_spills_1([{Temp, {spill, Slot0}}=A0|As], Grouping, Subst0) ->
 %% The liveset type needs to provide logarithmic membership query; thus it
 %% cannot be the usual sorted list.
 -type edge_liveset() :: #{temp() => []}. % set
--type edges() :: #{part_key() => [{part_key(), edge_liveset()}]}.
+-type edges() :: #{part_key() => [{part_key(), float(), edge_liveset()}]}.
 
 -spec edges_new() -> edges().
 edges_new() -> #{}.
 
--spec edges_insert(part_key(), part_key(), liveset(), edges()) -> edges().
-edges_insert(A, B, OLiveset, Edges) ->
+-spec edges_insert(part_key(), part_key(), float(), liveset(), edges())
+		  -> edges().
+edges_insert(A, B, Weight, OLiveset, Edges) ->
   Liveset = maps:from_list([{T, []} || T <- OLiveset]),
-  map_append(A, {B, Liveset}, Edges).
+  map_append(A, {B, Weight, Liveset}, Edges).
 
 -spec edges_map_roots(part_dsets(), edges()) -> {edges(), part_dsets()}.
 edges_map_roots(DSets0, Edges) ->
@@ -501,16 +541,16 @@ maps_from_list_merge([{K,V}|Ps], MF, Acc) ->
 edges_map_roots_1({A, Es}, DSets0) ->
   {AR, DSets1} = dsets_find(A, DSets0),
   %% dito about mapfoldl
-  {EsR, DSets} = lists:mapfoldr(fun({B, Live}, DSets2) ->
+  {EsR, DSets} = lists:mapfoldr(fun({B, Wt, Live}, DSets2) ->
 				    {BR, DSets3} = dsets_find(B, DSets2),
-				    {{BR, Live}, DSets3}
+				    {{BR, Wt, Live}, DSets3}
 				end, DSets1, Es),
   {{AR, EsR}, DSets}.
 
 -spec edges_query(temp(), part_key(), edges()) -> [part_key()].
 edges_query(Temp, Part, Edges) ->
   Es = maps:get(Part, Edges, []),
-  [B || {B, Live} <- Es, maps:is_key(Temp, Live)].
+  [Wt || {_B, Wt, Live} <- Es, maps:is_key(Temp, Live)].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% The disjoint set forests data structure, for elements of arbitrary types.
@@ -572,20 +612,20 @@ map_append(Key, Elem, Map) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Def and use counting ADT
--type ducount() :: #{temp() => non_neg_integer()}.
+-type ducount() :: #{temp() => float()}.
 
 -spec ducount_new() -> ducount().
 ducount_new() -> #{}.
 
--spec ducount_add([temp()], ducount()) -> ducount().
-ducount_add([], DUCount) -> DUCount;
-ducount_add([T|Ts], DUCount0) ->
+-spec ducount_add([temp()], float(), ducount()) -> ducount().
+ducount_add([], _Weight, DUCount) -> DUCount;
+ducount_add([T|Ts], Weight, DUCount0) ->
   DUCount =
     case DUCount0 of
-      #{T := Count} -> DUCount0#{T := Count + 1};
-      #{}           -> DUCount0#{T => 1}
+      #{T := Count} -> DUCount0#{T := Count + Weight};
+      #{}           -> DUCount0#{T => Weight}
     end,
-  ducount_add(Ts, DUCount).
+  ducount_add(Ts, Weight, DUCount).
 
 ducount_to_list(DUCount) -> maps:to_list(DUCount).
 
