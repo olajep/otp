@@ -28,7 +28,7 @@
 %% The equation system representation is intentionally sparse, since most blocks
 %% have at most two successors.
 -module(hipe_bb_weights).
--export([compute/3, weight/2, call_exn_pred/0]).
+-export([compute/3, compute_fast/3, weight/2, call_exn_pred/0]).
 -export_type([bb_weights/0]).
 
 -define(DO_ASSERT,1).
@@ -39,12 +39,14 @@
 -type cfg() :: any().
 -type target_module() :: module().
 -type target_context() :: any().
+-type target() :: {target_module(), target_context()}.
 
 %% -type tuple(X)           :: {} | {X} | {X, X} | {X, X, X} | tuple(). % etc...
 -type label()            :: integer().
 -type var()              :: label().
 -type assignment()       :: {var(), float()}.
 %% -type partial_solution() :: [assignment()].
+-type eq_assoc()         :: [{var(), key()}].
 -type solution()         :: [assignment()].
 
 %% Constant. Predicted probability of a call resulting in an exception.
@@ -54,57 +56,87 @@ call_exn_pred() -> 0.01.
 -spec compute(cfg(), target_module(), target_context()) -> bb_weights().
 compute(CFG, TgtMod, TgtCtx) ->
   Target = {TgtMod, TgtCtx},
-  EqSys = build_eq_system(CFG, Target),
-  Solution = solve(EqSys),
-  %% {M,F,A} = element(2, element(3, CFG)),
-  %% Max = lists:max([C || {_,C} <- Solution]),
-  %% Min = lists:min([C || {_,C} <- Solution]),
-  %% io:fwrite("min: ~-22w, max: ~-22w, ~w:~w/~w~n", [Min,Max,M,F,A]),
-  maps:from_list(Solution).
 
+  {EqSys, EqAssoc} = build_eq_system(CFG, Target),
+
+  %% {M,F,A} = element(2, element(3, CFG)),
+  %% io:fwrite("~w:~w/~w~n", [M,F,A]),
+  %% eqs_print(EqSys),
+
+  case solve(EqSys, EqAssoc) of
+    {ok, Solution} ->
+      %% Max = lists:max([C || {_,C} <- Solution]),
+      %% Min = lists:min([C || {_,C} <- Solution]),
+      %% io:fwrite("min: ~-22w, max: ~-22w, ~w:~w/~w~n", [Min,Max,M,F,A]),
+      maps:from_list(Solution)
+   %% ;error ->
+   %%    compute_fast(CFG, TgtMod, TgtCtx)
+  end.
+
+-spec build_eq_system(cfg(), target()) -> {eq_system(), eq_assoc()}.
 build_eq_system(CFG, Target) ->
   StartLb = hipe_gen_cfg:start_label(CFG),
   EQS0 = eqs_new(),
-  EQS = eqs_insert(row_new([{StartLb, 1.0}], 1.0), EQS0),
-  [] = hipe_gen_cfg:pred(CFG, StartLb),
-  build_eq_system(labels(CFG, Target) -- [StartLb], CFG, Target, EQS).
+  %% {StartKey, EQS1} = eqs_insert(row_new([{StartLb, 1.0}], 1.0), EQS0),
+  %% [] = hipe_gen_cfg:pred(CFG, StartLb),
+  {EQS1, Assoc} = build_eq_system(labels(CFG, Target), CFG, Target, [], EQS0),
+  {StartLb, StartKey} = lists:keyfind(StartLb, 1, Assoc),
+  StartRow0 = eqs_get(StartKey, EQS1),
+  StartRow = row_set_const(-1.0, StartRow0), % -1.0 since StartLb coef is -1.0
+  EQS = eqs_put(StartKey, StartRow, EQS1),
+  {EQS, Assoc}.
 
-build_eq_system([], _CFG, _Target, EQS) -> EQS;
-build_eq_system([L|Ls], CFG, Target, EQS0) ->
-  EQS =
-    case hipe_gen_cfg:pred(CFG, L) of
-      [] -> EQS0;
-      %% [Pred] -> eqs_insert(row_new([{Pred, 1.0}, {L, -1.0}], 0.0), EQS0);
-      Preds ->
-	PredProb = lists:map(fun(Pred) ->
-				 BB = bb(CFG, Pred, Target),
-				 Ps = branch_preds(hipe_bb:last(BB), Target),
-				 ?ASSERT(length(Ps) =:= length(hipe_gen_cfg:succ(CFG, Pred))),
-				 {L, Prob} = lists:keyfind(L, 1, Ps),
-				 {Pred, Prob}
-			     end, Preds),
+build_eq_system([], _CFG, _Target, Map, EQS) -> {EQS, lists:reverse(Map)};
+build_eq_system([L|Ls], CFG, Target, Map, EQS0) ->
+  PredProb = pred_prob(L, CFG, Target),
+  {Key, EQS} =
+    %% case hipe_gen_cfg:pred(CFG, L) of
+    %%   %% [Pred] -> eqs_insert(row_new([{Pred, 1.0}, {L, -1.0}], 0.0), EQS0);
+    %%   Preds = [_|_] ->
+    %% 	PredProb = lists:map(fun(Pred) ->
+    %% 				 BB = bb(CFG, Pred, Target),
+    %% 				 Ps = branch_preds(hipe_bb:last(BB), Target),
+    %% 				 ?ASSERT(length(Ps) =:= length(hipe_gen_cfg:succ(CFG, Pred))),
+    %% 				 {L, Prob} = lists:keyfind(L, 1, Ps),
+    %% 				 {Pred, Prob}
+    %% 			     end, Preds),
 	eqs_insert(row_new([{L, -1.0}|PredProb], 0.0), EQS0)
-    end,
-  build_eq_system(Ls, CFG, Target, EQS).
+    %% end
+    ,
+  build_eq_system(Ls, CFG, Target, [{L, Key}|Map], EQS).
+
+pred_prob(L, CFG, Target) ->
+  lists:map(fun(Pred) ->
+		BB = bb(CFG, Pred, Target),
+		Ps = branch_preds(hipe_bb:last(BB), Target),
+		?ASSERT(length(lists:ukeysort(1, Ps))
+			=:= length(hipe_gen_cfg:succ(CFG, Pred))),
+		{L, Prob} = lists:keyfind(L, 1, Ps),
+		{Pred, Prob}
+	    end, hipe_gen_cfg:pred(CFG, L)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec triangelise(eq_system()) -> {[{var(), key()}], eq_system()}.
-triangelise(EQS) ->
-  triangelise(lists:sort(eqs_vars(EQS)), EQS, #{}).
-
-triangelise([], EQS, Assoc) -> {[{K, V} || {V, K} <- maps:to_list(Assoc)], EQS};
-triangelise([V|Vs], EQS0, Assoc0) ->
-  %% Pick a row to be only one mentioning V
-  %% We pick the smallest unused eq
-  [{_, Key}|_] = lists:sort([{row_size(eqs_get(Key, EQS0)), Key}
-			     || Key <- eqs_lookup(V, EQS0),
-				not maps:is_key(Key, Assoc0)]),
+-spec triangelise(eq_system(), eq_assoc()) -> eq_system().
+triangelise(EQS, []) -> EQS;
+triangelise(EQS0, [{V,Key}|Vs]) ->
   Row0 = eqs_get(Key, EQS0),
-  Row = row_normalise(V, Row0),
-  EQS1 = eqs_put(Key, Row, EQS0),
-  %% io:fwrite("l~w's row: ", [V]), row_print(Row),
-  EQS = eliminate(V, Key, Row, EQS1),
-  triangelise(Vs, EQS, Assoc0#{Key => V}).
+  case row_get(V, Row0) of
+    Coef when Coef > -0.0001, Coef < 0.0001 ->
+      io:fwrite(standard_error,
+		"No equation constraining l~w left!~n",
+		[V]),
+      eqs_print(EQS0),
+      throw(error);
+      %% error({underconstrained, V, Coef});
+    _ ->
+      Row = row_normalise(V, Row0),
+      %% io:format("Killing l~w with ", [V]), row_print(Row),
+      EQS1 = eqs_put(Key, Row, EQS0),
+      %% io:fwrite("l~w's row: ", [V]), row_print(Row),
+      EQS = eliminate(V, Key, Row, EQS1),
+      triangelise(EQS, Vs)
+  end.
+
 
 row_normalise(Var, Row) ->
   %% Normalise v's coef to 1.0
@@ -180,9 +212,10 @@ eliminate(Var, Key, Row, EQS0) ->
 %% list_drop_nth(1, [_|Es]) -> Es;
 %% list_drop_nth(P, [E|Es]) -> [E|list_drop_nth(P-1, Es)].
 
--spec solve(eq_system()) -> solution().
-solve(EQS0) ->
-  {VarEqs, EQS1} = triangelise(EQS0),
+-spec solve(eq_system(), eq_assoc()) -> error | {ok, solution()}.
+solve(EQS0, EqAssoc) ->
+  try triangelise(EQS0, EqAssoc)
+  of EQS1 ->
   %% lists:foreach(fun({Var, Key}) ->
   %% 		    io:fwrite("l~w: ", [Var]), row_print(eqs_get(Key, EQS1))
   %% 		end, VarEqs),
@@ -192,7 +225,9 @@ solve(EQS0) ->
   %% VarEqSiz = lists:sort([{row_size(eqs_get(Key, EQS0)), Var, Key}
   %% 			     || {Var, Key} <- VarEqs0]),
   %% VarEqs = [{Var, Key} || {_, Var, Key} <- VarEqSiz],
-  solve_1(VarEqs, maps:from_list(VarEqs), EQS1, []).
+      {ok, solve_1(EqAssoc, maps:from_list(EqAssoc), EQS1, [])}
+  catch error -> error
+  end.
   %% solve_2([K || {_, K} <- VarEqs0], EQS1, []).
 
 %% solve_1(EQS0, Acc0) ->
@@ -262,7 +297,7 @@ row_ensure_invar({Coef, Const}) ->
 
 row_const({_, Const}) -> Const.
 row_coefs({Coefs, _}) -> orddict:to_list(Coefs).
-row_size({Coefs, _}) -> orddict:size(Coefs).
+%% row_size({Coefs, _}) -> orddict:size(Coefs).
 
 row_get(Var, {Coefs, _}) -> %% orddict:fetch(Var, Coefs).
   case lists:keyfind(Var, 1, Coefs) of
@@ -274,6 +309,8 @@ row_set_coef(Var, 0.0, {Coefs, Const}) ->
   {orddict:erase(Var, Coefs), Const};
 row_set_coef(Var, Coef, {Coefs, Const}) ->
   {orddict:store(Var, Coef, Coefs), Const}.
+
+row_set_const(Const, {Coefs, _}) -> {Coefs, Const}.
 
 %% Lhs + Rhs*Factor
 -spec row_addmul(row(), row(), float()) -> row().
@@ -311,7 +348,7 @@ row_scale(Row, Factor) -> row_addmul(row_empty(), Row, Factor).
 -type row()       :: {Terms :: orddict:orddict(var(), float()),
 		      Const :: float()}.
 -type key()       :: non_neg_integer().
-%% -type rowp()      :: {key(), row()}.
+-type rowp()      :: {key(), row()}.
 -type rev_index() :: #{var() => ordsets:ordset(key())}.
 %% -type sizset()    :: #{key() => []}. % set
 %% -type sizidx()    :: gb_trees:tree(non_neg_integer(), sizset()).
@@ -325,10 +362,11 @@ row_scale(Row, Factor) -> row_addmul(row_empty(), Row, Factor).
 
 eqs_new() -> #eq_system{}.
 
+-spec eqs_insert(row(), eq_system()) -> {key(), eq_system()}.
 eqs_insert(Row, EQS=#eq_system{next_key=NextKey0}) ->
   Key = NextKey0,
   NextKey = NextKey0 + 1,
-  eqs_insert(Key, Row, EQS#eq_system{next_key=NextKey}).
+  {Key, eqs_insert(Key, Row, EQS#eq_system{next_key=NextKey})}.
 
 eqs_insert(Key, Row, EQS=#eq_system{rows=Rows, revidx=RevIdx0%% , sizidx=SizIdx0
 				   }) ->
@@ -357,14 +395,14 @@ eqs_get(Key, #eq_system{rows=Rows}) -> maps:get(Key, Rows).
 -spec eqs_lookup(var(), eq_system()) -> ordsets:ordset(key()).
 eqs_lookup(Var, #eq_system{revidx=RevIdx}) -> maps:get(Var, RevIdx).
 
-%% -spec eqs_rows(eq_system()) -> [rowp()].
-%% eqs_rows(#eq_system{rows=Rows}) -> maps:to_list(Rows).
+-spec eqs_rows(eq_system()) -> [rowp()].
+eqs_rows(#eq_system{rows=Rows}) -> maps:to_list(Rows).
 
 %% -spec eqs_no_vars(eq_system()) -> [var()].
 %% eqs_no_vars(#eq_system{revidx=RevIdx}) -> map_size(RevIdx).
 
--spec eqs_vars(eq_system()) -> [var()].
-eqs_vars(#eq_system{revidx=RevIdx}) -> maps:keys(RevIdx).
+%% -spec eqs_vars(eq_system()) -> [var()].
+%% eqs_vars(#eq_system{revidx=RevIdx}) -> maps:keys(RevIdx).
 
 %% -spec eqs_of_size(non_neg_integer(), eq_system()) -> [key()].
 %% eqs_of_size(Siz, #eq_system{sizidx=SizIdx}) ->
@@ -373,16 +411,16 @@ eqs_vars(#eq_system{revidx=RevIdx}) -> maps:keys(RevIdx).
 %%     {value, SizSet} -> sizset_to_list(SizSet)
 %%   end.
 
-%% eqs_print(EQS) ->
-%%   lists:foreach(fun({_, Row}) ->
-%% 		    row_print(Row)
-%% 		end, eqs_rows(EQS)).
+eqs_print(EQS) ->
+  lists:foreach(fun({_, Row}) ->
+		    row_print(Row)
+		end, lists:sort(eqs_rows(EQS))).
 
-%% row_print(Row) ->
-%%   CoefStrs = [io_lib:format("~wl~w", [Coef, Var])
-%% 	      || {Var, Coef} <- row_coefs(Row)],
-%%   CoefStr = lists:join(" + ", CoefStrs),
-%%   io:format("~w = ~s~n", [row_const(Row), CoefStr]).
+row_print(Row) ->
+  CoefStrs = [io_lib:format("~wl~w", [Coef, Var])
+	      || {Var, Coef} <- row_coefs(Row)],
+  CoefStr = lists:join(" + ", CoefStrs),
+  io:format("~w = ~s~n", [row_const(Row), CoefStr]).
 
 %% eqs_iterator(#eq_system{rows=Rows}) -> map_iterator(Rows).
 %% eqs_next(Iter) -> map_next(Iter).
@@ -441,6 +479,34 @@ revidx_remove(Key, {Coefs, _}, RevIdx0) ->
 %% map_next([]) -> none;
 %% map_next([{K,V}|Ps]) -> {K, V, Ps}.
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-define(FAST_ITERATIONS, 5).
+
+%% @doc Computes a rough approximation of BB weights. The approximation is
+%% particularly poor for recursive functions.
+-spec compute_fast(cfg(), target_module(), target_context()) -> bb_weights().
+compute_fast(CFG, TgtMod, TgtCtx) ->
+  Target = {TgtMod, TgtCtx},
+  StartLb = hipe_gen_cfg:start_label(CFG),
+  RPO = reverse_postorder(CFG, Target),
+  PredProbs = [{L, pred_prob(L, CFG, Target)} || L <- RPO, L =/= StartLb],
+  Probs0 = (maps:from_list([{L, 0.0} || L <- RPO]))#{StartLb := 1.0},
+  Probs = fast_iterate(?FAST_ITERATIONS, PredProbs, Probs0),
+  %% io:fwrite(standard_error, "Fast weights: ~p~n", [Probs]),
+  Probs.
+
+fast_iterate(0, _Pred, Probs) -> Probs;
+fast_iterate(Iters, Pred, Probs0) ->
+  fast_iterate(Iters-1, Pred,
+	       fast_one(Pred, Probs0)).
+
+fast_one([], Probs) -> Probs;
+fast_one([{L, Pred}|Ls], Probs0) ->
+  Weight = lists:sum([maps:get(P, Probs0)*W || {P, W} <- Pred]),
+  Probs = Probs0#{L => Weight},
+  fast_one(Ls, Probs).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Target module interface functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -452,3 +518,4 @@ revidx_remove(Key, {Coefs, _}, RevIdx0) ->
 ?TGT_IFACE_2(bb).
 ?TGT_IFACE_1(branch_preds).
 ?TGT_IFACE_1(labels).
+?TGT_IFACE_1(reverse_postorder).
