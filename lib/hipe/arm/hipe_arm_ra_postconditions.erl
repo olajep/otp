@@ -118,7 +118,9 @@ do_pseudo_move(I=#pseudo_move{dst=Dst,src=Src}, TempMap, Strategy) ->
   %% pseudo_move and pseudo_tailcall are special cases: in
   %% all other instructions, all temps must be non-pseudos
   %% after register allocation.
-  case temp_is_spilled(Dst, TempMap) of
+  case temp_is_spilled(Dst, TempMap)
+    andalso not spilled_to_same_slot(Dst, Src, TempMap)
+  of
     true -> % Src must not be a pseudo
       {FixSrc,NewSrc,DidSpill} = fix_src1(Src, TempMap, Strategy),
       NewI = I#pseudo_move{src=NewSrc},
@@ -270,6 +272,14 @@ temp_is_spilled(Temp, TempMap) ->
       Reg = hipe_arm:temp_reg(Temp),
       tuple_size(TempMap) > Reg andalso hipe_temp_map:is_spilled(Reg, TempMap);
     false -> true
+  end.
+
+spilled_to_same_slot(TempA, TempB, TempMap) ->
+  case {hipe_temp_map:find(hipe_arm:temp_reg(TempA), TempMap),
+	hipe_temp_map:find(hipe_arm:temp_reg(TempB), TempMap)}
+  of
+    {{spill, Slot}, {spill, Slot}} -> true;
+    {_, _} -> false
   end.
 
 %%% Make a certain reg into a clone of Temp.
