@@ -155,7 +155,6 @@ color_heuristic(IG, Min, Max, Safe, MaxNodes, Target, MaxDepth) ->
 
 %% Returns a new temp map with the spilled temporaries mapped to stack slots,
 %% located after SpillIndex, according to Cols.
-%% Cols = remap_temp_map(TempMap, Cols0Tup, TempNames, SpillIndex),
 remap_temp_map(TempMap, Cols, TempNames, SpillIndex) ->
   TempMapList = hipe_temp_map:to_substlist(TempMap),
   remap_temp_map0(TempMapList, Cols, TempNames, SpillIndex).
