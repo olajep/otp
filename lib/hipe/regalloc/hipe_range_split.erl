@@ -52,6 +52,10 @@
 -define(DO_ASSERT, 1).
 -include("../main/hipe.hrl").
 
+%% Heuristic tuning constants
+-define(GAIN_FACTOR_THRESH, 1.1).
+-define(WEIGHT_FUN(Wt), math:pow(Wt, math:log(4*1.1*1.1)/math:log(100))).
+
 -opaque spill_grouping() :: #{temp() => temp()}. % member => witness (like dset)
 -type cfg()              :: any().
 -type liveness()         :: any().
@@ -344,7 +348,7 @@ weight_scaled(L, Scale, Weights) ->
   %% true = Wt > 0.0000000000000000001,
   Wt = erlang:min(erlang:max(Wt0, 0.0000000000000000001), 10000.0),
   %% math:sqrt(Wt).
-  math:pow(Wt, math:log(4*1.1*1.1)/math:log(100)).
+  ?WEIGHT_FUN(Wt).
 -endif.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -370,7 +374,7 @@ decide_temps([{Temp, SpillGain}|Ts], Part, Edges, Target, Acc0) ->
   SpillCost = lists:sum(Es),
   Acc =
     case not is_precoloured(Temp, Target)
-      andalso 1.1*SpillCost < SpillGain
+      andalso ?GAIN_FACTOR_THRESH*SpillCost < SpillGain
       %% Es = [] usually means the temp is local to the partition; hence no need
       %% to split it
       andalso Es =/= []
