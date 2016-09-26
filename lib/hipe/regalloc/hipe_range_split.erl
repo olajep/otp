@@ -288,7 +288,7 @@ scan_bbs([L|Ls], CFG, Liveness, Weights, Defs, Target, DUCounts0, Edges0, DSets0
 	Edges3 = lists:foldl(fun({S, BranchWt}, Edges2) ->
 				 SLivein = livein(Liveness, S, Target),
 				 SWt = weight_scaled(L, BranchWt, Weights),
-				 edges_insert(L, S, SWt, SLivein, Edges2)
+				 edges_insert(S, L, SWt, SLivein, Edges2)
 			     end, Edges1, branch_preds(LastI, Target)),
 	{DSets0, Edges3, hipe_bb:butlast(BB)}
     end,
