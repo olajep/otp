@@ -421,7 +421,8 @@ message_to_string({spec_missing_fun, [M, F, A]}) ->
 %%----- Warnings for opaque type violations -------------------
 message_to_string({call_with_opaque, [M, F, Args, ArgNs, ExpArgs]}) ->
   io_lib:format("The call ~w:~w~s contains ~s when ~s\n",
-		[M, F, Args, form_positions(ArgNs), form_expected(ExpArgs)]);
+		[M, F, Args, form_positions(ArgNs),
+		 form_expected(ExpArgs, ArgNs)]);
 message_to_string({call_without_opaque, [M, F, Args, ExpectedTriples]}) ->
   io_lib:format("The call ~w:~w~s does not have ~s\n",
 		[M, F, Args, form_expected_without_opaque(ExpectedTriples)]);
@@ -543,8 +544,9 @@ form_expected_without_opaque(ExpectedTriples) -> %% TODO: can do much better her
   {ArgNs, _Ts, _TStrs} = lists:unzip3(ExpectedTriples),
   "opaque terms as " ++ form_position_string(ArgNs) ++ " arguments".
 
-form_expected(ExpectedArgs) ->
-  case ExpectedArgs of
+form_expected(ExpectedArgs, ArgNs) ->
+  IncorrectArgs = [lists:nth(N, ExpectedArgs) || N <- ArgNs],
+  case IncorrectArgs of
     [T] ->
       TS = erl_types:t_to_string(T),
       case erl_types:t_is_opaque(T) of
