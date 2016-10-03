@@ -4355,10 +4355,12 @@ record_to_string(Tag, [_|Fields], FieldNames, RecDict) ->
 record_fields_to_string([F|Fs], [{FName, _Abstr, DefType}|FDefs],
                         RecDict, Acc) ->
   NewAcc =
-    case
-      t_is_equal(F, t_any()) orelse
-      (t_is_any_atom('undefined', F) andalso
-       not t_is_none(t_inf(F, DefType)))
+    case t_is_equal(F, DefType)
+      %% Lose some precision in order to avoid printing fields that are
+      %% unchanged but have been K-depth limited.
+      orelse t_is_equal(F, t_limit(DefType, 3))
+      orelse t_is_equal(F, t_limit(DefType, 2))
+      orelse t_is_equal(F, t_limit(DefType, 1))
     of
       true -> Acc;
       false ->
