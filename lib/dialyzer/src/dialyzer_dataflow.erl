@@ -1339,8 +1339,6 @@ do_clause(C, Arg, ArgType0, OrigArgType, Map, State, Warns) ->
 	  {Msg, Force} =
 	    case t_is_none(ArgType0) of
 	      true ->
-                PatString = format_patterns(Pats),
-		PatTypes = [PatString, format_type(OrigArgType, State1)],
 		%% See if this is covered by an earlier clause or if it
 		%% simply cannot match
 		OrigArgTypes =
@@ -1348,13 +1346,18 @@ do_clause(C, Arg, ArgType0, OrigArgType, Map, State, Warns) ->
 		    true -> Any = t_any(), [Any || _ <- Pats];
 		    false -> t_to_tlist(OrigArgType)
 		  end,
-		Tag =
+		{Tag, IncludeVarTypes} =
 		  case bind_pat_vars(Pats, OrigArgTypes, [], Map1, State1) of
-		    {error,   bind, _, _, _} -> pattern_match;
-		    {error, record, _, _, _} -> record_match;
-		    {error, opaque, _, _, _} -> opaque_match;
-		    {_, _} -> pattern_match_cov
+		    {error,   bind, _, _, _} -> {pattern_match, true};
+		    {error, record, _, _, _} -> {record_match, false};
+		    {error, opaque, _, _, _} -> {opaque_match, false};
+		    {_, _} -> {pattern_match_cov, false}
 		  end,
+		PatString = case IncludeVarTypes of
+			      true ->  format_patterns(Pats, Map1, State1);
+			      false -> format_patterns(Pats)
+			    end,
+		PatTypes = [PatString, format_type(OrigArgType, State1)],
 		{{Tag, PatTypes}, false};
 	      false ->
 		%% Try to find out if this is a default clause in a list
@@ -1389,12 +1392,12 @@ do_clause(C, Arg, ArgType0, OrigArgType, Map, State, Warns) ->
 		    false ->
 		      true
 		  end,
-                PatString =
-                  case ErrorType of
-                    bind   -> format_patterns(Pats);
-                    record -> format_patterns(NewPats);
-                    opaque -> format_patterns(NewPats)
-                  end,
+		PatString =
+		  case ErrorType of
+		    bind   -> format_patterns(Pats, Map1, State1);
+		    record -> format_patterns(NewPats);
+		    opaque -> format_patterns(NewPats)
+		  end,
 		PatTypes = case ErrorType of
 			     bind -> [PatString, format_type(ArgType0, State1)];
 			     record -> [PatString, format_type(Type, State1)];
@@ -1440,7 +1443,7 @@ do_clause(C, Arg, ArgType0, OrigArgType, Map, State, Warns) ->
 	{error, Reason} ->
 	  ?debug("Failed guard: ~s\n",
 		 [cerl_prettypr:format(C, [{hook, cerl_typean:pp_hook()}])]),
-	  PatString = format_patterns(Pats),
+	  PatString = format_patterns(Pats, Map, State1),
 	  DefaultMsg =
 	    case Pats =:= [] of
 	      true -> {guard_fail, []};
@@ -3624,38 +3627,57 @@ format_cerl(Tree) ->
 			{ribbon, 100000} %% newlines.
 		       ]).
 
-format_patterns(Pats0) ->
+format_patterns(Pats) ->
+  format_patterns(Pats, #map{}, #state{}).
+
+format_patterns(Pats0, #map{map = Map}, State) ->
   Pats = fold_literals(Pats0),
-  NewPats = map_pats(cerl:c_values(Pats)),
+  {NewPats, Vars} = map_pats(cerl:c_values(Pats)),
   String = format_cerl(NewPats),
+  VarString =
+    case lists:flatmap(
+	   fun(V) ->
+	       Type = maps:get(cerl_trees:get_label(V), Map, erl_types:t_any()),
+	       case erl_types:t_is_any(Type) of
+		 true -> [];
+		 false ->
+		   [atom_to_list(cerl:var_name(V)) ++ "::"
+		    ++ format_type(Type, State)]
+	       end
+	   end, Vars)
+    of
+      [] -> "";
+      VarStrings ->
+	" (where " ++ string:join(VarStrings, ", ") ++ ")"
+    end,
   case Pats of
     [PosVar] ->
       case cerl:is_c_var(PosVar) andalso (cerl:var_name(PosVar) =/= '') of
-	true -> "variable "++String;
-	false -> "pattern "++String
+	true -> "variable "++String++VarString;
+	false -> "pattern "++String++VarString
       end;
     _ ->
-      "pattern "++String
+      "pattern "++String++VarString
   end.
 
 map_pats(Pats) ->
-  Fun = fun(Tree) ->
+  Fun = fun(Tree, Vars) ->
 	    case cerl:is_c_var(Tree) of
 	      true ->
 		case cerl:var_name(Tree) of
 		  Atom when is_atom(Atom) ->
 		    case atom_to_list(Atom) of
-		      "cor"++_ -> cerl:c_var('');
-		      "rec"++_ -> cerl:c_var('');
-		      _ -> cerl:set_ann(Tree, [])
+		      "cor"++_ -> {cerl:c_var(''), Vars};
+		      "rec"++_ -> {cerl:c_var(''), Vars};
+		      _ -> {cerl:set_ann(Tree, []), [Tree|Vars]}
 		    end;
-		  _What -> cerl:c_var('')
+		  _What -> {cerl:c_var(''), Vars}
 		end;
 	      false ->
-		cerl:set_ann(Tree, [])
+		{cerl:set_ann(Tree, []), Vars}
 	    end
 	end,
-  cerl_trees:map(Fun, Pats).
+  cerl_trees:mapfold(Fun, [], Pats).
 
 fold_literals(TreeList) ->
   [cerl:fold_literal(Tree) || Tree <- TreeList].
