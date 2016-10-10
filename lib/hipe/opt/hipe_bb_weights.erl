@@ -116,27 +116,100 @@ pred_prob(L, CFG, Target) ->
 	    end, hipe_gen_cfg:pred(CFG, L)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec triangelise(eq_system(), eq_assoc()) -> eq_system().
-triangelise(EQS, []) -> EQS;
-triangelise(EQS0, [{V,Key}|Vs]) ->
-  Row0 = eqs_get(Key, EQS0),
-  case row_get(V, Row0) of
-    Coef when Coef > -0.0001, Coef < 0.0001 ->
-      io:fwrite(standard_error,
-		"No equation constraining l~w left!~n",
-		[V]),
-      eqs_print(EQS0),
-      throw(error);
-      %% error({underconstrained, V, Coef});
-    _ ->
-      Row = row_normalise(V, Row0),
-      %% io:format("Killing l~w with ", [V]), row_print(Row),
-      EQS1 = eqs_put(Key, Row, EQS0),
-      %% io:fwrite("l~w's row: ", [V]), row_print(Row),
-      EQS = eliminate(V, Key, Row, EQS1),
-      triangelise(EQS, Vs)
+-spec triangelise(eq_system(), eq_assoc()) -> {eq_system(), eq_assoc()}.
+triangelise(EQS, VKs) ->
+  triangelise_1(mk_triix(EQS, VKs), []).
+
+%% XXX: reverse necessary?
+triangelise_1(TIX0, Acc) ->
+  case triix_is_empty(TIX0) of
+    true -> {triix_eqs(TIX0), lists:reverse(Acc)};
+    false ->
+      {V,Key,TIX1} = triix_pop_smallest(TIX0),
+      Row0 = triix_get(Key, TIX1),
+      case row_get(V, Row0) of
+	Coef when Coef > -0.0001, Coef < 0.0001 ->
+	  io:fwrite(standard_error,
+		    "No equation constraining l~w left!~n",
+		    [V]),
+	  eqs_print(triix_eqs(TIX0)),
+	  throw(error);
+	%% error({underconstrained, V, Coef});
+	_ ->
+	  Row = row_normalise(V, Row0),
+	  %% io:format("Killing l~w with ", [V]), row_print(Row),
+	  TIX2 = triix_put(Key, Row, TIX1),
+	  %% io:fwrite("l~w's row: ", [V]), row_print(Row),
+	  TIX = eliminate_triix(V, Key, Row, TIX2),
+	  triangelise_1(TIX, [{V,Key}|Acc])
+      end
   end.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Triangelisation maintains its own index, outside of eqs. This index is
+%% essentially a binary heap of all equations by size, with {Key,Var} as the
+%% values and only containing a subset of all the keys in the whole equation
+%% system. The key operation is triix_pop_smallest/1, which pops a {Key,Var}
+%% from the heap corresponding to one of the smallest equations. This is
+%% critical in order to prevent the equations from growing during
+%% triangelisation, making the algorithm O(n^2) in the common case.
+-type tri_eq_system() :: {eq_system(),
+			  gb_trees:tree(non_neg_integer(),
+					gb_trees:tree(key(), var()))}.
+
+triix_eqs({EQS, _}) -> EQS.
+triix_get(Key, {EQS, _}) -> eqs_get(Key, EQS).
+triix_is_empty({_, Tree}) -> gb_trees:is_empty(Tree).
+triix_lookup(V, {EQS, _}) -> eqs_lookup(V, EQS).
+
+mk_triix(EQS, VKs) ->
+  {EQS,
+   lists:foldl(fun({V,Key}, Tree) ->
+		   Size = row_size(eqs_get(Key, EQS)),
+		   sitree_insert(Size, Key, V, Tree)
+	       end, gb_trees:empty(), VKs)}.
+
+sitree_insert(Size, Key, V, SiTree) ->
+  SubTree1 =
+    case gb_trees:lookup(Size, SiTree) of
+      none -> gb_trees:empty();
+      {value, SubTree0} -> SubTree0
+    end,
+  SubTree = gb_trees:insert(Key, V, SubTree1),
+  gb_trees:enter(Size, SubTree, SiTree).
+
+sitree_update_subtree(Size, SubTree, SiTree) ->
+  case gb_trees:is_empty(SubTree) of
+    true -> gb_trees:delete(Size, SiTree);
+    false -> gb_trees:update(Size, SubTree, SiTree)
+  end.
+
+triix_put(Key, Row, {EQS, Tree0}) ->
+  OldSize = row_size(eqs_get(Key, EQS)),
+  case row_size(Row) of
+    OldSize -> {eqs_put(Key, Row, EQS), Tree0};
+    Size ->
+      Tree =
+	case gb_trees:lookup(OldSize, Tree0) of
+	  none -> Tree0;
+	  {value, SubTree0} ->
+	    case gb_trees:lookup(Key, SubTree0) of
+	      none -> Tree0;
+	      {value, V} ->
+		SubTree = gb_trees:delete(Key, SubTree0),
+		Tree1 = sitree_update_subtree(OldSize, SubTree, Tree0),
+		sitree_insert(Size, Key, V, Tree1)
+	    end
+	end,
+      {eqs_put(Key, Row, EQS), Tree}
+  end.
+
+triix_pop_smallest({EQS, Tree}) ->
+  {Size, SubTree0} = gb_trees:smallest(Tree),
+  {Key, V, SubTree} = gb_trees:take_smallest(SubTree0),
+  {V, Key, {EQS, sitree_update_subtree(Size, SubTree, Tree)}}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 row_normalise(Var, Row) ->
   %% Normalise v's coef to 1.0
@@ -172,7 +245,22 @@ row_normalise(Var, Row) ->
 %%   ?ASSERT([] =:= eqs_lookup(Var, EQS)),
 %%   {{Var, row_const(Row)}, EQS}.
 
-%% Precondition: Row must be normalised; i.e. Vars coef must be 1.0 (mod rounding errors)
+%% Precondition: Row must be normalised; i.e. Vars coef must be 1.0 (mod
+%% rounding errors)
+-spec eliminate_triix(var(), key(), row(), tri_eq_system()) -> tri_eq_system().
+eliminate_triix(Var, Key, Row, TIX0) ->
+  ?ASSERT(1.0 =:= row_get(Var, Row)),
+  TIX =
+    lists:foldl(fun(RK, TIX1) when RK =:= Key -> TIX1;
+		   (RK, TIX1) ->
+		    R = triix_get(RK, TIX1),
+		    triix_put(RK, row_addmul(R, Row, -row_get(Var, R)), TIX1)
+		end, TIX0, triix_lookup(Var, TIX0)),
+  [Key] = triix_lookup(Var, TIX),
+  TIX.
+
+%% Precondition: Row must be normalised; i.e. Vars coef must be 1.0 (mod
+%% rounding errors)
 -spec eliminate(var(), key(), row(), eq_system()) -> eq_system().
 eliminate(Var, Key, Row, EQS0) ->
   ?ASSERT(1.0 =:= row_get(Var, Row)),
@@ -213,9 +301,9 @@ eliminate(Var, Key, Row, EQS0) ->
 %% list_drop_nth(P, [E|Es]) -> [E|list_drop_nth(P-1, Es)].
 
 -spec solve(eq_system(), eq_assoc()) -> error | {ok, solution()}.
-solve(EQS0, EqAssoc) ->
-  try triangelise(EQS0, EqAssoc)
-  of EQS1 ->
+solve(EQS0, EqAssoc0) ->
+  try triangelise(EQS0, EqAssoc0)
+  of {EQS1, EqAssoc} ->
   %% lists:foreach(fun({Var, Key}) ->
   %% 		    io:fwrite("l~w: ", [Var]), row_print(eqs_get(Key, EQS1))
   %% 		end, VarEqs),
@@ -297,7 +385,7 @@ row_ensure_invar({Coef, Const}) ->
 
 row_const({_, Const}) -> Const.
 row_coefs({Coefs, _}) -> orddict:to_list(Coefs).
-%% row_size({Coefs, _}) -> orddict:size(Coefs).
+row_size({Coefs, _}) -> orddict:size(Coefs).
 
 row_get(Var, {Coefs, _}) -> %% orddict:fetch(Var, Coefs).
   case lists:keyfind(Var, 1, Coefs) of
