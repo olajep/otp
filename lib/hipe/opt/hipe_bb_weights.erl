@@ -41,11 +41,9 @@
 -type target_context() :: any().
 -type target() :: {target_module(), target_context()}.
 
-%% -type tuple(X)           :: {} | {X} | {X, X} | {X, X, X} | tuple(). % etc...
 -type label()            :: integer().
 -type var()              :: label().
 -type assignment()       :: {var(), float()}.
-%% -type partial_solution() :: [assignment()].
 -type eq_assoc()         :: [{var(), key()}].
 -type solution()         :: [assignment()].
 
@@ -56,29 +54,16 @@ call_exn_pred() -> 0.01.
 -spec compute(cfg(), target_module(), target_context()) -> bb_weights().
 compute(CFG, TgtMod, TgtCtx) ->
   Target = {TgtMod, TgtCtx},
-
   {EqSys, EqAssoc} = build_eq_system(CFG, Target),
-
-  %% {M,F,A} = element(2, element(3, CFG)),
-  %% io:fwrite("~w:~w/~w~n", [M,F,A]),
-  %% eqs_print(EqSys),
-
   case solve(EqSys, EqAssoc) of
     {ok, Solution} ->
-      %% Max = lists:max([C || {_,C} <- Solution]),
-      %% Min = lists:min([C || {_,C} <- Solution]),
-      %% io:fwrite("min: ~-22w, max: ~-22w, ~w:~w/~w~n", [Min,Max,M,F,A]),
       maps:from_list(Solution)
-   %% ;error ->
-   %%    compute_fast(CFG, TgtMod, TgtCtx)
   end.
 
 -spec build_eq_system(cfg(), target()) -> {eq_system(), eq_assoc()}.
 build_eq_system(CFG, Target) ->
   StartLb = hipe_gen_cfg:start_label(CFG),
   EQS0 = eqs_new(),
-  %% {StartKey, EQS1} = eqs_insert(row_new([{StartLb, 1.0}], 1.0), EQS0),
-  %% [] = hipe_gen_cfg:pred(CFG, StartLb),
   {EQS1, Assoc} = build_eq_system(labels(CFG, Target), CFG, Target, [], EQS0),
   {StartLb, StartKey} = lists:keyfind(StartLb, 1, Assoc),
   StartRow0 = eqs_get(StartKey, EQS1),
@@ -89,20 +74,7 @@ build_eq_system(CFG, Target) ->
 build_eq_system([], _CFG, _Target, Map, EQS) -> {EQS, lists:reverse(Map)};
 build_eq_system([L|Ls], CFG, Target, Map, EQS0) ->
   PredProb = pred_prob(L, CFG, Target),
-  {Key, EQS} =
-    %% case hipe_gen_cfg:pred(CFG, L) of
-    %%   %% [Pred] -> eqs_insert(row_new([{Pred, 1.0}, {L, -1.0}], 0.0), EQS0);
-    %%   Preds = [_|_] ->
-    %% 	PredProb = lists:map(fun(Pred) ->
-    %% 				 BB = bb(CFG, Pred, Target),
-    %% 				 Ps = branch_preds(hipe_bb:last(BB), Target),
-    %% 				 ?ASSERT(length(Ps) =:= length(hipe_gen_cfg:succ(CFG, Pred))),
-    %% 				 {L, Prob} = lists:keyfind(L, 1, Ps),
-    %% 				 {Pred, Prob}
-    %% 			     end, Preds),
-	eqs_insert(row_new([{L, -1.0}|PredProb], 0.0), EQS0)
-    %% end
-    ,
+  {Key, EQS} = eqs_insert(row_new([{L, -1.0}|PredProb], 0.0), EQS0),
   build_eq_system(Ls, CFG, Target, [{L, Key}|Map], EQS).
 
 pred_prob(L, CFG, Target) ->
@@ -120,26 +92,23 @@ pred_prob(L, CFG, Target) ->
 triangelise(EQS, VKs) ->
   triangelise_1(mk_triix(EQS, VKs), []).
 
-%% XXX: reverse necessary?
 triangelise_1(TIX0, Acc) ->
   case triix_is_empty(TIX0) of
+    %% XXX: reverse necessary?
     true -> {triix_eqs(TIX0), lists:reverse(Acc)};
     false ->
       {V,Key,TIX1} = triix_pop_smallest(TIX0),
       Row0 = triix_get(Key, TIX1),
       case row_get(V, Row0) of
 	Coef when Coef > -0.0001, Coef < 0.0001 ->
-	  io:fwrite(standard_error,
-		    "No equation constraining l~w left!~n",
-		    [V]),
-	  eqs_print(triix_eqs(TIX0)),
+	  %% io:fwrite(standard_error,
+	  %% 	    "No equation constraining l~w left!~n",
+	  %% 	    [V]),
+	  %% eqs_print(triix_eqs(TIX0)),
 	  throw(error);
-	%% error({underconstrained, V, Coef});
 	_ ->
 	  Row = row_normalise(V, Row0),
-	  %% io:format("Killing l~w with ", [V]), row_print(Row),
 	  TIX2 = triix_put(Key, Row, TIX1),
-	  %% io:fwrite("l~w's row: ", [V]), row_print(Row),
 	  TIX = eliminate_triix(V, Key, Row, TIX2),
 	  triangelise_1(TIX, [{V,Key}|Acc])
       end
@@ -216,35 +185,6 @@ row_normalise(Var, Row) ->
   %% row_set_coef ensures the coef is exactly 1.0 (no rounding errors)
   row_set_coef(Var, 1.0, row_scale(Row, 1.0/row_get(Var, Row))).
 
-  %% {Known, Rows1} = lists:partition(fun row_constant/1, Rows0),
-  %% EqSys1 = {Header0, Rows1},
-  %% {Sols, EqSys2} = lists:mapfoldl(fun extract_constant/2, EqSys1, Known),
-  %% io:fwrite(standard_error, "Sols: ~p~nEqSys1:~p~n", [Sols, EqSys2]),
-  %% notimpl:?FUNCTION_NAME().
-
-%% -spec row_constant(row()) -> boolean().
-%% row_constant(Coef) -> row_constant(Coef, tuple_size(Coef)-1).
-%% row_constant(_Coef, 0) -> false;
-%% row_constant(Coef, I) ->
-%%   case element(I, Coef) of
-%%     0.0 -> row_constant(Coef, I-1);
-%%     1.0 -> row_constant_1(Coef, I-1)
-%%   end.
-%% row_constant_1(_Coef, 0) -> true;
-%% row_constant_1(Coef, I) ->
-%%   element(I, Coef) =:= 0.0 andalso row_constant_1(Coef, I-1).
-
-%% -spec extract_constant(rowp(), eq_system()) -> {assignment(), eq_system()}.
-%% extract_constant({Key, Row}, EQS0) ->
-%%   [{Var, 1.0}] = row_coefs(Row),
-%%   %% Pos = const_pos(Row),
-%%   %% Var = element(Pos, Header0),
-%%   %% Header = tuple_delete_pos(Pos, Header0),
-%%   %% {ConstRow, Rows1} = list_take_nth(Pos, Rows0),
-%%   EQS = eliminate(Var, Key, Row, EQS0),
-%%   ?ASSERT([] =:= eqs_lookup(Var, EQS)),
-%%   {{Var, row_const(Row)}, EQS}.
-
 %% Precondition: Row must be normalised; i.e. Vars coef must be 1.0 (mod
 %% rounding errors)
 -spec eliminate_triix(var(), key(), row(), tri_eq_system()) -> tri_eq_system().
@@ -273,75 +213,17 @@ eliminate(Var, Key, Row, EQS0) ->
   [Key] = eqs_lookup(Var, EQS),
   EQS.
 
-
-%% const_pos(Row) -> const_pos(Row, tuple_size(Row)-1).
-%% const_pos(Row, I) ->
-%%   case element(I, Row) of
-%%     1.0 -> I;
-%%     0.0 -> const_pos(Row, I-1)
-%%   end.
-
-%% header_pos(Key, Tuple) -> header_pos(Key, Tuple, tuple_size(Tuple)).
-%% header_pos(Key, Tuple, 0) -> error(badarg, [Key, Tuple]);
-%% header_pos(Key, Tuple, Index) ->
-%%   case element(Index, Tuple) of
-%%     Key -> Index;
-%%     _Other -> header_pos(Key, Tuple, Index-1)
-%%   end.
-
-%% tuple_delete_pos(Pos, Tuple) ->
-%%   list_to_tuple(list_delete_pos(Pos, tuple_to_list(Tuple))).
-
-%% list_delete_pos(1, [_|Es]) -> Es;
-%% list_delete_pos(P, [E|Es]) -> [E|list_delete_pos(P-1, Es)].
-
-%% list_take_nth(Pos, List) -> {lists:nth(Pos, List), list_drop_nth(Pos, List)}.
-
-%% list_drop_nth(1, [_|Es]) -> Es;
-%% list_drop_nth(P, [E|Es]) -> [E|list_drop_nth(P-1, Es)].
-
 -spec solve(eq_system(), eq_assoc()) -> error | {ok, solution()}.
 solve(EQS0, EqAssoc0) ->
   try triangelise(EQS0, EqAssoc0)
   of {EQS1, EqAssoc} ->
-  %% lists:foreach(fun({Var, Key}) ->
-  %% 		    io:fwrite("l~w: ", [Var]), row_print(eqs_get(Key, EQS1))
-  %% 		end, VarEqs),
-  %% eqs_print(EQS1),
-  %% Sort equations by size
-  %% XXX: are they already sorted ?! (due to triangleisation)
-  %% VarEqSiz = lists:sort([{row_size(eqs_get(Key, EQS0)), Var, Key}
-  %% 			     || {Var, Key} <- VarEqs0]),
-  %% VarEqs = [{Var, Key} || {_, Var, Key} <- VarEqSiz],
       {ok, solve_1(EqAssoc, maps:from_list(EqAssoc), EQS1, [])}
   catch error -> error
   end.
-  %% solve_2([K || {_, K} <- VarEqs0], EQS1, []).
-
-%% solve_1(EQS0, Acc0) ->
-%%   case eqs_no_vars(EQS0) of
-%%     0 -> Acc0;
-%%     _ ->
-%%       Trivial = eqs_of_size(1, EQS0),
-%%       ?ASSERT(Trivial =/= []),
-%%       {EQS, Acc} = solve_2(Trivial, EQS0, Acc0),
-%%       solve_1(EQS, Acc)
-%%   end.
-
-%% solve_2([], EQS, Acc) -> {EQS, Acc};
-%% solve_2([K|Ks], EQS0, Acc0) ->
-%%   Row0 = eqs_get(K, EQS0),
-%%   [{V,Coef0}] = row_coefs(Row0),
-%%   Row = row_normalise(V, Row0),
-%%   EQS1 = eliminate(V, K, Row, EQS0),
-%%   ?ASSERT([K] =:= eqs_lookup(V, EQS1)),
-%%   io:format("Solved l~w = ~w~n", [V, row_const(Row)]),
-%%   solve_2(Ks, eqs_remove(K, EQS1), [{V, row_const(Row)}|Acc0]).
 
 solve_1([], _VarEqs, _EQS, Acc) -> Acc;
 solve_1([{V,K}|Ps], VarEqs, EQS0, Acc0) ->
   Row0 = eqs_get(K, EQS0),
-  %% io:fwrite("Solving l~w, eq: ", [V]), row_print(Row0),
   VarsToKill = [Var || {Var, _} <- row_coefs(Row0), Var =/= V],
   Row1 = kill_vars(VarsToKill, VarEqs, EQS0, Row0),
   [{V,_}] = row_coefs(Row1), % assertion
@@ -387,7 +269,7 @@ row_const({_, Const}) -> Const.
 row_coefs({Coefs, _}) -> orddict:to_list(Coefs).
 row_size({Coefs, _}) -> orddict:size(Coefs).
 
-row_get(Var, {Coefs, _}) -> %% orddict:fetch(Var, Coefs).
+row_get(Var, {Coefs, _}) ->
   case lists:keyfind(Var, 1, Coefs) of
     false -> 0.0;
     {_, Coef} -> Coef
@@ -421,8 +303,6 @@ row_addmul_coefs([{V, LC}|Ls], [{V, RC}|Rs], Factor) ->
 
 %% XXX: Optimise (needed?)
 row_scale(Row, Factor) -> row_addmul(row_empty(), Row, Factor).
-%% row_add(Lhs, Rhs) -> row_addmul(Lhs, Rhs, 1.0).
-%% row_sub(Lhs, Rhs) -> row_addmul(Lhs, Rhs, -1.0).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Equation system ADT
@@ -436,14 +316,10 @@ row_scale(Row, Factor) -> row_addmul(row_empty(), Row, Factor).
 -type row()       :: {Terms :: orddict:orddict(var(), float()),
 		      Const :: float()}.
 -type key()       :: non_neg_integer().
--type rowp()      :: {key(), row()}.
 -type rev_index() :: #{var() => ordsets:ordset(key())}.
-%% -type sizset()    :: #{key() => []}. % set
-%% -type sizidx()    :: gb_trees:tree(non_neg_integer(), sizset()).
 -record(eq_system, {
 	  rows = #{}              :: #{key() => row()},
 	  revidx = revidx_empty() :: rev_index(),
-	  %% sizidx = sizidx_empty() :: sizidx(),
 	  next_key = 0            :: key()
 	 }).
 -type eq_system() :: #eq_system{}.
@@ -456,25 +332,17 @@ eqs_insert(Row, EQS=#eq_system{next_key=NextKey0}) ->
   NextKey = NextKey0 + 1,
   {Key, eqs_insert(Key, Row, EQS#eq_system{next_key=NextKey})}.
 
-eqs_insert(Key, Row, EQS=#eq_system{rows=Rows, revidx=RevIdx0%% , sizidx=SizIdx0
-				   }) ->
-  %% io:fwrite("Adding ~w:~w to ~p~n", [Key, Row, EQS]),
+eqs_insert(Key, Row, EQS=#eq_system{rows=Rows, revidx=RevIdx0}) ->
   RevIdx = revidx_add(Key, Row, RevIdx0),
-  %% SizIdx = sizidx_add(Key, Row, SizIdx0),
-  EQS#eq_system{rows=Rows#{Key => Row}, revidx=RevIdx%% , sizidx=SizIdx
-	       }.
+  EQS#eq_system{rows=Rows#{Key => Row}, revidx=RevIdx}.
 
 eqs_put(Key, Row, EQS0) ->
   eqs_insert(Key, Row, eqs_remove(Key, EQS0)).
 
-eqs_remove(Key, EQS=#eq_system{rows=Rows, revidx=RevIdx0%% , sizidx=SizIdx0
-			      }) ->
+eqs_remove(Key, EQS=#eq_system{rows=Rows, revidx=RevIdx0}) ->
   OldRow = maps:get(Key, Rows),
-  %% io:fwrite("Removing ~w:~w from ~p~n", [Key, OldRow, EQS]),
   RevIdx = revidx_remove(Key, OldRow, RevIdx0),
-  %% SizIdx = sizidx_remove(Key, OldRow, SizIdx0),
-  EQS#eq_system{rows = maps:remove(Key, Rows), revidx=RevIdx%% , sizidx=SizIdx
-	       }.
+  EQS#eq_system{rows = maps:remove(Key, Rows), revidx=RevIdx}.
 
 -spec eqs_get(key(), eq_system()) -> row().
 eqs_get(Key, #eq_system{rows=Rows}) -> maps:get(Key, Rows).
@@ -483,35 +351,18 @@ eqs_get(Key, #eq_system{rows=Rows}) -> maps:get(Key, Rows).
 -spec eqs_lookup(var(), eq_system()) -> ordsets:ordset(key()).
 eqs_lookup(Var, #eq_system{revidx=RevIdx}) -> maps:get(Var, RevIdx).
 
--spec eqs_rows(eq_system()) -> [rowp()].
-eqs_rows(#eq_system{rows=Rows}) -> maps:to_list(Rows).
+%% eqs_rows(#eq_system{rows=Rows}) -> maps:to_list(Rows).
 
-%% -spec eqs_no_vars(eq_system()) -> [var()].
-%% eqs_no_vars(#eq_system{revidx=RevIdx}) -> map_size(RevIdx).
+%% eqs_print(EQS) ->
+%%   lists:foreach(fun({_, Row}) ->
+%% 		    row_print(Row)
+%% 		end, lists:sort(eqs_rows(EQS))).
 
-%% -spec eqs_vars(eq_system()) -> [var()].
-%% eqs_vars(#eq_system{revidx=RevIdx}) -> maps:keys(RevIdx).
-
-%% -spec eqs_of_size(non_neg_integer(), eq_system()) -> [key()].
-%% eqs_of_size(Siz, #eq_system{sizidx=SizIdx}) ->
-%%   case gb_trees:lookup(Siz, SizIdx) of
-%%     none -> [];
-%%     {value, SizSet} -> sizset_to_list(SizSet)
-%%   end.
-
-eqs_print(EQS) ->
-  lists:foreach(fun({_, Row}) ->
-		    row_print(Row)
-		end, lists:sort(eqs_rows(EQS))).
-
-row_print(Row) ->
-  CoefStrs = [io_lib:format("~wl~w", [Coef, Var])
-	      || {Var, Coef} <- row_coefs(Row)],
-  CoefStr = lists:join(" + ", CoefStrs),
-  io:format("~w = ~s~n", [row_const(Row), CoefStr]).
-
-%% eqs_iterator(#eq_system{rows=Rows}) -> map_iterator(Rows).
-%% eqs_next(Iter) -> map_next(Iter).
+%% row_print(Row) ->
+%%   CoefStrs = [io_lib:format("~wl~w", [Coef, Var])
+%% 	      || {Var, Coef} <- row_coefs(Row)],
+%%   CoefStr = lists:join(" + ", CoefStrs),
+%%   io:format("~w = ~s~n", [row_const(Row), CoefStr]).
 
 revidx_empty() -> #{}.
 
@@ -532,41 +383,8 @@ revidx_remove(Key, {Coefs, _}, RevIdx0) ->
 		      [] -> maps:remove(Var, RevIdx1);
 		      Keys -> RevIdx1#{Var := Keys}
 		    end
-		   %% ;#{} -> RevIdx1 % Not in index (bug?)
 		end
 	    end, RevIdx0, Coefs).
-
-%% sizidx_empty() -> gb_trees:empty().
-
-%% -spec sizidx_add(key(), row(), sizidx()) -> sizidx().
-%% sizidx_add(Key, Row, SizIdx) ->
-%%   Size = row_size(Row),
-%%   case gb_trees:lookup(Size, SizIdx) of
-%%     none -> gb_trees:insert(Size, sizset_add(Key, sizset_empty()), SizIdx);
-%%     {value, Set} ->
-%%       gb_trees:update(Size, sizset_add(Key, Set), SizIdx)
-%%   end.
-
-%% -spec sizidx_remove(key(), row(), sizidx()) -> sizidx().
-%% sizidx_remove(Key, Row, SizIdx) ->
-%%   Size = row_size(Row),
-%%   Set0 = gb_trees:get(Size, SizIdx),
-%%   Set = sizset_del(Key, Set0),
-%%   case sizset_is_empty(Set) of
-%%     true -> gb_trees:delete(Size, SizIdx);
-%%     false -> gb_trees:update(Size, Set, SizIdx)
-%%   end.
-
-%% sizset_empty() -> #{}.
-%% sizset_is_empty(Set) -> map_size(Set) =:= 0.
-%% sizset_add(E, Set) -> Set#{E => []}.
-%% sizset_del(E, Set) -> maps:remove(E, Set).
-%% %% sizset_to_list(Set) -> maps:keys(Set).
-
-%% map_iterator(Map) -> maps:to_list(Map).
-%% map_next([]) -> none;
-%% map_next([{K,V}|Ps]) -> {K, V, Ps}.
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -define(FAST_ITERATIONS, 5).
@@ -581,7 +399,6 @@ compute_fast(CFG, TgtMod, TgtCtx) ->
   PredProbs = [{L, pred_prob(L, CFG, Target)} || L <- RPO, L =/= StartLb],
   Probs0 = (maps:from_list([{L, 0.0} || L <- RPO]))#{StartLb := 1.0},
   Probs = fast_iterate(?FAST_ITERATIONS, PredProbs, Probs0),
-  %% io:fwrite(standard_error, "Fast weights: ~p~n", [Probs]),
   Probs.
 
 fast_iterate(0, _Pred, Probs) -> Probs;
