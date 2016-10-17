@@ -140,7 +140,9 @@ split(CFG0, Liveness, TargetMod, TargetContext) ->
 %% Zeroth pass
 %%
 %% P({DEF}) lattice fwd dataflow (for eliding stores at SPILL splits)
--type defs() :: #{label() => defset() | {call, defset(), defset()}}.
+-type defs_inp() :: #{label() =>
+			defset_inp() | {call, defset_inp(), defset_inp()}}.
+-type defs()     :: #{label() => defset()}.
 
 -spec def_analyse(cfg(), target()) -> defs().
 def_analyse(CFG, Target) ->
@@ -148,7 +150,7 @@ def_analyse(CFG, Target) ->
   RPO = reverse_postorder(CFG, Target),
   def_dataf(RPO, CFG, Defs0).
 
--spec def_init(cfg(), target()) -> defs().
+-spec def_init(cfg(), target()) -> defs_inp().
 def_init(CFG, Target) ->
   Labels = labels(CFG, Target),
   maps:from_list(
@@ -173,10 +175,15 @@ reg_defines(I, Target) ->
 
 def_dataf(Labels, CFG, Defs0) ->
   case def_dataf_once(Labels, CFG, Defs0, 0) of
-    {Defs, 0} -> Defs;
+    {Defs, 0} ->
+      def_finalise(Defs);
     {Defs, _Changed} ->
       def_dataf(Labels, CFG, Defs)
   end.
+
+def_finalise(Defs) ->
+  maps:from_list([{K, defset_finalise(BL)}
+		  || {K, {call, BL, _}} <- maps:to_list(Defs)]).
 
 def_dataf_once([], _CFG, Defs, Changed) -> {Defs, Changed};
 def_dataf_once([L|Ls], CFG, Defs0, Changed0) ->
@@ -197,19 +204,34 @@ def_dataf_once([L|Ls], CFG, Defs0, Changed0) ->
 	    end,
   def_dataf_once(Ls, CFG, Defs0#{L := Defset}, Changed).
 
+-spec defout(label(), defs_inp()) -> defset_inp().
 defout(L, Defs) ->
   case maps:get(L, Defs) of
     {call, _DefButLast, Defout} -> Defout;
     Defout -> Defout
   end.
 
-defbutlast(L, Defs) ->
-  case maps:get(L, Defs) of
-    {call, DefButLast, _Defout} -> DefButLast
-   ;_ -> error(badarg, [L, Defs])
+-spec defbutlast(label(), defs()) -> defset().
+defbutlast(L, Defs) -> maps:get(L, Defs).
+
+-type defset_inp() :: bitord().
+defset_new() -> bitord_new().
+defset_union(A, B) -> bitord_union(A, B).
+defset_add_list(L, D) -> defset_union(defset_from_list(L), D).
+defset_from_list(L) -> bitord_from_ordset(ordsets:from_list(L)).
+defset_finalise(D) -> bitarr_from_bitord(D).
+
+-type defset() :: bitarr().
+defset_member(E, D) -> bitarr_get(E, D).
+
+defset_intersect_ordset([], _D) -> [];
+defset_intersect_ordset([E|Es], D) ->
+  case bitarr_get(E, D) of
+    true  -> [E|defset_intersect_ordset(Es,D)];
+    false ->    defset_intersect_ordset(Es,D)
   end.
 
-
+-ifdef(NOTDEF).
 %% Maps seem to be faster than ordsets for defset()
 -type defset() :: #{temp() => []}.
 defset_new() -> #{}.
@@ -221,21 +243,66 @@ defset_add_list([E|Es], D) -> defset_add_list(Es, D#{E => []}).
 
 defset_intersect_ordset([], _D) -> [];
 defset_intersect_ordset([E|Es], D) ->
-  case maps:is_key(E,D) of
-    true -> [E|defset_intersect_ordset(Es,D)];
-    false ->   defset_intersect_ordset(Es,D)
+  case D of
+    #{E := _} -> [E|defset_intersect_ordset(Es,D)];
+    #{}       ->    defset_intersect_ordset(Es,D)
   end.
+
+defset_from_list(L) -> defset_add_list(L, defset_new()).
+-endif.
 
 -ifdef(NOTDEF).
 -type defset() :: ordsets:ordset(temp()).
 defset_new() -> ordsets:new().
 defset_union(A, B) -> ordsets:union(A, B).
 defset_member(E, D) -> lists:member(E, D).
-defset_add_list(L, F) -> defset_union(ordsets:from_list(L), F).
+defset_add_list(L, F) -> defset_union(defset_from_list(L), F).
 defset_intersect_ordset(O, D) -> ordsets:intersection(D, O).
+defset_from_list(L) -> ordsets:from_list(L).
 -endif.
 
-defset_from_list(L) -> defset_add_list(L, defset_new()).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Integer sets represented as bit sets
+%%
+%% Two representations; bitord() and bitarr()
+-define(LIMB_IX_BITS,    11).
+-define(LIMB_BITS,       (1 bsl ?LIMB_IX_BITS)).
+-define(LIMB_IX(Index),  (Index bsr ?LIMB_IX_BITS)).
+-define(BIT_IX(Index),   (Index band (?LIMB_BITS - 1))).
+-define(BIT_MASK(Index), (1 bsl ?BIT_IX(Index))).
+
+%% bitord(): fast at union/2 and can be compared for equality with '=:='
+-type bitord() :: orddict:orddict(non_neg_integer(), 0..((1 bsl ?LIMB_BITS)-1)).
+
+-spec bitord_new() -> bitord().
+bitord_new() -> [].
+
+-spec bitord_union(bitord(), bitord()) -> bitord().
+bitord_union(Lhs, Rhs) ->
+  orddict:merge(fun(_, L, R) -> L bor R end, Lhs, Rhs).
+
+-spec bitord_from_ordset(ordsets:ordset(non_neg_integer())) -> bitord().
+bitord_from_ordset([]) -> [];
+bitord_from_ordset([B|Bs]) ->
+  bitord_from_ordset_1(Bs, ?LIMB_IX(B), ?BIT_MASK(B)).
+
+bitord_from_ordset_1([B|Bs], Key, Val) when Key =:= ?LIMB_IX(B) ->
+  bitord_from_ordset_1(Bs, Key, Val bor ?BIT_MASK(B));
+bitord_from_ordset_1([B|Bs], Key, Val) ->
+  [{Key,Val} | bitord_from_ordset_1(Bs, ?LIMB_IX(B), ?BIT_MASK(B))];
+bitord_from_ordset_1([], Key, Val) -> [{Key, Val}].
+
+%% bitarr(): fast (enough) at get/2
+-type bitarr() :: array:array(0..((1 bsl ?LIMB_BITS)-1)).
+
+-spec bitarr_get(non_neg_integer(), bitarr()) -> boolean().
+bitarr_get(Index, Array) ->
+  Limb = array:get(?LIMB_IX(Index), Array),
+  0 =/= (Limb band ?BIT_MASK(Index)).
+
+-spec bitarr_from_bitord(bitord()) -> bitarr().
+bitarr_from_bitord(Ord) ->
+  array:from_orddict(Ord, 0).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% First pass
