@@ -585,26 +585,25 @@ combine_spills_1([{Temp, {spill, Slot0}}=A0|As], Grouping, Subst0) ->
 %%
 %% Keeps track of the edges between partitions and the sets of temps live at
 %% that edge.
-
-%% The liveset type needs to provide logarithmic membership query; thus it
-%% cannot be the usual sorted list.
--type edge_liveset() :: #{temp() => []}. % set
--type edges() :: #{part_key() => [{part_key(), float(), edge_liveset()}]}.
+-type edges() :: #{[part_key()|temp()] => float()}.
 
 -spec edges_new() -> edges().
 edges_new() -> #{}.
 
 -spec edges_insert(part_key(), part_key(), float(), liveset(), edges())
 		  -> edges().
-edges_insert(A, B, Weight, OLiveset, Edges) ->
-  Liveset = maps:from_list([{T, []} || T <- OLiveset]),
-  map_append(A, {B, Weight, Liveset}, Edges).
+edges_insert(A, _B, Weight, Liveset, Edges0) when is_float(Weight) ->
+  lists:foldl(fun(Live, Edges1) ->
+		  map_update_counter([A|Live], Weight, Edges1)
+	      end, Edges0, Liveset).
 
 -spec edges_map_roots(part_dsets(), edges()) -> {edges(), part_dsets()}.
 edges_map_roots(DSets0, Edges) ->
-  {NewEs, DSets} = lists:mapfoldl(fun edges_map_roots_1/2, DSets0,
-				  maps:to_list(Edges)),
-  {maps_from_list_merge(NewEs, fun erlang:'++'/2, #{}), DSets}.
+  {NewEs, DSets} = lists:mapfoldl(fun({[A|T], Wt}, DSets1) ->
+				      {AR, DSets2} = dsets_find(A, DSets1),
+				      {{[AR|T], Wt}, DSets2}
+				  end, DSets0, maps:to_list(Edges)),
+  {maps_from_list_merge(NewEs, fun erlang:'+'/2, #{}), DSets}.
 
 maps_from_list_merge([], _MF, Acc) -> Acc;
 maps_from_list_merge([{K,V}|Ps], MF, Acc) ->
@@ -613,28 +612,20 @@ maps_from_list_merge([{K,V}|Ps], MF, Acc) ->
 				 #{}        -> Acc#{K => V}
 			       end).
 
-edges_map_roots_1({A, Es}, DSets0) ->
-  {AR, DSets1} = dsets_find(A, DSets0),
-  {EsR, DSets} = lists:mapfoldl(fun({B, Wt, Live}, DSets2) ->
-				    {BR, DSets3} = dsets_find(B, DSets2),
-				    {{BR, Wt, Live}, DSets3}
-				end, DSets1, Es),
-  {{AR, EsR}, DSets}.
-
 -spec edges_query(temp(), part_key(), edges()) -> float().
 edges_query(Temp, Part, Edges) ->
+  Key = [Part|Temp],
   case Edges of
-    #{Part := Es} ->
-      edges_query_1(Es, Temp, 0.0);
+    #{Key := Wt} -> Wt;
     #{} -> 0.0
   end.
 
-edges_query_1([], _, Acc) -> Acc;
-edges_query_1([{_B, Wt, Live}|Es], Temp, Acc)
-  when is_float(Wt), is_float(Acc) ->
-  case Live of
-    #{Temp := _} -> edges_query_1(Es, Temp, Acc + Wt);
-    #{}          -> edges_query_1(Es, Temp, Acc)
+-spec map_update_counter(Key, number(), #{Key => number(), OK => OV})
+			-> #{Key := number(), OK => OV}.
+map_update_counter(Key, Incr, Map) ->
+  case Map of
+    #{Key := Orig} -> Map#{Key := Orig + Incr};
+    #{}            -> Map#{Key => Incr}
   end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
