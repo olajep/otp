@@ -84,6 +84,11 @@
 %% Idea: Second "spill mode," where temps are spilled at definitions rather than
 %% exit edges. Heuristic decision based on similar "cost" as first spill mode.
 %% Q: Can we do the same to restores? Is there any benefit?
+%%
+%%   Idea: Backward P({DEF}) analysis can elide redundant mode2 spills stores.
+%%
+%%   Idea: Custom liveness analysis, killing liveness at call instructions can
+%%   be used to elide restores in second spill mode
 
 -spec split(cfg(), liveness(), target_module(), target_context())
 	   -> {cfg(), spill_grouping()}.
@@ -330,16 +335,17 @@ scan(CFG, Liveness, Weights, Defs, Target) ->
 
 collect_ducounts([], _, Acc) -> Acc;
 collect_ducounts([{R,Ls}|RLs], DUCounts, Acc) ->
-  DUCount = lists:foldl(fun(Key, FAcc) ->
-			    ducount_merge(maps:get(Key, DUCounts, ducount_new()), FAcc)
-			end, ducount_new(), Ls),
+  DUCount = lists:foldl(
+	      fun(Key, FAcc) ->
+		  ducount_merge(maps:get(Key, DUCounts, ducount_new()), FAcc)
+	      end, ducount_new(), Ls),
   collect_ducounts(RLs, DUCounts, Acc#{R => DUCount}).
 
 scan_bbs([], _CFG, _Liveness, _Weights, _Defs, _Target, DUCounts, Edges, DSets,
 	 Temps) ->
   {DUCounts, Edges, DSets, Temps};
-scan_bbs([L|Ls], CFG, Liveness, Weights, Defs, Target, DUCounts0, Edges0, DSets0,
-	 Temps0) ->
+scan_bbs([L|Ls], CFG, Liveness, Weights, Defs, Target, DUCounts0, Edges0,
+	 DSets0, Temps0) ->
   Code = hipe_bb:code(BB = bb(CFG, L, Target)),
   Wt = weight(L, Weights),
   Temps = collect_temps(Code, Target, Temps0),
@@ -365,7 +371,8 @@ scan_bbs([L|Ls], CFG, Liveness, Weights, Defs, Target, DUCounts0, Edges0, DSets0
     end,
   DUCount = scan_bb(EntryCode, Target, Wt, ducount_new()),
   DUCounts = DUCounts0#{L => DUCount},
-  scan_bbs(Ls, CFG, Liveness, Weights, Defs, Target, DUCounts, Edges, DSets, Temps).
+  scan_bbs(Ls, CFG, Liveness, Weights, Defs, Target, DUCounts, Edges, DSets,
+	   Temps).
 
 collect_temps([], _Target, Temps) -> Temps;
 collect_temps([I|Is], Target, Temps0) ->
@@ -596,8 +603,7 @@ edges_insert(A, B, Weight, OLiveset, Edges) ->
 
 -spec edges_map_roots(part_dsets(), edges()) -> {edges(), part_dsets()}.
 edges_map_roots(DSets0, Edges) ->
-  %% Can just as well be mapfoldl, but I think mapfoldr is more efficient
-  {NewEs, DSets} = lists:mapfoldr(fun edges_map_roots_1/2, DSets0,
+  {NewEs, DSets} = lists:mapfoldl(fun edges_map_roots_1/2, DSets0,
 				  maps:to_list(Edges)),
   {maps_from_list_merge(NewEs, fun erlang:'++'/2, #{}), DSets}.
 
@@ -610,8 +616,7 @@ maps_from_list_merge([{K,V}|Ps], MF, Acc) ->
 
 edges_map_roots_1({A, Es}, DSets0) ->
   {AR, DSets1} = dsets_find(A, DSets0),
-  %% dito about mapfoldl
-  {EsR, DSets} = lists:mapfoldr(fun({B, Wt, Live}, DSets2) ->
+  {EsR, DSets} = lists:mapfoldl(fun({B, Wt, Live}, DSets2) ->
 				    {BR, DSets3} = dsets_find(B, DSets2),
 				    {{BR, Wt, Live}, DSets3}
 				end, DSets1, Es),
