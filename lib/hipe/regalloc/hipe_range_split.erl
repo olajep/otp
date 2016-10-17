@@ -444,14 +444,13 @@ decide_parts([{Part,DUCount}|Ps], Edges, Target, Acc) ->
 
 decide_temps([], _Part, _Edges, _Target, Acc) -> Acc;
 decide_temps([{Temp, SpillGain}|Ts], Part, Edges, Target, Acc0) ->
-  Es = edges_query(Temp, Part, Edges),
-  SpillCost = lists:sum(Es),
+  SpillCost = edges_query(Temp, Part, Edges),
   Acc =
-    case not is_precoloured(Temp, Target)
+    %% SpillCost =:= 0.0 usually means the temp is local to the partition;
+    %% hence no need to split it
+    case SpillCost =/= 0.0
+      andalso not is_precoloured(Temp, Target)
       andalso ?GAIN_FACTOR_THRESH*SpillCost < SpillGain
-      %% Es = [] usually means the temp is local to the partition; hence no need
-      %% to split it
-      andalso Es =/= []
     of
       false -> Acc0;
       true ->
@@ -622,10 +621,21 @@ edges_map_roots_1({A, Es}, DSets0) ->
 				end, DSets1, Es),
   {{AR, EsR}, DSets}.
 
--spec edges_query(temp(), part_key(), edges()) -> [part_key()].
+-spec edges_query(temp(), part_key(), edges()) -> float().
 edges_query(Temp, Part, Edges) ->
-  Es = maps:get(Part, Edges, []),
-  [Wt || {_B, Wt, Live} <- Es, maps:is_key(Temp, Live)].
+  case Edges of
+    #{Part := Es} ->
+      edges_query_1(Es, Temp, 0.0);
+    #{} -> 0.0
+  end.
+
+edges_query_1([], _, Acc) -> Acc;
+edges_query_1([{_B, Wt, Live}|Es], Temp, Acc)
+  when is_float(Wt), is_float(Acc) ->
+  case Live of
+    #{Temp := _} -> edges_query_1(Es, Temp, Acc + Wt);
+    #{}          -> edges_query_1(Es, Temp, Acc)
+  end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% The disjoint set forests data structure, for elements of arbitrary types.
