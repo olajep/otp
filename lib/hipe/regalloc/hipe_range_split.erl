@@ -844,7 +844,7 @@ lift_spills([I|Is], Target, SpillMap0, Acc) ->
 -spec mk_spillgroup(renames()) -> spill_grouping().
 mk_spillgroup(Renames) ->
   maps:fold(fun(_, Ren, Acc0) ->
-		maps:fold(fun(Orig, {Mode, New}, Acc1) ->
+		maps:fold(fun(Orig, {_Mode, New}, Acc1) ->
 			      Acc1#{Orig => Orig, New => Orig}
 			  end, Acc0, Ren)
 	    end, #{}, Renames).
