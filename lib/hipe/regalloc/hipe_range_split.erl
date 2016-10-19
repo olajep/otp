@@ -114,7 +114,7 @@ split(CFG0, Liveness, TargetMod, TargetContext) ->
 
   %% io:fwrite(standard_error, "Defs: ~p~n",
   %% 	    [maps:map(fun(_,V)->maps:keys(V)end,Defs)]),
-  {DUCounts, Edges, DSets0, Temps} =
+  {DUCounts, Costs, DSets0, Temps} =
     scan(CFG0, Liveness, PLive, Wts, Defs, RDefs, Target),
   {DSets, _} = dsets_to_map(DSets0),
 
@@ -123,7 +123,7 @@ split(CFG0, Liveness, TargetMod, TargetContext) ->
   put(introduced, 0.0),
   put(saved, 0.0),
 
-  Renames = decide(DUCounts, Edges, Target),
+  Renames = decide(DUCounts, Costs, Target),
   SpillGroup = mk_spillgroup(Renames),
 
   TDecide = erlang:monotonic_time(milli_seconds),
@@ -550,16 +550,16 @@ liveset_from_list(L) -> ordsets:from_list(L).
 scan(CFG, Liveness, PLive, Weights, Defs, RDefs, Target) ->
   Labels = labels(CFG, Target),
   DSets0 = dsets_new(Labels),
-  Edges0 = edges_new(),
-  {DUCounts0, Edges1, DSets1, Temps} =
+  Costs0 = costs_new(),
+  {DUCounts0, Costs1, DSets1, Temps} =
     scan_bbs(Labels, CFG, Liveness, PLive, Weights, Defs, RDefs, Target, #{},
-	     Edges0, DSets0, #{}),
+	     Costs0, DSets0, #{}),
   {RLList, DSets2} = dsets_to_rllist(DSets1),
   put(partitions, length(RLList)),
   %% io:fwrite(standard_error, "Partitioning: ~p~n", [RLList]),
-  {Edges, DSets} = edges_map_roots(DSets2, Edges1),
+  {Costs, DSets} = costs_map_roots(DSets2, Costs1),
   DUCounts = collect_ducounts(RLList, DUCounts0, #{}),
-  {DUCounts, Edges, DSets, Temps}.
+  {DUCounts, Costs, DSets, Temps}.
 
 collect_ducounts([], _, Acc) -> Acc;
 collect_ducounts([{R,Ls}|RLs], DUCounts, Acc) ->
@@ -570,42 +570,42 @@ collect_ducounts([{R,Ls}|RLs], DUCounts, Acc) ->
   collect_ducounts(RLs, DUCounts, Acc#{R => DUCount}).
 
 scan_bbs([], _CFG, _Liveness, _PLive, _Weights, _Defs, _RDefs, _Target,
-	 DUCounts, Edges, DSets, Temps) ->
-  {DUCounts, Edges, DSets, Temps};
+	 DUCounts, Costs, DSets, Temps) ->
+  {DUCounts, Costs, DSets, Temps};
 scan_bbs([L|Ls], CFG, Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts0,
-	 Edges0, DSets0, Temps0) ->
+	 Costs0, DSets0, Temps0) ->
   Code = hipe_bb:code(BB = bb(CFG, L, Target)),
   Wt = weight(L, Weights),
   Temps = collect_temps(Code, Target, Temps0),
   LastI = hipe_bb:last(BB),
-  {DSets, Edges5, EntryCode, RDefout, Liveout} =
+  {DSets, Costs5, EntryCode, RDefout, Liveout} =
     case defines_all_alloc(LastI, Target) of
       false ->
 	DSets1 = lists:foldl(fun(S, DS) -> dsets_union(L, S, DS) end,
 			     DSets0, hipe_gen_cfg:succ(CFG, L)),
-	{DSets1, Edges0, Code, rdefout(L, RDefs), liveout(Liveness, L, Target)};
+	{DSets1, Costs0, Code, rdefout(L, RDefs), liveout(Liveness, L, Target)};
       true ->
 	LiveBefore = liveness_step(LastI, Target, liveout(Liveness, L, Target)),
 	%% We can omit the spill of a temp that has not been defined since the
 	%% last time it was spilled
 	SpillSet = defset_intersect_ordset(LiveBefore, defbutlast(L, Defs)),
-	Edges1 = edges_insert(exit, L, Wt, SpillSet, Edges0),
-	Edges4 = lists:foldl(fun({S, BranchWt}, Edges2) ->
+	Costs1 = costs_insert(exit, L, Wt, SpillSet, Costs0),
+	Costs4 = lists:foldl(fun({S, BranchWt}, Costs2) ->
 				 SLivein = livein(Liveness, S, Target),
 				 SPLivein = plivein(S, PLive),
 				 SWt = weight_scaled(L, BranchWt, Weights),
-				 Edges3 = edges_insert(entry1, S, SWt, SLivein, Edges2),
-				 edges_insert(entry2, S, SWt, SPLivein, Edges3)
-			     end, Edges1, branch_preds(LastI, Target)),
-	{DSets0, Edges4, hipe_bb:butlast(BB), rdefset_empty(), LiveBefore}
+				 Costs3 = costs_insert(entry1, S, SWt, SLivein, Costs2),
+				 costs_insert(entry2, S, SWt, SPLivein, Costs3)
+			     end, Costs1, branch_preds(LastI, Target)),
+	{DSets0, Costs4, hipe_bb:butlast(BB), rdefset_empty(), LiveBefore}
     end,
   {DUCount, Mode2Spills} =
     scan_bb(lists:reverse(EntryCode), Target, Wt, RDefout, Liveout,
 	    ducount_new(), []),
   DUCounts = DUCounts0#{L => DUCount},
-  Edges = edges_insert(spill, L, Wt, Mode2Spills, Edges5),
+  Costs = costs_insert(spill, L, Wt, Mode2Spills, Costs5),
   scan_bbs(Ls, CFG, Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts,
-	   Edges, DSets, Temps).
+	   Costs, DSets, Temps).
 
 collect_temps([], _Target, Temps) -> Temps;
 collect_temps([I|Is], Target, Temps0) ->
@@ -675,21 +675,21 @@ weight_scaled(L, Scale, Weights) ->
 -type ren() :: #{temp() => {spill_mode(), temp()}}.
 -type renames() :: #{label() => ren()}.
 
--spec decide(ducounts(), edges(), target()) -> renames().
-decide(DUCounts, Edges, Target) ->
-  decide_parts(maps:to_list(DUCounts), Edges, Target, #{}).
+-spec decide(ducounts(), costs(), target()) -> renames().
+decide(DUCounts, Costs, Target) ->
+  decide_parts(maps:to_list(DUCounts), Costs, Target, #{}).
 
-decide_parts([], _Edges, _Target, Acc) -> Acc;
-decide_parts([{Part,DUCount}|Ps], Edges, Target, Acc) ->
-  Spills = decide_temps(ducount_to_list(DUCount), Part, Edges, Target, #{}),
-  decide_parts(Ps, Edges, Target, Acc#{Part => Spills}).
+decide_parts([], _Costs, _Target, Acc) -> Acc;
+decide_parts([{Part,DUCount}|Ps], Costs, Target, Acc) ->
+  Spills = decide_temps(ducount_to_list(DUCount), Part, Costs, Target, #{}),
+  decide_parts(Ps, Costs, Target, Acc#{Part => Spills}).
 
-decide_temps([], _Part, _Edges, _Target, Acc) -> Acc;
-decide_temps([{Temp, SpillGain}|Ts], Part, Edges, Target, Acc0) ->
-  SpillCost1 = edges_query(Temp, entry1, Part, Edges)
-    + edges_query(Temp, exit, Part, Edges),
-  SpillCost2 = edges_query(Temp, entry2, Part, Edges)
-    + edges_query(Temp, spill, Part, Edges),
+decide_temps([], _Part, _Costs, _Target, Acc) -> Acc;
+decide_temps([{Temp, SpillGain}|Ts], Part, Costs, Target, Acc0) ->
+  SpillCost1 = costs_query(Temp, entry1, Part, Costs)
+    + costs_query(Temp, exit, Part, Costs),
+  SpillCost2 = costs_query(Temp, entry2, Part, Costs)
+    + costs_query(Temp, spill, Part, Costs),
   Acc =
     %% SpillCost1 =:= 0.0 usually means the temp is local to the partition;
     %% hence no need to split it
@@ -713,7 +713,7 @@ decide_temps([{Temp, SpillGain}|Ts], Part, Edges, Target, Acc0) ->
 	put(saved, get(saved)+SpillGain),
 	Acc0#{Temp => {Mode, new_reg_nr(Target)}}
   end,
-  decide_temps(Ts, Part, Edges, Target, Acc).
+  decide_temps(Ts, Part, Costs, Target, Acc).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Actual second pass
@@ -870,51 +870,51 @@ combine_spills_1([{Temp, {spill, Slot0}}=A0|As], Grouping, Subst0) ->
   [A|combine_spills_1(As, Grouping, Subst)].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Edges ADT
+%% Costs ADT
 %%
-%% Keeps track of the edges between partitions and the sets of temps live at
-%% that edge.
--type edge_map() :: #{[part_key()|temp()] => float()}.
--type edge_key() :: entry1 | entry2 | exit | spill.
--record(edges, {entry1 = #{} :: edge_map()
-	       ,entry2 = #{} :: edge_map()
-	       ,exit   = #{} :: edge_map()
-	       ,spill  = #{} :: edge_map()
+%% Keeps track of cumulative cost of spilling temps in particular partitions
+%% using particular spill modes.
+-type cost_map() :: #{[part_key()|temp()] => float()}.
+-type cost_key() :: entry1 | entry2 | exit | spill.
+-record(costs, {entry1 = #{} :: cost_map()
+	       ,entry2 = #{} :: cost_map()
+	       ,exit   = #{} :: cost_map()
+	       ,spill  = #{} :: cost_map()
 	       }).
--type edges() :: #edges{}.
+-type costs() :: #costs{}.
 
--spec edges_new() -> edges().
-edges_new() -> #edges{}.
+-spec costs_new() -> costs().
+costs_new() -> #costs{}.
 
--spec edges_insert(edge_key(), part_key(), float(), liveset(), edges())
-		  -> edges().
-edges_insert(entry1, A, Weight, Liveset, Edges=#edges{entry1=Entry1}) ->
-  Edges#edges{entry1=edges_insert_1(A, Weight, Liveset, Entry1)};
-edges_insert(entry2, A, Weight, Liveset, Edges=#edges{entry2=Entry2}) ->
-  Edges#edges{entry2=edges_insert_1(A, Weight, Liveset, Entry2)};
-edges_insert(exit, A, Weight, Liveset, Edges=#edges{exit=Exit}) ->
-  Edges#edges{exit=edges_insert_1(A, Weight, Liveset, Exit)};
-edges_insert(spill, A, Weight, Liveset, Edges=#edges{spill=Spill}) ->
-  Edges#edges{spill=edges_insert_1(A, Weight, Liveset, Spill)}.
+-spec costs_insert(cost_key(), part_key(), float(), liveset(), costs())
+		  -> costs().
+costs_insert(entry1, A, Weight, Liveset, Costs=#costs{entry1=Entry1}) ->
+  Costs#costs{entry1=costs_insert_1(A, Weight, Liveset, Entry1)};
+costs_insert(entry2, A, Weight, Liveset, Costs=#costs{entry2=Entry2}) ->
+  Costs#costs{entry2=costs_insert_1(A, Weight, Liveset, Entry2)};
+costs_insert(exit, A, Weight, Liveset, Costs=#costs{exit=Exit}) ->
+  Costs#costs{exit=costs_insert_1(A, Weight, Liveset, Exit)};
+costs_insert(spill, A, Weight, Liveset, Costs=#costs{spill=Spill}) ->
+  Costs#costs{spill=costs_insert_1(A, Weight, Liveset, Spill)}.
 
-edges_insert_1(A, Weight, Liveset, EdgeMap0) when is_float(Weight) ->
-  lists:foldl(fun(Live, EdgeMap1) ->
-		  map_update_counter([A|Live], Weight, EdgeMap1)
-	      end, EdgeMap0, Liveset).
+costs_insert_1(A, Weight, Liveset, CostMap0) when is_float(Weight) ->
+  lists:foldl(fun(Live, CostMap1) ->
+		  map_update_counter([A|Live], Weight, CostMap1)
+	      end, CostMap0, Liveset).
 
--spec edges_map_roots(part_dsets(), edges()) -> {edges(), part_dsets()}.
-edges_map_roots(DSets0, Edges) ->
-  {Entry1, DSets1} = edges_map_roots_1(DSets0, Edges#edges.entry1),
-  {Entry2, DSets2} = edges_map_roots_1(DSets1, Edges#edges.entry2),
-  {Exit,   DSets3} = edges_map_roots_1(DSets2, Edges#edges.exit),
-  {Spill,  DSets}  = edges_map_roots_1(DSets3, Edges#edges.spill),
-  {#edges{entry1=Entry1,entry2=Entry2,exit=Exit,spill=Spill}, DSets}.
+-spec costs_map_roots(part_dsets(), costs()) -> {costs(), part_dsets()}.
+costs_map_roots(DSets0, Costs) ->
+  {Entry1, DSets1} = costs_map_roots_1(DSets0, Costs#costs.entry1),
+  {Entry2, DSets2} = costs_map_roots_1(DSets1, Costs#costs.entry2),
+  {Exit,   DSets3} = costs_map_roots_1(DSets2, Costs#costs.exit),
+  {Spill,  DSets}  = costs_map_roots_1(DSets3, Costs#costs.spill),
+  {#costs{entry1=Entry1,entry2=Entry2,exit=Exit,spill=Spill}, DSets}.
 
-edges_map_roots_1(DSets0, EdgeMap) ->
+costs_map_roots_1(DSets0, CostMap) ->
   {NewEs, DSets} = lists:mapfoldl(fun({[A|T], Wt}, DSets1) ->
 				      {AR, DSets2} = dsets_find(A, DSets1),
 				      {{[AR|T], Wt}, DSets2}
-				  end, DSets0, maps:to_list(EdgeMap)),
+				  end, DSets0, maps:to_list(CostMap)),
   {maps_from_list_merge(NewEs, fun erlang:'+'/2, #{}), DSets}.
 
 maps_from_list_merge([], _MF, Acc) -> Acc;
@@ -924,19 +924,19 @@ maps_from_list_merge([{K,V}|Ps], MF, Acc) ->
 				 #{}        -> Acc#{K => V}
 			       end).
 
--spec edges_query(temp(), edge_key(), part_key(), edges()) -> float().
-edges_query(Temp, entry1, Part, #edges{entry1=Entry1}) ->
-  edges_query_1(Temp, Part, Entry1);
-edges_query(Temp, entry2, Part, #edges{entry2=Entry2}) ->
-  edges_query_1(Temp, Part, Entry2);
-edges_query(Temp, exit, Part, #edges{exit=Exit}) ->
-  edges_query_1(Temp, Part, Exit);
-edges_query(Temp, spill, Part, #edges{spill=Spill}) ->
-  edges_query_1(Temp, Part, Spill).
+-spec costs_query(temp(), cost_key(), part_key(), costs()) -> float().
+costs_query(Temp, entry1, Part, #costs{entry1=Entry1}) ->
+  costs_query_1(Temp, Part, Entry1);
+costs_query(Temp, entry2, Part, #costs{entry2=Entry2}) ->
+  costs_query_1(Temp, Part, Entry2);
+costs_query(Temp, exit, Part, #costs{exit=Exit}) ->
+  costs_query_1(Temp, Part, Exit);
+costs_query(Temp, spill, Part, #costs{spill=Spill}) ->
+  costs_query_1(Temp, Part, Spill).
 
-edges_query_1(Temp, Part, EdgeMap) ->
+costs_query_1(Temp, Part, CostMap) ->
   Key = [Part|Temp],
-  case EdgeMap of
+  case CostMap of
     #{Key := Wt} -> Wt;
     #{} -> 0.0
   end.
