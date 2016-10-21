@@ -732,12 +732,11 @@ rewrite_bbs([L|Ls], Target, Liveness, PLive, Defs, RDefs, DSets, Renames, Temps,
   SubstFun = rewrite_subst_fun(Target, EntryRen),
   Fun = fun(I) -> subst_temps(SubstFun, I, Target) end,
   Liveout0 = liveout(Liveness, L, Target),
-  M2SpillMap = mk_mode2_spillmap(EntryRen, Temps, Target),
   {Code, CFG} =
     case defines_all_alloc(hd(Code0Rev), Target) of
       false ->
 	RDefout0 = rdefout(L, RDefs),
-	Code1 = rewrite_instrs(Code0Rev, Fun, M2SpillMap, Target, Liveout0,
+	Code1 = rewrite_instrs(Code0Rev, Fun, EntryRen, Temps, Target, Liveout0,
 			       RDefout0, []),
 	{Code1, CFG0};
       true ->
@@ -749,16 +748,16 @@ rewrite_bbs([L|Ls], Target, Liveness, PLive, Defs, RDefs, DSets, Renames, Temps,
 	RDefout1 = rdefset_empty(),
 	Defout = defbutlast(L, Defs),
 	SpillMap = mk_spillmap(EntryRen, Liveout1, Defout, Temps, Target),
-	Code1 = rewrite_instrs(tl(Code0Rev), Fun, M2SpillMap, Target, Liveout1,
-			       RDefout1, []),
+	Code1 = rewrite_instrs(tl(Code0Rev), Fun, EntryRen, Temps, Target,
+			       Liveout1, RDefout1, []),
 	Code2 = lift_spills(lists:reverse(Code1), Target, SpillMap, [CallI]),
 	{Code2, CFG1}
     end,
   rewrite_bbs(Ls, Target, Liveness, PLive, Defs, RDefs, DSets, Renames, Temps,
 	      update_bb(CFG, L, hipe_bb:code_update(BB, Code), Target)).
 
-rewrite_instrs([], _Fun, _SpillMap, _Target, _Livein, _RDefin, Acc) -> Acc;
-rewrite_instrs([I|Is], Fun, SpillMap, Target, Liveout, RDefout, Acc0) ->
+rewrite_instrs([], _Fun, _Ren, _Temps, _Target, _Livein, _RDefin, Acc) -> Acc;
+rewrite_instrs([I|Is], Fun, Ren, Temps, Target, Liveout, RDefout, Acc0) ->
   Livein = liveness_step(I, Target, Liveout),
   RDefin = rdef_step(I, Target, RDefout),
   Def = reg_defines(I, Target),
@@ -766,14 +765,18 @@ rewrite_instrs([I|Is], Fun, SpillMap, Target, Liveout, RDefout, Acc0) ->
 		  ordsets:intersection(
 		    ordsets:from_list(Def), Liveout),
 		  RDefout),
-  Acc = add_mode2_spills(Mode2Spills, SpillMap, Acc0),
-  rewrite_instrs(Is, Fun, SpillMap, Target, Livein, RDefin, [Fun(I)|Acc]).
+  Acc = add_mode2_spills(Mode2Spills, Target, Ren, Temps, Acc0),
+  rewrite_instrs(Is, Fun, Ren, Temps, Target, Livein, RDefin, [Fun(I)|Acc]).
 
-add_mode2_spills([], _SpillMap, Acc) -> Acc;
-add_mode2_spills([T|Ts], SpillMap, Acc) ->
-  case SpillMap of
-    #{T := SpillInstr} -> add_mode2_spills(Ts, SpillMap, [SpillInstr|Acc]);
-    #{}                -> add_mode2_spills(Ts, SpillMap, Acc)
+add_mode2_spills([], _Target, _Ren, _Temps, Acc) -> Acc;
+add_mode2_spills([R|Rs], Target, Ren, Temps, Acc) ->
+  case Ren of
+    #{R := {mode2, NewName}} ->
+      #{R := T} = Temps,
+      SpillInstr = mk_move(update_reg_nr(NewName, T, Target), T, Target),
+      add_mode2_spills(Rs, Target, Ren, Temps, [SpillInstr|Acc]);
+    #{} ->
+      add_mode2_spills(Rs, Target, Ren, Temps, Acc)
   end.
 
 rewrite_subst_fun(Target, Ren) ->
@@ -791,13 +794,6 @@ mk_spillmap(Ren, Livein, Defout, Temps, Target) ->
      {NewName, mk_move(update_reg_nr(NewName, Temp, Target), Temp, Target)}
    end || {Reg, {mode1, NewName}} <- maps:to_list(Ren),
 	  lists:member(Reg, Livein), defset_member(Reg, Defout)].
-
-mk_mode2_spillmap(Ren, Temps, Target) ->
-  maps:from_list(
-    [begin
-       Temp = maps:get(Reg, Temps),
-       {Reg, mk_move(update_reg_nr(NewName, Temp, Target), Temp, Target)}
-     end || {Reg, {mode2, NewName}} <- maps:to_list(Ren)]).
 
 mk_restores(Ren, Livein, PLivein, Temps, Target) ->
   [begin
