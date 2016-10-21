@@ -633,7 +633,8 @@ scan_bb([I|Is], Target, Wt, RDefout, Liveout, DUCount0, Spills0) ->
 
 liveness_step(I, Target, Liveout) ->
   {Def, Use} = reg_def_use(I, Target),
-  ordsets:union(Use, ordsets:subtract(Liveout, Def)).
+  ordsets:union(ordsets:from_list(Use),
+		ordsets:subtract(Liveout, ordsets:from_list(Def))).
 
 reg_def_use(I, Target) ->
   {TDef, TUse} = def_use(I, Target),
