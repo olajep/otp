@@ -277,9 +277,10 @@ defset_from_list(L) -> ordsets:from_list(L).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% P({DEF}) lattice reverse dataflow (for eliding stores at defines in mode2)
--type rdefs() :: #{label() =>
-		     {call, rdefset(), [label()]}
-		   | {nocall, rdefset(), rdefset(), [label()]}}.
+-type rdefsi() :: #{label() =>
+		     {call, rdefseti(), [label()]}
+		   | {nocall, rdefseti(), rdefseti(), [label()]}}.
+-type rdefs() :: #{label() => {final, rdefsetf(), [label()]}}.
 
 -spec rdef_analyse(cfg(), target()) -> rdefs().
 rdef_analyse(CFG, Target) ->
@@ -287,7 +288,7 @@ rdef_analyse(CFG, Target) ->
   PO = postorder(CFG, Target),
   rdef_dataf(PO, Defs0).
 
--spec rdef_init(cfg(), target()) -> rdefs().
+-spec rdef_init(cfg(), target()) -> rdefsi().
 rdef_init(CFG, Target) ->
   Labels = labels(CFG, Target),
   maps:from_list(
@@ -296,28 +297,34 @@ rdef_init(CFG, Target) ->
        Succs = hipe_gen_cfg:succ(CFG, L),
        {L, case defines_all_alloc(Last, Target) of
 	     true ->
-	       Defin = rdef_init_scan(hipe_bb:butlast(BB), Target, rdefset_empty()),
+	       Defin = rdef_init_scan(hipe_bb:butlast(BB), Target, rdefseti_empty()),
 	       {call, Defin, Succs};
 	     false ->
-	       Gen = rdef_init_scan(hipe_bb:code(BB), Target, rdefset_empty()),
-	       {nocall, Gen, rdefset_top(), Succs}
+	       Gen = rdef_init_scan(hipe_bb:code(BB), Target, rdefseti_empty()),
+	       {nocall, Gen, rdefseti_top(), Succs}
 	   end}
      end || L <- Labels]).
 
 rdef_init_scan([], _Target, Defset) -> Defset;
-rdef_init_scan([I|Is], Target, Defset) ->
-  rdef_init_scan(Is, Target, rdef_step(I, Target, Defset)).
-
-rdef_step(I, Target, Defset) ->
+rdef_init_scan([I|Is], Target, Defset0) ->
   ?ASSERT(not defines_all_alloc(I, Target)),
-  rdefset_add_list(reg_defines(I, Target), Defset).
+  Defset = rdefseti_add_list(reg_defines(I, Target), Defset0),
+  rdef_init_scan(Is, Target, Defset).
 
 rdef_dataf(Labels, Defs0) ->
   case rdef_dataf_once(Labels, Defs0, 0) of
-    {Defs, 0} -> Defs;
+    {Defs, 0} ->
+      rdef_finalise(Defs);
     {Defs, _Changed} ->
       rdef_dataf(Labels, Defs)
   end.
+
+rdef_finalise(Defs) ->
+  maps:map(fun(L, V) ->
+	       Succs = rsuccs_val(V),
+	       Defout0 = rdefout_intersect(L, Defs, rdefseti_top()),
+	       {final, rdefset_finalise(Defout0), Succs}
+	   end, Defs).
 
 rdef_dataf_once([], Defs, Changed) -> {Defs, Changed};
 rdef_dataf_once([L|Ls], Defs0, Changed0) ->
@@ -328,7 +335,7 @@ rdef_dataf_once([L|Ls], Defs0, Changed0) ->
 	{call, Defin, Succs};
 	%% {call, rdefout_intersect(L, Defs0, Defin), Succs};
       {nocall, Gen, Defin0, Succs} ->
-	Defin = rdefset_union(Gen, rdefout_intersect(L, Defs0, Defin0)),
+	Defin = rdefseti_union(Gen, rdefout_intersect(L, Defs0, Defin0)),
 	{nocall, Gen, Defin, Succs}
     end,
   Changed = case Defset =:= Defset0 of
@@ -337,49 +344,70 @@ rdef_dataf_once([L|Ls], Defs0, Changed0) ->
 	    end,
   rdef_dataf_once(Ls, Defs0#{L := Defset}, Changed).
 
--spec rdefin(label(), rdefs()) -> rdefset().
+-spec rdefin(label(), rdefsi()) -> rdefseti().
 rdefin(L, Defs) -> rdefin_val(maps:get(L, Defs)).
 rdefin_val({nocall, _Gen, Defin, _Succs}) -> Defin;
 rdefin_val({call, Defin, _Succs}) -> Defin.
 
 rsuccs(L, Defs) -> rsuccs_val(maps:get(L, Defs)).
 rsuccs_val({nocall, _Gen, _Defin, Succs}) -> Succs;
-rsuccs_val({call, _Defin, Succs}) -> Succs.
+rsuccs_val({call, _Defin, Succs}) -> Succs%% ;
+%% rsuccs_val({final, _Defout, Succs}) -> Succs
+					 . % XXX: temp
 
 %% -spec rdefbutlast(label(), rdefs()) -> rdefset().
 %% rdefbutlast(L, Defs) -> error(notimpl).
 
+-spec rdefout(label(), rdefs()) -> rdefsetf().
 rdefout(L, Defs) ->
-  rdefout_intersect(L, Defs, rdefset_top()).
+  #{L := {final, Defout, _Succs}} = Defs,
+  Defout.
 
+-spec rdefout_intersect(label(), rdefsi(), rdefseti()) -> rdefseti().
 rdefout_intersect(L, Defs, Init) ->
   lists:foldl(fun(S, Acc) ->
-		  rdefset_intersect(rdefin(S, Defs), Acc)
+		  rdefseti_intersect(rdefin(S, Defs), Acc)
 	      end, Init, rsuccs(L, Defs)).
 
--type rdefset() :: bitord() | top.
-rdefset_top() -> top.
-rdefset_empty() -> bitord_new().
-rdefset_from_list(L) -> bitord_from_ordset(ordsets:from_list(L)).
+-type rdefseti() :: bitord() | top.
+rdefseti_top() -> top.
+rdefseti_empty() -> bitord_new().
+rdefseti_from_list(L) -> bitord_from_ordset(ordsets:from_list(L)).
 
-rdefset_add_list(_, top) -> top; % Should never happen in rdef_dataf
-rdefset_add_list(L, D) -> rdefset_union(rdefset_from_list(L), D).
+rdefseti_add_list(_, top) -> top; % Should never happen in rdef_dataf
+rdefseti_add_list(L, D) -> rdefseti_union(rdefseti_from_list(L), D).
 
-rdefset_union(top, _) -> top;
-rdefset_union(_, top) -> top;
-rdefset_union(A, B) -> bitord_union(A, B).
+rdefseti_union(top, _) -> top;
+rdefseti_union(_, top) -> top;
+rdefseti_union(A, B) -> bitord_union(A, B).
 
-rdefset_intersect(top, D) -> D;
-rdefset_intersect(D, top) -> D;
-rdefset_intersect(A, B) -> bitord_intersect(A, B).
+rdefseti_intersect(top, D) -> D;
+rdefseti_intersect(D, top) -> D;
+rdefseti_intersect(A, B) -> bitord_intersect(A, B).
 
-rdefset_member(_, top) -> true;
-rdefset_member(E, D) -> bitord_get(E, D).
+-type rdefsetf() :: {arr, bitarr()} | top.
+-spec rdefset_finalise(rdefseti()) -> rdefsetf().
+rdefset_finalise(top) -> top;
+rdefset_finalise(Ord) -> {arr, bitarr_from_bitord(Ord)}.
 
-ordset_subtract_rdefset(_, top) -> [];
-ordset_subtract_rdefset(OS, D) ->
+%% rdefsetf_top() -> top.
+rdefsetf_empty() -> {arr, bitarr_new()}.
+
+rdefsetf_member(_, top) -> true;
+rdefsetf_member(E, {arr, A}) -> bitarr_get(E, A).
+
+rdefsetf_add_list(_, top) -> top;
+rdefsetf_add_list(L, {arr, Arr}) ->
+  {arr, lists:foldl(fun bitarr_set/2, Arr, L)}.
+
+rdef_step(I, Target, Defset) ->
+  ?ASSERT(not defines_all_alloc(I, Target)),
+  rdefsetf_add_list(reg_defines(I, Target), Defset).
+
+ordset_subtract_rdefsetf(_, top) -> [];
+ordset_subtract_rdefsetf(OS, D) ->
   %% Lazy implementation; could do better if OS can grow
-  lists:filter(fun(E) -> not rdefset_member(E, D) end, OS).
+  lists:filter(fun(E) -> not rdefsetf_member(E, D) end, OS).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Integer sets represented as bit sets
@@ -396,14 +424,6 @@ ordset_subtract_rdefset(OS, D) ->
 
 -spec bitord_new() -> bitord().
 bitord_new() -> [].
-
--spec bitord_get(non_neg_integer(), bitord()) -> boolean().
-bitord_get(Index, Bitord) ->
-  case orddict:find(?LIMB_IX(Index), Bitord) of
-    error -> false;
-    {ok, Limb}  ->
-      0 =/= (Limb band ?BIT_MASK(Index))
-  end.
 
 -spec bitord_union(bitord(), bitord()) -> bitord().
 bitord_union(Lhs, Rhs) ->
@@ -433,10 +453,19 @@ bitord_from_ordset_1([], Key, Val) -> [{Key, Val}].
 %% bitarr(): fast (enough) at get/2
 -type bitarr() :: array:array(0..((1 bsl ?LIMB_BITS)-1)).
 
+-spec bitarr_new() -> bitarr().
+bitarr_new() -> array:new({default, 0}).
+
 -spec bitarr_get(non_neg_integer(), bitarr()) -> boolean().
 bitarr_get(Index, Array) ->
   Limb = array:get(?LIMB_IX(Index), Array),
   0 =/= (Limb band ?BIT_MASK(Index)).
+
+-spec bitarr_set(non_neg_integer(), bitarr()) -> bitarr().
+bitarr_set(Index, Array) ->
+  Limb0 = array:get(?LIMB_IX(Index), Array),
+  Limb = Limb0 bor ?BIT_MASK(Index),
+  array:set(?LIMB_IX(Index), Limb, Array).
 
 -spec bitarr_from_bitord(bitord()) -> bitarr().
 bitarr_from_bitord(Ord) ->
@@ -597,7 +626,7 @@ scan_bbs([L|Ls], CFG, Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts0,
 				 Costs3 = costs_insert(entry1, S, SWt, SLivein, Costs2),
 				 costs_insert(entry2, S, SWt, SPLivein, Costs3)
 			     end, Costs1, branch_preds(LastI, Target)),
-	{DSets0, Costs4, hipe_bb:butlast(BB), rdefset_empty(), LiveBefore}
+	{DSets0, Costs4, hipe_bb:butlast(BB), rdefsetf_empty(), LiveBefore}
     end,
   {DUCount, Mode2Spills} =
     scan_bb(lists:reverse(EntryCode), Target, Wt, RDefout, Liveout,
@@ -625,7 +654,7 @@ scan_bb([I|Is], Target, Wt, RDefout, Liveout, DUCount0, Spills0) ->
   Livein = liveness_step(I, Target, Liveout),
   RDefin = rdef_step(I, Target, RDefout),
   %% The temps that would be spilled after I in mode 2
-  NewSpills = ordset_subtract_rdefset(
+  NewSpills = ordset_subtract_rdefsetf(
 		ordsets:intersection(ordsets:from_list(Def), Liveout),
 		RDefout),
   Spills = ordsets:union(NewSpills, Spills0),
@@ -745,7 +774,7 @@ rewrite_bbs([L|Ls], Target, Liveness, PLive, Defs, RDefs, DSets, Renames, Temps,
 	{CallI, CFG1} = inject_restores(Succ, Target, Liveness, PLive, DSets,
 					Renames, Temps, CallI0, CFG0),
 	Liveout1 = liveness_step(CallI, Target, Liveout0),
-	RDefout1 = rdefset_empty(),
+	RDefout1 = rdefsetf_empty(),
 	Defout = defbutlast(L, Defs),
 	SpillMap = mk_spillmap(EntryRen, Liveout1, Defout, Temps, Target),
 	Code1 = rewrite_instrs(tl(Code0Rev), Fun, EntryRen, Temps, Target,
@@ -761,7 +790,7 @@ rewrite_instrs([I|Is], Fun, Ren, Temps, Target, Liveout, RDefout, Acc0) ->
   Livein = liveness_step(I, Target, Liveout),
   RDefin = rdef_step(I, Target, RDefout),
   Def = reg_defines(I, Target),
-  Mode2Spills = ordset_subtract_rdefset(
+  Mode2Spills = ordset_subtract_rdefsetf(
 		  ordsets:intersection(
 		    ordsets:from_list(Def), Liveout),
 		  RDefout),
