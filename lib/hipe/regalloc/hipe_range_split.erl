@@ -567,18 +567,18 @@ liveset_from_list(L) -> ordsets:from_list(L).
 %% Compute program space partitioning, collect information required by the
 %% heuristic.
 -type part_key() :: label().
--type part_dsets() :: dsets(part_key()).
+-type part_dsets() :: hipe_dsets:dsets(part_key()).
 %%-type part_dsets_map() :: #{part_key() => part_key()}.
 -type ducounts() :: #{part_key() => ducount()}.
 
 scan(CFG, Liveness, PLive, Weights, Defs, RDefs, Target) ->
   Labels = labels(CFG, Target),
-  DSets0 = dsets_new(Labels),
+  DSets0 = hipe_dsets:new(Labels),
   Costs0 = costs_new(),
   {DUCounts0, Costs1, DSets1, Temps} =
     scan_bbs(Labels, CFG, Liveness, PLive, Weights, Defs, RDefs, Target, #{},
 	     Costs0, DSets0, #{}),
-  {RLList, DSets2} = dsets_to_rllist(DSets1),
+  {RLList, DSets2} = hipe_dsets:to_rllist(DSets1),
   put(partitions, length(RLList)),
   %% io:fwrite(standard_error, "Partitioning: ~p~n", [RLList]),
   {Costs, DSets} = costs_map_roots(DSets2, Costs1),
@@ -605,7 +605,7 @@ scan_bbs([L|Ls], CFG, Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts0,
   {DSets, Costs5, EntryCode, RDefout, Liveout} =
     case defines_all_alloc(LastI, Target) of
       false ->
-	DSets1 = lists:foldl(fun(S, DS) -> dsets_union(L, S, DS) end,
+	DSets1 = lists:foldl(fun(S, DS) -> hipe_dsets:union(L, S, DS) end,
 			     DSets0, hipe_gen_cfg:succ(CFG, L)),
 	{DSets1, Costs0, Code, rdefout(L, RDefs), liveout(Liveness, L, Target)};
       true ->
@@ -933,7 +933,7 @@ costs_map_roots(DSets0, Costs) ->
 
 costs_map_roots_1(DSets0, CostMap) ->
   {NewEs, DSets} = lists:mapfoldl(fun({[A|T], Wt}, DSets1) ->
-				      {AR, DSets2} = dsets_find(A, DSets1),
+				      {AR, DSets2} = hipe_dsets:find(A, DSets1),
 				      {{[AR|T], Wt}, DSets2}
 				  end, DSets0, maps:to_list(CostMap)),
   {maps_from_list_merge(NewEs, fun erlang:'+'/2, #{}), DSets}.
@@ -968,64 +968,6 @@ map_update_counter(Key, Incr, Map) ->
   case Map of
     #{Key := Orig} -> Map#{Key := Orig + Incr};
     #{}            -> Map#{Key => Incr}
-  end.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% The disjoint set forests data structure, for elements of arbitrary types.
-%% Note that the find operation mutates the set.
--type dsets(X) :: #{X => {node, X} | {root, non_neg_integer()}}.
-
--spec dsets_new([E]) -> dsets(E).
-dsets_new(Elems) -> maps:from_list([{E,{root,0}} || E <- Elems]).
-
--spec dsets_find(E, dsets(E)) -> {E, dsets(E)}.
-dsets_find(E, DS0) ->
-  case DS0 of
-    #{E := {root,_}} -> {E, DS0};
-    #{E := {node,N}} ->
-      case dsets_find(N, DS0) of
-	{N, _}=T -> T;
-	{R, DS1} -> {R, DS1#{E := {node,R}}}
-      end
-   ;_ -> error(badarg, [E, DS0])
-  end.
-
--spec dsets_union(E, E, dsets(E)) -> dsets(E).
-dsets_union(X, Y, DS0) ->
-  {XRoot, DS1} = dsets_find(X, DS0),
-  case dsets_find(Y, DS1) of
-    {XRoot, DS2} -> DS2;
-    {YRoot, DS2} ->
-      #{XRoot := {root,XRR}, YRoot := {root,YRR}} = DS2,
-      if XRR < YRR -> DS2#{XRoot := {node,YRoot}};
-	 XRR > YRR -> DS2#{YRoot := {node,XRoot}};
-	 true -> DS2#{YRoot := {node,XRoot}, XRoot := {root,XRR+1}}
-      end
-  end.
-
--spec dsets_to_map(dsets(E)) -> {#{Elem::E => Root::E}, dsets(E)}.
-dsets_to_map(DS) ->
-  dsets_to_map(maps:keys(DS), DS, #{}).
-
-dsets_to_map([], DS, Acc) -> {Acc, DS};
-dsets_to_map([K|Ks], DS0, Acc) ->
-  {KR, DS} = dsets_find(K, DS0),
-  dsets_to_map(Ks, DS, Acc#{K => KR}).
-
--spec dsets_to_rllist(dsets(E)) -> {[{Root::E, Elems::[E]}], dsets(E)}.
-dsets_to_rllist(DS0) ->
-  {Lists, DS} = dsets_to_rllist(maps:keys(DS0), #{}, DS0),
-  {maps:to_list(Lists), DS}.
-
-dsets_to_rllist([], Acc, DS) -> {Acc, DS};
-dsets_to_rllist([E|Es], Acc, DS0) ->
-  {ERoot, DS} = dsets_find(E, DS0),
-  dsets_to_rllist(Es, map_append(ERoot, E, Acc), DS).
-
-map_append(Key, Elem, Map) ->
-  case Map of
-    #{Key := List} -> Map#{Key := [Elem|List]};
-    #{} -> Map#{Key => [Elem]}
   end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
