@@ -154,9 +154,8 @@ split(CFG0, Liveness, TargetMod, TargetContext) ->
 %% Zeroth pass
 %%
 %% P({DEF}) lattice fwd dataflow (for eliding stores at SPILL splits)
--type defs_inp() :: #{label() =>
-			defset_inp() | {call, defset_inp(), defset_inp()}}.
--type defs()     :: #{label() => defset()}.
+-type defsi() :: #{label() => defseti() | {call, defseti(), defseti()}}.
+-type defs()  :: #{label() => defsetf()}.
 
 -spec def_analyse(cfg(), target()) -> defs().
 def_analyse(CFG, Target) ->
@@ -164,24 +163,24 @@ def_analyse(CFG, Target) ->
   RPO = reverse_postorder(CFG, Target),
   def_dataf(RPO, CFG, Defs0).
 
--spec def_init(cfg(), target()) -> defs_inp().
+-spec def_init(cfg(), target()) -> defsi().
 def_init(CFG, Target) ->
   Labels = labels(CFG, Target),
   maps:from_list(
     [begin
        Last = hipe_bb:last(BB=bb(CFG, L, Target)),
        {L, case defines_all_alloc(Last, Target) of
-	     false -> def_init_scan(hipe_bb:code(BB), Target, defset_new());
+	     false -> def_init_scan(hipe_bb:code(BB), Target, defseti_new());
 	     true ->
-	       {call, def_init_scan(hipe_bb:butlast(BB), Target, defset_new()),
-		defset_from_list(reg_defines(Last, Target))}
+	       {call, def_init_scan(hipe_bb:butlast(BB), Target, defseti_new()),
+		defseti_from_list(reg_defines(Last, Target))}
 	   end}
      end || L <- Labels]).
 
 def_init_scan([], _Target, Defset) -> Defset;
 def_init_scan([I|Is], Target, Defset0) ->
   ?ASSERT(not defines_all_alloc(I, Target)),
-  Defset = defset_add_list(reg_defines(I, Target), Defset0),
+  Defset = defseti_add_list(reg_defines(I, Target), Defset0),
   def_init_scan(Is, Target, Defset).
 
 reg_defines(I, Target) ->
@@ -196,7 +195,7 @@ def_dataf(Labels, CFG, Defs0) ->
   end.
 
 def_finalise(Defs) ->
-  maps:from_list([{K, defset_finalise(BL)}
+  maps:from_list([{K, defseti_finalise(BL)}
 		  || {K, {call, BL, _}} <- maps:to_list(Defs)]).
 
 def_dataf_once([], _CFG, Defs, Changed) -> {Defs, Changed};
@@ -204,7 +203,7 @@ def_dataf_once([L|Ls], CFG, Defs0, Changed0) ->
   AddPreds =
     fun(Defset1) ->
 	lists:foldl(fun(P, Defset2) ->
-			defset_union(defout(P, Defs0), Defset2)
+			defseti_union(defout(P, Defs0), Defset2)
 		    end, Defset1, hipe_gen_cfg:pred(CFG, L))
     end,
   Defset =
@@ -218,61 +217,65 @@ def_dataf_once([L|Ls], CFG, Defs0, Changed0) ->
 	    end,
   def_dataf_once(Ls, CFG, Defs0#{L := Defset}, Changed).
 
--spec defout(label(), defs_inp()) -> defset_inp().
+-spec defout(label(), defsi()) -> defseti().
 defout(L, Defs) ->
   case maps:get(L, Defs) of
     {call, _DefButLast, Defout} -> Defout;
     Defout -> Defout
   end.
 
--spec defbutlast(label(), defs()) -> defset().
+-spec defbutlast(label(), defs()) -> defsetf().
 defbutlast(L, Defs) -> maps:get(L, Defs).
 
--type defset_inp() :: bitord().
-defset_new() -> bitord_new().
-defset_union(A, B) -> bitord_union(A, B).
-defset_add_list(L, D) -> defset_union(defset_from_list(L), D).
-defset_from_list(L) -> bitord_from_ordset(ordsets:from_list(L)).
-defset_finalise(D) -> bitarr_from_bitord(D).
+-type defseti() :: bitord().
+defseti_new() -> bitord_new().
+defseti_union(A, B) -> bitord_union(A, B).
+defseti_add_list(L, D) -> defseti_union(defseti_from_list(L), D).
+defseti_from_list(L) -> bitord_from_ordset(ordsets:from_list(L)).
+defseti_finalise(D) -> bitarr_from_bitord(D).
 
--type defset() :: bitarr().
-defset_member(E, D) -> bitarr_get(E, D).
+-type defsetf() :: bitarr().
+defsetf_member(E, D) -> bitarr_get(E, D).
 
-defset_intersect_ordset([], _D) -> [];
-defset_intersect_ordset([E|Es], D) ->
+defsetf_intersect_ordset([], _D) -> [];
+defsetf_intersect_ordset([E|Es], D) ->
   case bitarr_get(E, D) of
-    true  -> [E|defset_intersect_ordset(Es,D)];
-    false ->    defset_intersect_ordset(Es,D)
+    true  -> [E|defsetf_intersect_ordset(Es,D)];
+    false ->    defsetf_intersect_ordset(Es,D)
   end.
 
 -ifdef(NOTDEF).
-%% Maps seem to be faster than ordsets for defset()
--type defset() :: #{temp() => []}.
-defset_new() -> #{}.
-defset_union(A, B) -> maps:merge(A, B).
-defset_member(E, D) -> maps:is_key(E, D).
+%% Maps seem to be faster than ordsets for defsetf()
+-type defsetf() :: #{temp() => []}.
+-type defseti() :: defsetf().
+defseti_new() -> #{}.
+defseti_union(A, B) -> maps:merge(A, B).
+defsetf_member(E, D) -> maps:is_key(E, D).
+defseti_finalise(D) -> D.
 
-defset_add_list([],     D) -> D;
-defset_add_list([E|Es], D) -> defset_add_list(Es, D#{E => []}).
+defseti_add_list([],     D) -> D;
+defseti_add_list([E|Es], D) -> defseti_add_list(Es, D#{E => []}).
 
-defset_intersect_ordset([], _D) -> [];
-defset_intersect_ordset([E|Es], D) ->
+defsetf_intersect_ordset([], _D) -> [];
+defsetf_intersect_ordset([E|Es], D) ->
   case D of
-    #{E := _} -> [E|defset_intersect_ordset(Es,D)];
-    #{}       ->    defset_intersect_ordset(Es,D)
+    #{E := _} -> [E|defsetf_intersect_ordset(Es,D)];
+    #{}       ->    defsetf_intersect_ordset(Es,D)
   end.
 
-defset_from_list(L) -> defset_add_list(L, defset_new()).
+defseti_from_list(L) -> defseti_add_list(L, defseti_new()).
 -endif.
 
 -ifdef(NOTDEF).
--type defset() :: ordsets:ordset(temp()).
-defset_new() -> ordsets:new().
-defset_union(A, B) -> ordsets:union(A, B).
-defset_member(E, D) -> lists:member(E, D).
-defset_add_list(L, F) -> defset_union(defset_from_list(L), F).
-defset_intersect_ordset(O, D) -> ordsets:intersection(D, O).
-defset_from_list(L) -> ordsets:from_list(L).
+-type defsetf() :: ordsets:ordset(temp()).
+-type defseti() :: defsetf().
+defseti_new() -> ordsets:new().
+defseti_union(A, B) -> ordsets:union(A, B).
+defseti_add_list(L, F) -> defseti_union(defseti_from_list(L), F).
+defseti_from_list(L) -> ordsets:from_list(L).
+defseti_finalise(D) -> D.
+defsetf_member(E, D) -> lists:member(E, D).
+defsetf_intersect_ordset(O, D) -> ordsets:intersection(D, O).
 -endif.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -285,6 +288,7 @@ defset_from_list(L) -> ordsets:from_list(L).
 -spec rdef_analyse(cfg(), target()) -> rdefs().
 rdef_analyse(CFG, Target) ->
   Defs0 = rdef_init(CFG, Target),
+  %% TODO: Filter out 'call' labels, since they don't change
   PO = postorder(CFG, Target),
   rdef_dataf(PO, Defs0).
 
@@ -331,9 +335,7 @@ rdef_dataf_once([L|Ls], Defs0, Changed0) ->
   Defset =
     case Defset0 = maps:get(L, Defs0) of
       {call, Defin, Succs} ->
-	%% XXX: This is right, right?
 	{call, Defin, Succs};
-	%% {call, rdefout_intersect(L, Defs0, Defin), Succs};
       {nocall, Gen, Defin0, Succs} ->
 	Defin = rdefseti_union(Gen, rdefout_intersect(L, Defs0, Defin0)),
 	{nocall, Gen, Defin, Succs}
@@ -349,14 +351,10 @@ rdefin(L, Defs) -> rdefin_val(maps:get(L, Defs)).
 rdefin_val({nocall, _Gen, Defin, _Succs}) -> Defin;
 rdefin_val({call, Defin, _Succs}) -> Defin.
 
+-spec rsuccs(label(), rdefsi()) -> [label()].
 rsuccs(L, Defs) -> rsuccs_val(maps:get(L, Defs)).
 rsuccs_val({nocall, _Gen, _Defin, Succs}) -> Succs;
-rsuccs_val({call, _Defin, Succs}) -> Succs%% ;
-%% rsuccs_val({final, _Defout, Succs}) -> Succs
-					 . % XXX: temp
-
-%% -spec rdefbutlast(label(), rdefs()) -> rdefset().
-%% rdefbutlast(L, Defs) -> error(notimpl).
+rsuccs_val({call, _Defin, Succs}) -> Succs.
 
 -spec rdefout(label(), rdefs()) -> rdefsetf().
 rdefout(L, Defs) ->
@@ -393,9 +391,6 @@ rdefset_finalise(Ord) -> {arr, bitarr_from_bitord(Ord)}.
 %% rdefsetf_top() -> top.
 rdefsetf_empty() -> {arr, bitarr_new()}.
 
-rdefsetf_member(_, top) -> true;
-rdefsetf_member(E, {arr, A}) -> bitarr_get(E, A).
-
 rdefsetf_add_list(_, top) -> top;
 rdefsetf_add_list(L, {arr, Arr}) ->
   {arr, lists:foldl(fun bitarr_set/2, Arr, L)}.
@@ -405,9 +400,9 @@ rdef_step(I, Target, Defset) ->
   rdefsetf_add_list(reg_defines(I, Target), Defset).
 
 ordset_subtract_rdefsetf(_, top) -> [];
-ordset_subtract_rdefsetf(OS, D) ->
+ordset_subtract_rdefsetf(OS, {arr, Arr}) ->
   %% Lazy implementation; could do better if OS can grow
-  lists:filter(fun(E) -> not rdefsetf_member(E, D) end, OS).
+  lists:filter(fun(E) -> not bitarr_get(E, Arr) end, OS).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Integer sets represented as bit sets
@@ -617,7 +612,7 @@ scan_bbs([L|Ls], CFG, Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts0,
 	LiveBefore = liveness_step(LastI, Target, liveout(Liveness, L, Target)),
 	%% We can omit the spill of a temp that has not been defined since the
 	%% last time it was spilled
-	SpillSet = defset_intersect_ordset(LiveBefore, defbutlast(L, Defs)),
+	SpillSet = defsetf_intersect_ordset(LiveBefore, defbutlast(L, Defs)),
 	Costs1 = costs_insert(exit, L, Wt, SpillSet, Costs0),
 	Costs4 = lists:foldl(fun({S, BranchWt}, Costs2) ->
 				 SLivein = livein(Liveness, S, Target),
@@ -822,7 +817,7 @@ mk_spillmap(Ren, Livein, Defout, Temps, Target) ->
      Temp = maps:get(Reg, Temps),
      {NewName, mk_move(update_reg_nr(NewName, Temp, Target), Temp, Target)}
    end || {Reg, {mode1, NewName}} <- maps:to_list(Ren),
-	  lists:member(Reg, Livein), defset_member(Reg, Defout)].
+	  lists:member(Reg, Livein), defsetf_member(Reg, Defout)].
 
 mk_restores(Ren, Livein, PLivein, Temps, Target) ->
   [begin
