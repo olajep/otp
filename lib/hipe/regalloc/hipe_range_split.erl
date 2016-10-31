@@ -60,6 +60,7 @@
 -opaque spill_grouping() :: #{temp() => temp()}. % member => witness (like dset)
 -type target_cfg()       :: any().
 -type target_instr()     :: any().
+-type target_temp()      :: any().
 -type liveness()         :: any().
 -type target_module()    :: module().
 -type target_context()   :: any().
@@ -107,18 +108,18 @@ split(TCFG0, Liveness, TargetMod, TargetContext) ->
   TWt = erlang:monotonic_time(milli_seconds),
 
   Target = {TargetMod, TargetContext},
-  CFG = convert(TCFG0, Target),
+  {CFG0, Temps} = convert(TCFG0, Target),
 
-  Defs = def_analyse(CFG, TCFG0),
-  RDefs = rdef_analyse(CFG),
-  PLive = plive_analyse(CFG),
+  Defs = def_analyse(CFG0, TCFG0),
+  RDefs = rdef_analyse(CFG0),
+  PLive = plive_analyse(CFG0),
 
   TDefs = erlang:monotonic_time(milli_seconds),
 
   %% io:fwrite(standard_error, "Defs: ~p~n",
   %% 	    [maps:map(fun(_,V)->maps:keys(V)end,Defs)]),
-  {DUCounts, Costs, DSets0, Temps} =
-    scan(CFG, Liveness, PLive, Wts, Defs, RDefs, Target),
+  {CFG, DUCounts, Costs, DSets0} =
+    scan(CFG0, Liveness, PLive, Wts, Defs, RDefs, Target),
   {DSets, _} = hipe_dsets:to_map(DSets0),
 
   TScan = erlang:monotonic_time(milli_seconds),
@@ -132,8 +133,8 @@ split(TCFG0, Liveness, TargetMod, TargetContext) ->
   TDecide = erlang:monotonic_time(milli_seconds),
   %% io:fwrite(standard_error, "Renames ~p~n", [Renames]),
 
-  TCFG = rewrite(CFG, TCFG0, Target, Liveness, PLive, Defs, RDefs, DSets,
-		 Renames, Temps),
+  TCFG = rewrite(CFG, TCFG0, Target, Liveness, PLive, Defs, DSets, Renames,
+		 Temps),
 
   TEnd = erlang:monotonic_time(milli_seconds),
   Time = TEnd - TStart,
@@ -163,17 +164,18 @@ split(TCFG0, Liveness, TargetMod, TargetContext) ->
 	 }).
 -type cfg() :: #cfg{}.
 
-%% cfg_bb(L, #cfg{bbs=BBS}) -> maps:get(L, BBS).
+cfg_bb(L, #cfg{bbs=BBS}) -> maps:get(L, BBS).
 
 cfg_postorder(#cfg{rpo_labels=RPO}) -> lists:reverse(RPO).
 
 -record(bb, {
-	  code     :: [instr()],
+	  code     :: [code_elem()],
 	  %% If the last instruction of code defines all allocatable registers
 	  has_call :: boolean(),
 	  succ     :: [label()]
 	 }).
 -type bb() :: #bb{}.
+-type code_elem() :: instr() | mode2_spills().
 
 bb_code(#bb{code=Code}) -> Code.
 bb_has_call(#bb{has_call=HasCall}) -> HasCall.
@@ -194,33 +196,45 @@ bb_last(#bb{code=Code}) -> lists:last(Code).
 	 }).
 -type instr() :: #instr{}.
 
--spec convert(target_cfg(), target()) -> cfg().
+-record(mode2_spills, {
+	  temps :: ordsets:ordset(temp())
+	}).
+-type mode2_spills() :: #mode2_spills{}.
+
+-spec convert(target_cfg(), target()) -> {cfg(), temps()}.
 convert(CFG, Target) ->
   RPO = reverse_postorder(CFG, Target),
-  BBsList = convert_bbs(RPO, CFG, Target, []),
-  #cfg{rpo_labels = RPO,
-       bbs = maps:from_list(BBsList)}.
+  {BBsList, Temps} = convert_bbs(RPO, CFG, Target, #{}, []),
+  {#cfg{rpo_labels = RPO,
+	bbs = maps:from_list(BBsList)},
+   Temps}.
 
-convert_bbs([], _CFG, _Target, Acc) -> Acc;
-convert_bbs([L|Ls], CFG, Target, Acc) ->
+convert_bbs([], _CFG, _Target, Temps, Acc) -> {Acc, Temps};
+convert_bbs([L|Ls], CFG, Target, Temps0, Acc) ->
   Succs = hipe_gen_cfg:succ(CFG, L),
   TBB = bb(CFG, L, Target),
   TCode = hipe_bb:code(TBB),
-  {Code, Last} = convert_code(TCode, Target, []),
+  {Code, Last, Temps} = convert_code(TCode, Target, Temps0, []),
   HasCall = defines_all_alloc(Last#instr.i, Target),
   BB = #bb{code = Code,
 	   has_call = HasCall,
 	   succ = Succs},
-  convert_bbs(Ls, CFG, Target, [{L,BB}|Acc]).
+  convert_bbs(Ls, CFG, Target, Temps, [{L,BB}|Acc]).
 
-convert_code([], _Target, [Last|_]=Acc) ->
-  {lists:reverse(Acc), Last};
-convert_code([TI|TIs], Target, Acc) ->
-  {DefL, UseL} = reg_def_use(TI, Target),
+convert_code([], _Target, Temps, [Last|_]=Acc) ->
+  {lists:reverse(Acc), Last, Temps};
+convert_code([TI|TIs], Target, Temps0, Acc) ->
+  {TDef, TUse} = def_use(TI, Target),
   I = #instr{i = TI,
-	     def = ordsets:from_list(DefL),
-	     use = ordsets:from_list(UseL)},
-  convert_code(TIs, Target, [I|Acc]).
+	     def = ordsets:from_list(reg_names(TDef, Target)),
+	     use = ordsets:from_list(reg_names(TUse, Target))},
+  Temps = add_temps(TUse, Target, add_temps(TDef, Target, Temps0)),
+  convert_code(TIs, Target, Temps, [I|Acc]).
+
+-type temps() :: #{temp() => target_temp()}.
+add_temps([], _Target, Temps) -> Temps;
+add_temps([T|Ts], Target, Temps) ->
+  add_temps(Ts, Target, Temps#{reg_nr(T, Target) => T}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Zeroth pass
@@ -250,9 +264,6 @@ def_init_scan([], Defset) -> Defset;
 def_init_scan([#instr{def=Def}|Is], Defset0) ->
   Defset = defseti_add_ordset(Def, Defset0),
   def_init_scan(Is, Defset).
-
-reg_defines(I, Target) ->
-  reg_names(defines(I,Target), Target).
 
 def_dataf(Labels, TCFG, Defs0) ->
   case def_dataf_once(Labels, TCFG, Defs0, 0) of
@@ -354,25 +365,31 @@ defsetf_intersect_ordset(O, D) -> ordsets:intersection(D, O).
 -type rdefs() :: #{label() => {final, rdefsetf(), [label()]}}.
 
 -spec rdef_analyse(cfg()) -> rdefs().
-rdef_analyse(CFG) ->
+rdef_analyse(CFG = #cfg{rpo_labels=RPO}) ->
   Defs0 = rdef_init(CFG),
-  %% TODO: Filter out 'call' labels, since they don't change
-  PO = cfg_postorder(CFG),
+  PO = rdef_postorder(RPO, CFG, []),
   rdef_dataf(PO, Defs0).
+
+%% Filter out 'call' labels, since they don't change
+rdef_postorder([], _CFG, Acc) -> Acc;
+rdef_postorder([L|Ls], CFG, Acc) ->
+  case bb_has_call(cfg_bb(L, CFG)) of
+    true  -> rdef_postorder(Ls, CFG, Acc);
+    false -> rdef_postorder(Ls, CFG, [L|Acc])
+  end.
 
 -spec rdef_init(cfg()) -> rdefsi().
 rdef_init(#cfg{bbs = BBs}) ->
   maps:from_list(
-    [begin
-       {L, case HasCall of
-	     true ->
-	       Defin = rdef_init_scan(bb_butlast(BB), rdefseti_empty()),
-	       {call, Defin, Succs};
-	     false ->
-	       Gen = rdef_init_scan(bb_code(BB), rdefseti_empty()),
-	       {nocall, Gen, rdefseti_top(), Succs}
-	   end}
-     end || {L, BB = #bb{has_call=HasCall, succ=Succs}} <- maps:to_list(BBs)]).
+    [{L, case HasCall of
+	   true ->
+	     Defin = rdef_init_scan(bb_butlast(BB), rdefseti_empty()),
+	     {call, Defin, Succs};
+	   false ->
+	     Gen = rdef_init_scan(bb_code(BB), rdefseti_empty()),
+	     {nocall, Gen, rdefseti_top(), Succs}
+	 end}
+     || {L, BB = #bb{has_call=HasCall, succ=Succs}} <- maps:to_list(BBs)]).
 
 rdef_init_scan([], Defset) -> Defset;
 rdef_init_scan([#instr{def=Def}|Is], Defset0) ->
@@ -396,15 +413,10 @@ rdef_finalise(Defs) ->
 
 rdef_dataf_once([], Defs, Changed) -> {Defs, Changed};
 rdef_dataf_once([L|Ls], Defs0, Changed0) ->
-  Defset =
-    case Defset0 = maps:get(L, Defs0) of
-      {call, Defin, Succs} ->
-	{call, Defin, Succs};
-      {nocall, Gen, Defin0, Succs} ->
-	Defin = rdefseti_union(Gen, rdefout_intersect(L, Defs0, Defin0)),
-	{nocall, Gen, Defin, Succs}
-    end,
-  Changed = case Defset =:= Defset0 of
+  #{L := {nocall, Gen, Defin0, Succs}} = Defs0,
+  Defin = rdefseti_union(Gen, rdefout_intersect(L, Defs0, Defin0)),
+  Defset = {nocall, Gen, Defin, Succs},
+  Changed = case Defin =:= Defin0 of
 	      true  -> Changed0;
 	      false -> Changed0+1
 	    end,
@@ -628,19 +640,20 @@ liveset_union(LivesetList) -> ordsets:union(LivesetList).
 %%-type part_dsets_map() :: #{part_key() => part_key()}.
 -type ducounts() :: #{part_key() => ducount()}.
 
-scan(CFG, Liveness, PLive, Weights, Defs, RDefs, Target) ->
-  #cfg{rpo_labels = Labels, bbs = BBs} = CFG,
+scan(CFG0, Liveness, PLive, Weights, Defs, RDefs, Target) ->
+  #cfg{rpo_labels = Labels, bbs = BBs0} = CFG0,
+  CFG = CFG0#cfg{bbs=#{}}, % kill reference
   DSets0 = hipe_dsets:new(Labels),
   Costs0 = costs_new(),
-  {DUCounts0, Costs1, DSets1, Temps} =
-    scan_bbs(maps:to_list(BBs), Liveness, PLive, Weights, Defs, RDefs,
-	     Target, #{}, Costs0, DSets0, #{}),
+  {BBs, DUCounts0, Costs1, DSets1} =
+    scan_bbs(maps:to_list(BBs0), Liveness, PLive, Weights, Defs, RDefs,
+	     Target, #{}, Costs0, DSets0, []),
   {RLList, DSets2} = hipe_dsets:to_rllist(DSets1),
   put(partitions, length(RLList)),
   %% io:fwrite(standard_error, "Partitioning: ~p~n", [RLList]),
   {Costs, DSets} = costs_map_roots(DSets2, Costs1),
   DUCounts = collect_ducounts(RLList, DUCounts0, #{}),
-  {DUCounts, Costs, DSets, Temps}.
+  {CFG#cfg{bbs=maps:from_list(BBs)}, DUCounts, Costs, DSets}.
 
 collect_ducounts([], _, Acc) -> Acc;
 collect_ducounts([{R,Ls}|RLs], DUCounts, Acc) ->
@@ -651,19 +664,18 @@ collect_ducounts([{R,Ls}|RLs], DUCounts, Acc) ->
   collect_ducounts(RLs, DUCounts, Acc#{R => DUCount}).
 
 scan_bbs([], _Liveness, _PLive, _Weights, _Defs, _RDefs, _Target, DUCounts,
-	 Costs, DSets, Temps) ->
-  {DUCounts, Costs, DSets, Temps};
+	 Costs, DSets, Acc) ->
+  {Acc, DUCounts, Costs, DSets};
 scan_bbs([{L,BB}|BBs], Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts0,
-	 Costs0, DSets0, Temps0) ->
-  #bb{code = Code, has_call = HasCall, succ = Succs} = BB,
+	 Costs0, DSets0, Acc) ->
   Wt = weight(L, Weights),
-  Temps = collect_temps(Code, Target, Temps0),
-  {DSets, Costs5, EntryCode, RDefout, Liveout} =
-    case HasCall of
+  {DSets, Costs5, EntryCode, ExitCode, RDefout, Liveout} =
+    case bb_has_call(BB) of
       false ->
 	DSets1 = lists:foldl(fun(S, DS) -> hipe_dsets:union(L, S, DS) end,
-			     DSets0, Succs),
-	{DSets1, Costs0, Code, rdefout(L, RDefs), liveout(Liveness, L, Target)};
+			     DSets0, bb_succ(BB)),
+	{DSets1, Costs0, bb_code(BB), [], rdefout(L, RDefs),
+	 liveout(Liveness, L, Target)};
       true ->
 	LastI = bb_last(BB),
 	LiveBefore = liveness_step(LastI, liveout(Liveness, L, Target)),
@@ -678,28 +690,20 @@ scan_bbs([{L,BB}|BBs], Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts0,
 				 Costs3 = costs_insert(entry1, S, SWt, SLivein, Costs2),
 				 costs_insert(entry2, S, SWt, SPLivein, Costs3)
 			     end, Costs1, branch_preds(LastI#instr.i, Target)),
-	{DSets0, Costs4, bb_butlast(BB), rdefsetf_empty(), LiveBefore}
+	{DSets0, Costs4, bb_butlast(BB), [LastI], rdefsetf_empty(), LiveBefore}
     end,
-  {DUCount, Mode2Spills} =
-    scan_bb(lists:reverse(EntryCode), Wt, RDefout, Liveout, ducount_new(), []),
+  {Code, DUCount, Mode2Spills} =
+    scan_bb(lists:reverse(EntryCode), Wt, RDefout, Liveout, ducount_new(), [],
+	    ExitCode),
   DUCounts = DUCounts0#{L => DUCount},
-  Costs = costs_insert(spill, L, Wt, Mode2Spills, Costs5),
+  Costs = costs_insert(spill, L, Wt, ordsets:from_list(Mode2Spills), Costs5),
   scan_bbs(BBs, Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts,
-	   Costs, DSets, Temps).
-
-collect_temps([], _Target, Temps) -> Temps;
-collect_temps([#instr{i=TI}|Is], Target, Temps0) ->
-  {TDef, TUse} = def_use(TI, Target),
-  Fun = fun(Temp, Temps1) ->
-	    Temps1#{reg_nr(Temp, Target) => Temp}
-	end,
-  Temps = lists:foldl(Fun, lists:foldl(Fun, Temps0, TDef), TUse),
-  collect_temps(Is, Target, Temps).
+	   Costs, DSets, [{L,BB#bb{code=Code}}|Acc]).
 
 %% Scans the code backwards, collecting def/use counts and mode2 spills
-scan_bb([], _Wt, _RDefout, _Liveout, DUCount, Spills) ->
-  {DUCount, Spills};
-scan_bb([I|Is], Wt, RDefout, Liveout, DUCount0, Spills0) ->
+scan_bb([], _Wt, _RDefout, _Liveout, DUCount, Spills, Acc) ->
+  {Acc, DUCount, Spills};
+scan_bb([I|Is], Wt, RDefout, Liveout, DUCount0, Spills0, Acc0) ->
   #instr{def=Def,use=Use} = I,
   DUCount = ducount_add(Use, Wt, ducount_add(Def, Wt, DUCount0)),
   Livein = liveness_step(I, Liveout),
@@ -708,16 +712,16 @@ scan_bb([I|Is], Wt, RDefout, Liveout, DUCount0, Spills0) ->
   NewSpills = ordset_subtract_rdefsetf(
 		ordsets:intersection(Def, Liveout),
 		RDefout),
-  Spills = ordsets:union(NewSpills, Spills0),
-  scan_bb(Is, Wt, RDefin, Livein, DUCount, Spills).
+  ?ASSERT(NewSpills =:= (NewSpills -- Spills0)),
+  Spills = NewSpills ++ Spills0,
+  Acc1 = case NewSpills of
+	   [] -> Acc0;
+	   _ -> [#mode2_spills{temps=NewSpills}|Acc0]
+	 end,
+  scan_bb(Is, Wt, RDefin, Livein, DUCount, Spills, [I|Acc1]).
 
 liveness_step(#instr{def=Def, use=Use}, Liveout) ->
   ordsets:union(Use, ordsets:subtract(Liveout, Def)).
-
-reg_def_use(I, Target) ->
-  {TDef, TUse} = def_use(I, Target),
-  {reg_names(TDef,Target), reg_names(TUse,Target)}.
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 weight(L, Weights) -> weight_scaled(L, 1.0, Weights).
@@ -796,56 +800,50 @@ decide_temps([{Temp, SpillGain}|Ts], Part, Costs, Target, Acc0) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Actual second pass
-rewrite(#cfg{bbs=BBs}, TCFG, Target, Liveness, PLive, Defs, RDefs, DSets,
-	Renames, Temps) ->
-  rewrite_bbs(maps:to_list(BBs), Target, Liveness, PLive, Defs, RDefs, DSets,
-	      Renames, Temps, TCFG).
+rewrite(#cfg{bbs=BBs}, TCFG, Target, Liveness, PLive, Defs, DSets, Renames,
+	Temps) ->
+  rewrite_bbs(maps:to_list(BBs), Target, Liveness, PLive, Defs, DSets, Renames,
+	      Temps, TCFG).
 
-rewrite_bbs([], _Target, _Liveness, _PLive, _Defs, _RDefs, _DSets, _Renames,
-	    _Temps, TCFG) ->
+rewrite_bbs([], _Target, _Liveness, _PLive, _Defs, _DSets, _Renames, _Temps,
+	    TCFG) ->
   TCFG;
-rewrite_bbs([{L,BB}|BBs], Target, Liveness, PLive, Defs, RDefs, DSets, Renames,
-	    Temps, TCFG0) ->
+rewrite_bbs([{L,BB}|BBs], Target, Liveness, PLive, Defs, DSets, Renames, Temps,
+	    TCFG0) ->
   Code0Rev = lists:reverse(bb_code(BB)),
   EntryRen = maps:get(maps:get(L,DSets), Renames),
   SubstFun = rewrite_subst_fun(Target, EntryRen),
   Fun = fun(I) -> subst_temps(SubstFun, I, Target) end,
-  Liveout0 = liveout(Liveness, L, Target),
   {Code, TCFG} =
     case bb_has_call(BB) of
       false ->
-	RDefout0 = rdefout(L, RDefs),
-	Code1 = rewrite_instrs(Code0Rev, Fun, EntryRen, Temps, Target, Liveout0,
-			       RDefout0, []),
+	Code1 = rewrite_instrs(Code0Rev, Fun, EntryRen, Temps, Target, []),
 	{Code1, TCFG0};
       true ->
 	CallI0 = hd(Code0Rev),
 	Succ = bb_succ(BB),
 	{CallTI, TCFG1} = inject_restores(Succ, Target, Liveness, PLive, DSets,
 					 Renames, Temps, CallI0#instr.i, TCFG0),
-	Liveout1 = liveness_step(CallI0, Liveout0),
-	RDefout1 = rdefsetf_empty(),
+	Liveout1 = liveness_step(CallI0, liveout(Liveness, L, Target)),
 	Defout = defbutlast(L, Defs),
 	SpillMap = mk_spillmap(EntryRen, Liveout1, Defout, Temps, Target),
-	Code1 = rewrite_instrs(tl(Code0Rev), Fun, EntryRen, Temps, Target,
-			       Liveout1, RDefout1, []),
+	Code1 = rewrite_instrs(tl(Code0Rev), Fun, EntryRen, Temps, Target, []),
 	Code2 = lift_spills(lists:reverse(Code1), Target, SpillMap, [CallTI]),
 	{Code2, TCFG1}
     end,
   TBB = hipe_bb:code_update(bb(TCFG, L, Target), Code),
-  rewrite_bbs(BBs, Target, Liveness, PLive, Defs, RDefs, DSets, Renames, Temps,
+  rewrite_bbs(BBs, Target, Liveness, PLive, Defs, DSets, Renames, Temps,
 	      update_bb(TCFG, L, TBB, Target)).
 
-rewrite_instrs([], _Fun, _Ren, _Temps, _Target, _Livein, _RDefin, Acc) -> Acc;
-rewrite_instrs([I|Is], Fun, Ren, Temps, Target, Liveout, RDefout, Acc0) ->
-  Livein = liveness_step(I, Liveout),
-  RDefin = rdef_step(I, RDefout),
-  Mode2Spills = ordset_subtract_rdefsetf(
-		  ordsets:intersection(I#instr.def, Liveout),
-		  RDefout),
-  Acc = add_mode2_spills(Mode2Spills, Target, Ren, Temps, Acc0),
-  TI = I#instr.i,
-  rewrite_instrs(Is, Fun, Ren, Temps, Target, Livein, RDefin, [Fun(TI)|Acc]).
+rewrite_instrs([], _Fun, _Ren, _Temps, _Target, Acc) -> Acc;
+rewrite_instrs([I|Is], Fun, Ren, Temps, Target, Acc0) ->
+  Acc =
+    case I of
+      #instr{i=TI} -> [Fun(TI)|Acc0];
+      #mode2_spills{temps=Mode2Spills} ->
+	add_mode2_spills(Mode2Spills, Target, Ren, Temps, Acc0)
+    end,
+  rewrite_instrs(Is, Fun, Ren, Temps, Target, Acc).
 
 add_mode2_spills([], _Target, _Ren, _Temps, Acc) -> Acc;
 add_mode2_spills([R|Rs], Target, Ren, Temps, Acc) ->
@@ -916,6 +914,9 @@ lift_spills([I|Is], Target, SpillMap0, Acc) ->
     lists:partition(fun({Reg,_}) -> lists:member(Reg, Def) end, SpillMap0),
   Spills = [SpillI || {_, SpillI} <- Spills0],
   lift_spills(Is, Target, SpillMap, [I|Spills ++ Acc]).
+
+reg_defines(I, Target) ->
+  reg_names(defines(I,Target), Target).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec mk_spillgroup(renames()) -> spill_grouping().
