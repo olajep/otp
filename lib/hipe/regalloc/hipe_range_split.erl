@@ -43,8 +43,7 @@
 %%_frame or _ra_finalise? Can it be done in a simpler way?
 -module(hipe_range_split).
 
--export([split/4, combine_spills/2]).
--export_type([spill_grouping/0]).
+-export([split/4]).
 
 %% -compile(inline).
 -define(USE_BB_WEIGHTS,1).
@@ -57,7 +56,7 @@
 -define(MODE2_PREFERENCE, 1.1).
 -define(WEIGHT_FUN(Wt), math:pow(Wt, math:log(4*1.1*1.1)/math:log(100))).
 
--opaque spill_grouping() :: #{temp() => temp()}. % member => witness (like dset)
+-type spill_grouping()   :: hipe_spill_grouping:grouping_list().
 -type target_cfg()       :: any().
 -type target_instr()     :: any().
 -type target_temp()      :: any().
@@ -922,30 +921,12 @@ reg_defines(I, Target) ->
 -spec mk_spillgroup(renames()) -> spill_grouping().
 mk_spillgroup(Renames) ->
   maps:fold(fun(_, Ren, Acc0) ->
-		maps:fold(fun(Orig, {_Mode, New}, Acc1) ->
-			      Acc1#{Orig => Orig, New => Orig}
+		maps:fold(fun(Orig, {Mode, New}, Acc1)
+			      when is_integer(Orig), is_atom(Mode),
+				   is_integer(New) ->
+			      [{New,Orig}|Acc1]
 			  end, Acc0, Ren)
-	    end, #{}, Renames).
-
--spec combine_spills(hipe_map(), spill_grouping()) -> hipe_map().
-combine_spills(Alloc, Grouping) ->
-  combine_spills_1(Alloc, Grouping, #{}).
-
-combine_spills_1([], _Grouping, _Subst) -> [];
-combine_spills_1([{_, {RegTag, _}}=A|As], Grouping, Subst)
-  when RegTag =:= 'reg'; RegTag =:= 'fp_reg' ->
-  [A|combine_spills_1(As, Grouping, Subst)];
-combine_spills_1([{Temp, {spill, Slot0}}=A0|As], Grouping, Subst0) ->
-  {A, Subst} =
-    case Grouping of
-      #{Temp := Witness} ->
-	case Subst0 of
-	  #{Witness := Slot} -> {{Temp, {spill, Slot}}, Subst0};
-	  #{} -> {A0, Subst0#{Witness => Slot0}}
-	end;
-      #{} -> {A0, Subst0}
-    end,
-  [A|combine_spills_1(As, Grouping, Subst)].
+	    end, [], Renames).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Costs ADT

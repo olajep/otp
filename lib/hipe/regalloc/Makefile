@@ -53,6 +53,7 @@ MODULES = hipe_ig hipe_ig_moves hipe_moves \
 	  hipe_range_split \
 	  hipe_regalloc_loop \
 	  hipe_regalloc_prepass \
+	  hipe_spill_grouping \
 	  hipe_ls_regalloc \
 	  hipe_ppc_specific hipe_ppc_specific_fp \
 	  hipe_sparc_specific hipe_sparc_specific_fp \
