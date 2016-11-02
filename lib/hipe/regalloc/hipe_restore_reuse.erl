@@ -271,11 +271,18 @@ rewrite([L|Ls], Target, Avail, Input0, SpillGroups0, CFG0) ->
     end,
   ?ASSERT([] =:= [X || X <- SplitHere, orddict:is_key(X, LInput)]),
   ?ASSERT(demand_in(L, Avail) =:= orddict:fetch_keys(LInput)),
-  Code0 = hipe_bb:code(BB=bb(CFG0, L, Target)),
-  DefOut = def_out(L, Avail),
-  {Code, LOutput, _DefIn, SpillGroups} =
-    rewrite_instrs(Code0, Target, LInput, DefOut, SplitHere, SpillGroups0),
-  CFG1 = update_bb(CFG0, L, hipe_bb:code_update(BB, Code), Target),
+  {CFG1, LOutput, SpillGroups} =
+    case {SplitHere, LInput} of
+      {[], []} -> % optimisation (rewrite will do nothing, so skip it)
+	{CFG0, LInput, SpillGroups0};
+      _ ->
+	Code0 = hipe_bb:code(BB=bb(CFG0, L, Target)),
+	DefOut = def_out(L, Avail),
+	{Code, LOutput0, _DefIn, SpillGroups1} =
+	  rewrite_instrs(Code0, Target, LInput, DefOut, SplitHere, SpillGroups0),
+	{update_bb(CFG0, L, hipe_bb:code_update(BB, Code), Target),
+	 LOutput0, SpillGroups1}
+    end,
   {Input, CFG} = rewrite_succs(avail_succ(L, Avail), Target, L, LOutput, Avail,
 			       Input1, CFG1),
   rewrite(Ls, Target, Avail, Input, SpillGroups, CFG).
