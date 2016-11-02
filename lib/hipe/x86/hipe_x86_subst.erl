@@ -101,10 +101,13 @@ jtab_temps(_SubstTemp, DataLbl) when is_integer(DataLbl) -> DataLbl.
 -spec insn_lbls(lbl_subst_fun(), insn()) -> insn().
 insn_lbls(SubstLbl, I) ->
   case I of
-    %% Incomplete, for now
+    #jmp_label{label=Label} ->
+      I#jmp_label{label=SubstLbl(Label)};
     #pseudo_call{sdesc=Sdesc, contlab=Contlab} ->
       I#pseudo_call{sdesc=sdesc_lbls(SubstLbl, Sdesc),
-		    contlab=SubstLbl(Contlab)}
+		    contlab=SubstLbl(Contlab)};
+    #pseudo_jcc{true_label=T, false_label=F} ->
+      I#pseudo_jcc{true_label=SubstLbl(T), false_label=SubstLbl(F)}
   end.
 
 sdesc_lbls(_SubstLbl, Sdesc=#x86_sdesc{exnlab=[]}) -> Sdesc;

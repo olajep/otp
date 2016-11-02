@@ -108,15 +108,24 @@ call_allocator(CFG, Liveness, SpillLimit, SpillIndex, Options, RegAllocMod,
 
 do_range_split(CFG0, Liveness0, TgtMod, TgtCtx, Options) ->
   Grouping0 = hipe_spill_grouping:new(),
+  {CFG2, Liveness1, Grouping1} =
+    case proplists:get_bool(ra_restore_reuse, Options) of
+      true ->
+	{CFG1, GList0} = hipe_restore_reuse:split(CFG0, Liveness0, TgtMod,
+						  TgtCtx),
+	{CFG1, TgtMod:analyze(CFG1, TgtCtx),
+	 hipe_spill_grouping:add(GList0, Grouping0)};
+      false ->
+	{CFG0, Liveness0, Grouping0}
+    end,
   case proplists:get_bool(ra_range_split, Options) of
     true ->
-      {CFG, GList} = hipe_range_split:split(CFG0, Liveness0, TgtMod, TgtCtx),
-      {CFG, TgtMod:analyze(CFG, TgtCtx),
-       {split_enabled, hipe_spill_grouping:add(GList, Grouping0)}};
+      {CFG3, GList1} = hipe_range_split:split(CFG2, Liveness1, TgtMod, TgtCtx),
+      {CFG3, TgtMod:analyze(CFG3, TgtCtx),
+	 hipe_spill_grouping:add(GList1, Grouping1)};
     false ->
-      {CFG0, Liveness0, split_disabled}
+      {CFG2, Liveness1, Grouping1}
   end.
 
-combine_spills(Alloc, split_disabled) -> Alloc;
-combine_spills(Alloc, {split_enabled, Grouping}) ->
+combine_spills(Alloc, Grouping) ->
   hipe_spill_grouping:combine_spills(Alloc, Grouping).

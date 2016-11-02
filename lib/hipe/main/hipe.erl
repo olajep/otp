@@ -1218,6 +1218,9 @@ option_text(remove_comments) ->
 option_text(ra_range_split) ->
   "Split live ranges of temporaries live over call instructions before\n"
   "performing register allocation";
+option_text(ra_restore_reuse) ->
+  "Split live ranges of temporaries such that straight-line code will\n"
+  "not need to contain multiple restores from the same stack location";
 option_text(rtl_ssa) ->
   "Perform SSA conversion on the RTL level -- default starting at O2";
 option_text(rtl_ssa_const_prop) ->
@@ -1360,6 +1363,7 @@ opt_keys() ->
      ra_partitioned,
      ra_prespill,
      ra_range_split,
+     ra_restore_reuse,
      regalloc,
      remove_comments,
      rtl_ssa,
@@ -1418,7 +1422,7 @@ o1_opts(TargetArch) ->
 
 o2_opts(TargetArch) ->
   Common = [icode_type, icode_call_elim, % icode_ssa_struct_reuse,
-	    ra_range_split,
+	    ra_restore_reuse,
 	    rtl_lcm | (o1_opts(TargetArch) -- [rtl_ssapre])],
   case TargetArch of
     T when T =:= amd64 orelse T =:= ppc64 -> % 64-bit targets
@@ -1429,7 +1433,7 @@ o2_opts(TargetArch) ->
 
 o3_opts(TargetArch) ->
   %% no point checking for target architecture since this is checked in 'o1'
-  [icode_range | o2_opts(TargetArch)].
+  [ra_range_split, icode_range | o2_opts(TargetArch)].
 
 %% Note that in general, the normal form for options should be positive.
 %% This is a good programming convention, so that tests in the code say
@@ -1468,6 +1472,7 @@ opt_negations() ->
    {no_ra_partitioned, ra_partitioned},
    {no_ra_prespill, ra_prespill},
    {no_ra_range_split, ra_range_split},
+   {no_ra_restore_reuse, ra_restore_reuse},
    {no_remove_comments, remove_comments},
    {no_rtl_ssa, rtl_ssa},
    {no_rtl_ssa_const_prop, rtl_ssa_const_prop},
