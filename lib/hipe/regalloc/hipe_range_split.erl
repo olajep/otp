@@ -109,6 +109,7 @@ split(TCFG0, Liveness, TargetMod, TargetContext) ->
   Target = {TargetMod, TargetContext},
   {CFG0, Temps} = convert(TCFG0, Target),
 
+  Avail = avail_analyse(TCFG0, Liveness, Target),
   Defs = def_analyse(CFG0, TCFG0),
   RDefs = rdef_analyse(CFG0),
   PLive = plive_analyse(CFG0),
@@ -118,7 +119,7 @@ split(TCFG0, Liveness, TargetMod, TargetContext) ->
   %% io:fwrite(standard_error, "Defs: ~p~n",
   %% 	    [maps:map(fun(_,V)->maps:keys(V)end,Defs)]),
   {CFG, DUCounts, Costs, DSets0} =
-    scan(CFG0, Liveness, PLive, Wts, Defs, RDefs, Target),
+    scan(CFG0, Liveness, PLive, Wts, Defs, RDefs, Avail, Target),
   {DSets, _} = hipe_dsets:to_map(DSets0),
 
   TScan = erlang:monotonic_time(milli_seconds),
@@ -132,8 +133,8 @@ split(TCFG0, Liveness, TargetMod, TargetContext) ->
   TDecide = erlang:monotonic_time(milli_seconds),
   %% io:fwrite(standard_error, "Renames ~p~n", [Renames]),
 
-  TCFG = rewrite(CFG, TCFG0, Target, Liveness, PLive, Defs, DSets, Renames,
-		 Temps),
+  TCFG = rewrite(CFG, TCFG0, Target, Liveness, PLive, Defs, Avail, DSets,
+		 Renames, Temps),
 
   TEnd = erlang:monotonic_time(milli_seconds),
   Time = TEnd - TStart,
@@ -174,7 +175,7 @@ cfg_postorder(#cfg{rpo_labels=RPO}) -> lists:reverse(RPO).
 	  succ     :: [label()]
 	 }).
 -type bb() :: #bb{}.
--type code_elem() :: instr() | mode2_spills().
+-type code_elem() :: instr() | mode2_spills() | mode3_restores().
 
 bb_code(#bb{code=Code}) -> Code.
 bb_has_call(#bb{has_call=HasCall}) -> HasCall.
@@ -199,6 +200,11 @@ bb_last(#bb{code=Code}) -> lists:last(Code).
 	  temps :: ordsets:ordset(temp())
 	}).
 -type mode2_spills() :: #mode2_spills{}.
+
+-record(mode3_restores, {
+	  temps :: ordsets:ordset(temp())
+	}).
+-type mode3_restores() :: #mode3_restores{}.
 
 -spec convert(target_cfg(), target()) -> {cfg(), temps()}.
 convert(CFG, Target) ->
@@ -630,6 +636,19 @@ liveset_union(A, B) -> ordsets:union(A, B).
 liveset_union(LivesetList) -> ordsets:union(LivesetList).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Reuse analysis implementation in hipe_restore_reuse.
+%% XXX: hipe_restore_reuse has it's own "rdef"; we would like to reuse that one
+%% too.
+avail_analyse(CFG, Liveness, Target) ->
+  hipe_restore_reuse:analyse(CFG, Liveness, Target).
+
+mode3_split_in_block(L, Avail) ->
+  hipe_restore_reuse:split_in_block(L, Avail).
+
+mode3_block_renameset(L, Avail) ->
+  hipe_restore_reuse:renamed_in_block(L, Avail).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% First pass
 %%
 %% Compute program space partitioning, collect information required by the
@@ -639,13 +658,13 @@ liveset_union(LivesetList) -> ordsets:union(LivesetList).
 %%-type part_dsets_map() :: #{part_key() => part_key()}.
 -type ducounts() :: #{part_key() => ducount()}.
 
-scan(CFG0, Liveness, PLive, Weights, Defs, RDefs, Target) ->
+scan(CFG0, Liveness, PLive, Weights, Defs, RDefs, Avail, Target) ->
   #cfg{rpo_labels = Labels, bbs = BBs0} = CFG0,
   CFG = CFG0#cfg{bbs=#{}}, % kill reference
   DSets0 = hipe_dsets:new(Labels),
   Costs0 = costs_new(),
   {BBs, DUCounts0, Costs1, DSets1} =
-    scan_bbs(maps:to_list(BBs0), Liveness, PLive, Weights, Defs, RDefs,
+    scan_bbs(maps:to_list(BBs0), Liveness, PLive, Weights, Defs, RDefs, Avail,
 	     Target, #{}, Costs0, DSets0, []),
   {RLList, DSets2} = hipe_dsets:to_rllist(DSets1),
   put(partitions, length(RLList)),
@@ -662,11 +681,11 @@ collect_ducounts([{R,Ls}|RLs], DUCounts, Acc) ->
 	      end, ducount_new(), Ls),
   collect_ducounts(RLs, DUCounts, Acc#{R => DUCount}).
 
-scan_bbs([], _Liveness, _PLive, _Weights, _Defs, _RDefs, _Target, DUCounts,
-	 Costs, DSets, Acc) ->
+scan_bbs([], _Liveness, _PLive, _Weights, _Defs, _RDefs, _Avail, _Target,
+	 DUCounts, Costs, DSets, Acc) ->
   {Acc, DUCounts, Costs, DSets};
-scan_bbs([{L,BB}|BBs], Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts0,
-	 Costs0, DSets0, Acc) ->
+scan_bbs([{L,BB}|BBs], Liveness, PLive, Weights, Defs, RDefs, Avail, Target,
+	 DUCounts0, Costs0, DSets0, Acc) ->
   Wt = weight(L, Weights),
   {DSets, Costs5, EntryCode, ExitCode, RDefout, Liveout} =
     case bb_has_call(BB) of
@@ -676,8 +695,8 @@ scan_bbs([{L,BB}|BBs], Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts0,
 	{DSets1, Costs0, bb_code(BB), [], rdefout(L, RDefs),
 	 liveout(Liveness, L, Target)};
       true ->
-	LastI = bb_last(BB),
-	LiveBefore = liveness_step(LastI, liveout(Liveness, L, Target)),
+	LastI = #instr{def=LastDef} = bb_last(BB),
+	LiveBefore = ordsets:subtract(liveout(Liveness, L, Target), LastDef),
 	%% We can omit the spill of a temp that has not been defined since the
 	%% last time it was spilled
 	SpillSet = defsetf_intersect_ordset(LiveBefore, defbutlast(L, Defs)),
@@ -691,17 +710,59 @@ scan_bbs([{L,BB}|BBs], Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts0,
 			     end, Costs1, branch_preds(LastI#instr.i, Target)),
 	{DSets0, Costs4, bb_butlast(BB), [LastI], rdefsetf_empty(), LiveBefore}
     end,
+  Mode3Splits = mode3_split_in_block(L, Avail),
+  {RevEntryCode, Restored} = scan_bb_fwd(EntryCode, Mode3Splits, [], []),
   {Code, DUCount, Mode2Spills} =
-    scan_bb(lists:reverse(EntryCode), Wt, RDefout, Liveout, ducount_new(), [],
-	    ExitCode),
+    scan_bb(RevEntryCode, Wt, RDefout, Liveout, ducount_new(), [], ExitCode),
   DUCounts = DUCounts0#{L => DUCount},
-  Costs = costs_insert(spill, L, Wt, ordsets:from_list(Mode2Spills), Costs5),
-  scan_bbs(BBs, Liveness, PLive, Weights, Defs, RDefs, Target, DUCounts,
+  M2SpillSet = ordsets:from_list(Mode2Spills),
+  Costs6 = costs_insert(spill, L, Wt, M2SpillSet, Costs5),
+  Costs7 = costs_insert(restore, L, Wt, ordsets:intersection(M2SpillSet, Mode3Splits), Costs6),
+  Costs8 = costs_insert(restore, L, Wt, ordsets:from_list(Restored), Costs7),
+  Costs = add_unsplit_mode3_costs(DUCount, Mode3Splits, L, Costs8),
+  scan_bbs(BBs, Liveness, PLive, Weights, Defs, RDefs, Avail, Target, DUCounts,
 	   Costs, DSets, [{L,BB#bb{code=Code}}|Acc]).
+
+add_unsplit_mode3_costs(DUCount, Mode3Splits, L, Costs) ->
+  Unsplit = orddict_without_ordset(Mode3Splits,
+				   orddict:from_list(ducount_to_list(DUCount))),
+  add_unsplit_mode3_costs_1(Unsplit, L, Costs).
+
+add_unsplit_mode3_costs_1([], _L, Costs) -> Costs;
+add_unsplit_mode3_costs_1([{T,C}|Cs], L, Costs) ->
+  add_unsplit_mode3_costs_1(Cs, L, costs_insert(restore, L, C, [T], Costs)).
+
+%% @doc Returns a new orddict without keys in Set and their associated values.
+-spec orddict_without_ordset(ordsets:ordset(K), orddict:orddict(K, V))
+			    -> orddict:orddict(K, V).
+orddict_without_ordset([S|Ss], [{K,_}|_]=Dict) when S < K ->
+  orddict_without_ordset(Ss, Dict);
+orddict_without_ordset([S|_]=Set, [D={K,_}|Ds]) when S > K ->
+  [D|orddict_without_ordset(Set, Ds)];
+orddict_without_ordset([_S|Ss], [{_K,_}|Ds]) -> % _S == _K
+  orddict_without_ordset(Ss, Ds);
+orddict_without_ordset(_, []) -> [];
+orddict_without_ordset([], Dict) -> Dict.
+
+%% Scans the code forward, collecting and inserting mode3 restores
+scan_bb_fwd([], [], Restored, Acc) -> {Acc, Restored};
+scan_bb_fwd([I|Is], SplitHere0, Restored0, Acc0) ->
+  #instr{def=Def, use=Use} = I,
+  {ToRestore, SplitHere1} =
+    lists:partition(fun(R) -> lists:member(R, Use) end, SplitHere0),
+  SplitHere = lists:filter(fun(R) -> not lists:member(R, Def) end, SplitHere1),
+  Acc =
+    case ToRestore of
+      [] -> [I | Acc0];
+      _  -> [I, #mode3_restores{temps=ToRestore} | Acc0]
+    end,
+  scan_bb_fwd(Is, SplitHere, ToRestore ++ Restored0, Acc).
 
 %% Scans the code backwards, collecting def/use counts and mode2 spills
 scan_bb([], _Wt, _RDefout, _Liveout, DUCount, Spills, Acc) ->
   {Acc, DUCount, Spills};
+scan_bb([I=#mode3_restores{}|Is], Wt, RDefout, Liveout, DUCount, Spills, Acc) ->
+  scan_bb(Is, Wt, RDefout, Liveout, DUCount, Spills, [I|Acc]);
 scan_bb([I|Is], Wt, RDefout, Liveout, DUCount0, Spills0, Acc0) ->
   #instr{def=Def,use=Use} = I,
   DUCount = ducount_add(Use, Wt, ducount_add(Def, Wt, DUCount0)),
@@ -753,7 +814,8 @@ weight_scaled(L, Scale, Weights) ->
 %%
 %% Decide which temps to split, in which parts, and pick new names for them.
 -type spill_mode() :: mode1 % Spill temps at partition exits
-		    | mode2.% Spill temps at definitions
+		    | mode2 % Spill temps at definitions
+		    | mode3.% Spill temps at definitions, restore temps at uses
 -type ren() :: #{temp() => {spill_mode(), temp()}}.
 -type renames() :: #{label() => ren()}.
 
@@ -772,20 +834,26 @@ decide_temps([{Temp, SpillGain}|Ts], Part, Costs, Target, Acc0) ->
     + costs_query(Temp, exit, Part, Costs),
   SpillCost2 = costs_query(Temp, entry2, Part, Costs)
     + costs_query(Temp, spill, Part, Costs),
+  SpillCost3 = costs_query(Temp, restore, Part, Costs),
   Acc =
     %% SpillCost1 =:= 0.0 usually means the temp is local to the partition;
     %% hence no need to split it
-    case SpillCost1 =/= 0.0
-      andalso not is_precoloured(Temp, Target)
-      andalso (?GAIN_FACTOR_THRESH*SpillCost1 < SpillGain
-	       orelse ?GAIN_FACTOR_THRESH*SpillCost2 < SpillGain)
+    case (SpillCost1 =/= 0.0) %% maps:is_key(Temp, S)
+      andalso (not is_precoloured(Temp, Target))
+      andalso ((?GAIN_FACTOR_THRESH*SpillCost1 < SpillGain)
+	       orelse (?GAIN_FACTOR_THRESH*SpillCost2 < SpillGain)
+	       orelse (?GAIN_FACTOR_THRESH*SpillCost3 < SpillGain))
     of
       false -> Acc0;
       true ->
 	{Mode, SpillCost} =
-	  case ?MODE2_PREFERENCE*SpillCost1 < SpillCost2 of
-	    true  -> {mode1, SpillCost1};
-	    false -> {mode2, SpillCost2}
+	  if SpillCost3 =< SpillCost2,
+	     SpillCost3 =< ?MODE2_PREFERENCE*SpillCost1 ->
+	       {mode3, SpillCost3};
+	     ?MODE2_PREFERENCE*SpillCost1 < SpillCost2 ->
+	       {mode1, SpillCost1};
+	     true ->
+	       {mode2, SpillCost2}
 	  end,
 	%% io:fwrite(standard_error, "Splitting range of temp ~w in part ~w, "
 	%% 	  "SpillGain: ~w, Edges: ~w~n",
@@ -799,24 +867,26 @@ decide_temps([{Temp, SpillGain}|Ts], Part, Costs, Target, Acc0) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Actual second pass
-rewrite(#cfg{bbs=BBs}, TCFG, Target, Liveness, PLive, Defs, DSets, Renames,
-	Temps) ->
-  rewrite_bbs(maps:to_list(BBs), Target, Liveness, PLive, Defs, DSets, Renames,
-	      Temps, TCFG).
+rewrite(#cfg{bbs=BBs}, TCFG, Target, Liveness, PLive, Defs, Avail, DSets,
+	Renames, Temps) ->
+  rewrite_bbs(maps:to_list(BBs), Target, Liveness, PLive, Defs, Avail, DSets,
+	      Renames, Temps, TCFG).
 
-rewrite_bbs([], _Target, _Liveness, _PLive, _Defs, _DSets, _Renames, _Temps,
-	    TCFG) ->
+rewrite_bbs([], _Target, _Liveness, _PLive, _Defs, _Avail, _DSets, _Renames,
+	    _Temps, TCFG) ->
   TCFG;
-rewrite_bbs([{L,BB}|BBs], Target, Liveness, PLive, Defs, DSets, Renames, Temps,
-	    TCFG0) ->
+rewrite_bbs([{L,BB}|BBs], Target, Liveness, PLive, Defs, Avail, DSets, Renames,
+	    Temps, TCFG0) ->
   Code0Rev = lists:reverse(bb_code(BB)),
   EntryRen = maps:get(maps:get(L,DSets), Renames),
-  SubstFun = rewrite_subst_fun(Target, EntryRen),
+  M3Ren = mode3_block_renameset(L, Avail),
+  SubstFun = rewrite_subst_fun(Target, EntryRen, M3Ren),
   Fun = fun(I) -> subst_temps(SubstFun, I, Target) end,
   {Code, TCFG} =
     case bb_has_call(BB) of
       false ->
-	Code1 = rewrite_instrs(Code0Rev, Fun, EntryRen, Temps, Target, []),
+	Code1 = rewrite_instrs(Code0Rev, Fun, EntryRen, M3Ren, Temps, Target,
+			       []),
 	{Code1, TCFG0};
       true ->
 	CallI0 = hd(Code0Rev),
@@ -826,40 +896,64 @@ rewrite_bbs([{L,BB}|BBs], Target, Liveness, PLive, Defs, DSets, Renames, Temps,
 	Liveout1 = liveness_step(CallI0, liveout(Liveness, L, Target)),
 	Defout = defbutlast(L, Defs),
 	SpillMap = mk_spillmap(EntryRen, Liveout1, Defout, Temps, Target),
-	Code1 = rewrite_instrs(tl(Code0Rev), Fun, EntryRen, Temps, Target, []),
+	Code1 = rewrite_instrs(tl(Code0Rev), Fun, EntryRen, M3Ren, Temps,
+			       Target, []),
 	Code2 = lift_spills(lists:reverse(Code1), Target, SpillMap, [CallTI]),
 	{Code2, TCFG1}
     end,
   TBB = hipe_bb:code_update(bb(TCFG, L, Target), Code),
-  rewrite_bbs(BBs, Target, Liveness, PLive, Defs, DSets, Renames, Temps,
+  rewrite_bbs(BBs, Target, Liveness, PLive, Defs, Avail, DSets, Renames, Temps,
 	      update_bb(TCFG, L, TBB, Target)).
 
-rewrite_instrs([], _Fun, _Ren, _Temps, _Target, Acc) -> Acc;
-rewrite_instrs([I|Is], Fun, Ren, Temps, Target, Acc0) ->
+rewrite_instrs([], _Fun, _Ren, _M3Ren, _Temps, _Target, Acc) -> Acc;
+rewrite_instrs([I|Is], Fun, Ren, M3Ren, Temps, Target, Acc0) ->
   Acc =
     case I of
       #instr{i=TI} -> [Fun(TI)|Acc0];
       #mode2_spills{temps=Mode2Spills} ->
-	add_mode2_spills(Mode2Spills, Target, Ren, Temps, Acc0)
+	add_mode2_spills(Mode2Spills, Target, Ren, M3Ren, Temps, Acc0);
+      #mode3_restores{temps=Mode3Restores} ->
+	add_mode3_restores(Mode3Restores, Target, Ren, Temps, Acc0)
     end,
-  rewrite_instrs(Is, Fun, Ren, Temps, Target, Acc).
+  rewrite_instrs(Is, Fun, Ren, M3Ren, Temps, Target, Acc).
 
-add_mode2_spills([], _Target, _Ren, _Temps, Acc) -> Acc;
-add_mode2_spills([R|Rs], Target, Ren, Temps, Acc) ->
-  case Ren of
-    #{R := {mode2, NewName}} ->
-      #{R := T} = Temps,
-      SpillInstr = mk_move(update_reg_nr(NewName, T, Target), T, Target),
-      add_mode2_spills(Rs, Target, Ren, Temps, [SpillInstr|Acc]);
+add_mode2_spills([], _Target, _Ren, _M3Ren, _Temps, Acc) -> Acc;
+add_mode2_spills([R|Rs], Target, Ren, M3Ren, Temps, Acc0) ->
+  Acc =
+    case Ren of
+      #{R := {Mode, NewName}} when Mode =:= mode2; Mode =:= mode3 ->
+	case Mode =/= mode3 orelse lists:member(R, M3Ren) of
+	  false -> Acc0;
+	  true ->
+	    #{R := T} = Temps,
+	    SpillInstr = mk_move(update_reg_nr(NewName, T, Target), T, Target),
+	    [SpillInstr|Acc0]
+      end;
     #{} ->
-      add_mode2_spills(Rs, Target, Ren, Temps, Acc)
+	Acc0
+  end,
+  add_mode2_spills(Rs, Target, Ren, M3Ren, Temps, Acc).
+
+add_mode3_restores([], _Target, _Ren, _Temps, Acc) -> Acc;
+add_mode3_restores([R|Rs], Target, Ren, Temps, Acc) ->
+  case Ren of
+    #{R := {mode3, NewName}} ->
+      #{R := T} = Temps,
+      RestoreInstr = mk_move(T, update_reg_nr(NewName, T, Target), Target),
+      add_mode3_restores(Rs, Target, Ren, Temps, [RestoreInstr|Acc]);
+    #{} ->
+      add_mode3_restores(Rs, Target, Ren, Temps, Acc)
   end.
 
-rewrite_subst_fun(Target, Ren) ->
+rewrite_subst_fun(Target, Ren, M3Ren) ->
   fun(Temp) ->
       Reg = reg_nr(Temp, Target),
       case Ren of
-	#{Reg := {_Mode, NewName}} -> update_reg_nr(NewName, Temp, Target);
+	#{Reg := {Mode, NewName}} ->
+	  case Mode =/= mode3 orelse lists:member(Reg, M3Ren) of
+	    false -> Temp;
+	    true -> update_reg_nr(NewName, Temp, Target)
+	  end;
 	#{} -> Temp
       end
   end.
@@ -934,11 +1028,12 @@ mk_spillgroup(Renames) ->
 %% Keeps track of cumulative cost of spilling temps in particular partitions
 %% using particular spill modes.
 -type cost_map() :: #{[part_key()|temp()] => float()}.
--type cost_key() :: entry1 | entry2 | exit | spill.
--record(costs, {entry1 = #{} :: cost_map()
-	       ,entry2 = #{} :: cost_map()
-	       ,exit   = #{} :: cost_map()
-	       ,spill  = #{} :: cost_map()
+-type cost_key() :: entry1 | entry2 | exit | spill | restore.
+-record(costs, {entry1  = #{} :: cost_map()
+	       ,entry2  = #{} :: cost_map()
+	       ,exit    = #{} :: cost_map()
+	       ,spill   = #{} :: cost_map()
+	       ,restore = #{} :: cost_map()
 	       }).
 -type costs() :: #costs{}.
 
@@ -954,7 +1049,9 @@ costs_insert(entry2, A, Weight, Liveset, Costs=#costs{entry2=Entry2}) ->
 costs_insert(exit, A, Weight, Liveset, Costs=#costs{exit=Exit}) ->
   Costs#costs{exit=costs_insert_1(A, Weight, Liveset, Exit)};
 costs_insert(spill, A, Weight, Liveset, Costs=#costs{spill=Spill}) ->
-  Costs#costs{spill=costs_insert_1(A, Weight, Liveset, Spill)}.
+  Costs#costs{spill=costs_insert_1(A, Weight, Liveset, Spill)};
+costs_insert(restore, A, Weight, Liveset, Costs=#costs{restore=Restore}) ->
+  Costs#costs{restore=costs_insert_1(A, Weight, Liveset, Restore)}.
 
 costs_insert_1(A, Weight, Liveset, CostMap0) when is_float(Weight) ->
   lists:foldl(fun(Live, CostMap1) ->
@@ -963,11 +1060,13 @@ costs_insert_1(A, Weight, Liveset, CostMap0) when is_float(Weight) ->
 
 -spec costs_map_roots(part_dsets(), costs()) -> {costs(), part_dsets()}.
 costs_map_roots(DSets0, Costs) ->
-  {Entry1, DSets1} = costs_map_roots_1(DSets0, Costs#costs.entry1),
-  {Entry2, DSets2} = costs_map_roots_1(DSets1, Costs#costs.entry2),
-  {Exit,   DSets3} = costs_map_roots_1(DSets2, Costs#costs.exit),
-  {Spill,  DSets}  = costs_map_roots_1(DSets3, Costs#costs.spill),
-  {#costs{entry1=Entry1,entry2=Entry2,exit=Exit,spill=Spill}, DSets}.
+  {Entry1,  DSets1} = costs_map_roots_1(DSets0, Costs#costs.entry1),
+  {Entry2,  DSets2} = costs_map_roots_1(DSets1, Costs#costs.entry2),
+  {Exit,    DSets3} = costs_map_roots_1(DSets2, Costs#costs.exit),
+  {Spill,   DSets}  = costs_map_roots_1(DSets3, Costs#costs.spill),
+  {Restore, DSets}  = costs_map_roots_1(DSets3, Costs#costs.restore),
+  {#costs{entry1=Entry1,entry2=Entry2,exit=Exit,spill=Spill,restore=Restore},
+   DSets}.
 
 costs_map_roots_1(DSets0, CostMap) ->
   {NewEs, DSets} = lists:mapfoldl(fun({[A|T], Wt}, DSets1) ->
@@ -991,7 +1090,9 @@ costs_query(Temp, entry2, Part, #costs{entry2=Entry2}) ->
 costs_query(Temp, exit, Part, #costs{exit=Exit}) ->
   costs_query_1(Temp, Part, Exit);
 costs_query(Temp, spill, Part, #costs{spill=Spill}) ->
-  costs_query_1(Temp, Part, Spill).
+  costs_query_1(Temp, Part, Spill);
+costs_query(Temp, restore, Part, #costs{restore=Restore}) ->
+  costs_query_1(Temp, Part, Restore).
 
 costs_query_1(Temp, Part, CostMap) ->
   Key = [Part|Temp],

@@ -44,6 +44,14 @@
 
 -export([split/4]).
 
+%% Exports for hipe_range_split, which uses restore_reuse as one possible spill
+%% "mode"
+-export([analyse/3
+	,renamed_in_block/2
+	,split_in_block/2
+	]).
+-export_type([avail/0]).
+
 -compile(inline).
 
 %% -define(DO_ASSERT, 1).
@@ -54,6 +62,7 @@
 -type liveness()         :: any().
 -type target_module()    :: module().
 -type target_context()   :: any().
+-type target()           :: {target_module(), target_context()}.
 -type label()            :: non_neg_integer().
 -type temp()             :: non_neg_integer().
 
@@ -65,7 +74,7 @@ split(CFG, Liveness, TargetMod, TargetContext) ->
   rewrite(CFG, Target, Avail).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% -type avail() :: #{label() => avail_bb()}.
+-opaque avail() :: #{label() => avail_bb()}.
 
 -record(avail_bb, {
 	  has_call :: boolean(),
@@ -81,7 +90,7 @@ split(CFG, Liveness, TargetMod, TargetContext) ->
 	  pred     :: [label()],
 	  succ     :: [label()]
 	 }).
-%% -type avail_bb() :: #avail_bb{}.
+-type avail_bb() :: #avail_bb{}.
 
 avail_get(L, Avail) -> maps:get(L, Avail).
 avail_set(L, Val, Avail) -> maps:put(L, Val, Avail).
@@ -131,6 +140,7 @@ ordset_intersect_availset(OS, AS) -> ordsets:intersection(OS, AS).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+-spec analyse(target_cfg(), liveness(), target()) -> avail().
 analyse(CFG, Liveness, Target) ->
   Avail0 = analyse_init(CFG, Liveness, Target),
   RPO = reverse_postorder(CFG, Target),
@@ -261,9 +271,7 @@ rewrite(CFG, Target, Avail) ->
 
 rewrite([], _Target, _Avail, _Input, SpillGroups, CFG) -> {CFG, SpillGroups};
 rewrite([L|Ls], Target, Avail, Input0, SpillGroups0, CFG0) ->
-  SplitHere =
-    ordsets:subtract(ordsets:union(avail_self(L, Avail), demand_out(L, Avail)),
-		     demand_in(L, Avail)),
+  SplitHere = split_in_block(L, Avail),
   {Input1, LInput} =
     case Input0 of
       #{L := LInput0} -> {Input0, LInput0};
@@ -286,6 +294,14 @@ rewrite([L|Ls], Target, Avail, Input0, SpillGroups0, CFG0) ->
   {Input, CFG} = rewrite_succs(avail_succ(L, Avail), Target, L, LOutput, Avail,
 			       Input1, CFG1),
   rewrite(Ls, Target, Avail, Input, SpillGroups, CFG).
+
+-spec renamed_in_block(label(), avail()) -> ordsets:ordset(temp()).
+renamed_in_block(L, Avail) ->
+  ordsets:union(avail_self(L, Avail), demand_out(L, Avail)).
+
+-spec split_in_block(label(), avail()) -> ordsets:ordset(temp()).
+split_in_block(L, Avail) ->
+  ordsets:subtract(renamed_in_block(L, Avail), demand_in(L, Avail)).
 
 rewrite_instrs([], _Target, Output, DefOut, [], SpillGroups) ->
   {[], Output, DefOut, SpillGroups};
