@@ -644,9 +644,16 @@ mem_to_rm16(Mem) ->
   {rm16, ?HIPE_X86_ENCODE:rm_mem(EA)}.
 %%%%%%%%%%%%%%%%%
 
-mem_to_ea_common(#x86_mem{base=[], off=#x86_imm{value=Off}}) ->
+mem_to_ea_common(#x86_mem{base=Base, off=#x86_temp{}=Off}) ->
+  mem_to_ea_common_1(0, Base, Off, 1);
+mem_to_ea_common(#x86_mem{base=Base, off=#x86_imm{value=Off}}) ->
+  mem_to_ea_common_1(Off, Base, [], 1);
+mem_to_ea_common(#x86_mem2{off=Off, base=Base, index=Index, scale=Scale}) ->
+  mem_to_ea_common_1(Off, Base, Index, Scale).
+
+mem_to_ea_common_1(Off, [], [], 1) ->
   ?HIPE_X86_ENCODE:?EA_DISP32_ABSOLUTE(Off);
-mem_to_ea_common(#x86_mem{base=#x86_temp{reg=Base}, off=#x86_temp{reg=Index}}) ->
+mem_to_ea_common_1(0, #x86_temp{reg=Base}, #x86_temp{reg=Index}, 1) ->
   case Base band 2#111 of
     5 -> % ebp/rbp or r13
       case Index band 2#111 of
@@ -664,7 +671,7 @@ mem_to_ea_common(#x86_mem{base=#x86_temp{reg=Base}, off=#x86_temp{reg=Index}}) -
       SIB = ?HIPE_X86_ENCODE:sib(Base, SINDEX),
       ?HIPE_X86_ENCODE:ea_sib(SIB)
   end;
-mem_to_ea_common(#x86_mem{base=#x86_temp{reg=Base}, off=#x86_imm{value=Off}}) ->
+mem_to_ea_common_1(Off, #x86_temp{reg=Base}, [], 1) ->
   if
     Off =:= 0 ->
       case Base of
@@ -704,7 +711,31 @@ mem_to_ea_common(#x86_mem{base=#x86_temp{reg=Base}, off=#x86_imm{value=Off}}) ->
 	_ ->
 	  ?HIPE_X86_ENCODE:ea_disp32_base(Off, Base)
       end
+  end;
+mem_to_ea_common_1(0, #x86_temp{reg=Base}, #x86_temp{reg=Index}, Scale)
+  when Index =/= 4, % not esp
+       Base =/= 5, Base =/= 13 -> % not ebp or r13
+  SIndex = ?HIPE_X86_ENCODE:sindex(scale_to_pow2(Scale), Index),
+  SIB = ?HIPE_X86_ENCODE:sib(Base, SIndex),
+  ?HIPE_X86_ENCODE:ea_sib(SIB);
+mem_to_ea_common_1(Off, [], #x86_temp{reg=Index}, Scale)
+  when Index =/= 4 -> % not esp
+  SIndex = ?HIPE_X86_ENCODE:sindex(scale_to_pow2(Scale), Index),
+  ?HIPE_X86_ENCODE:ea_disp32_sindex(Off, SIndex);
+mem_to_ea_common_1(Off, #x86_temp{reg=Base}, #x86_temp{reg=Index}, Scale)
+  when Index =/= 4 -> % not esp
+  SIndex = ?HIPE_X86_ENCODE:sindex(scale_to_pow2(Scale), Index),
+  SIB = ?HIPE_X86_ENCODE:sib(Base, SIndex),
+  if Off >= -128, Off =< 127 ->
+      ?HIPE_X86_ENCODE:ea_disp8_sib(Off, SIB);
+     true ->
+      ?HIPE_X86_ENCODE:ea_disp32_sib(Off, SIB)
   end.
+
+scale_to_pow2(1) -> 0;
+scale_to_pow2(2) -> 1;
+scale_to_pow2(4) -> 2;
+scale_to_pow2(8) -> 3.
 
 %% jmp_switch
 -ifdef(HIPE_AMD64).
@@ -730,7 +761,8 @@ resolve_jmp_switch_arg(I, {MFA,ConstMap}) ->
 -endif.
 
 %% lea reg, mem
-resolve_lea_args(Src=#x86_mem{}, Dst=#x86_temp{}) ->
+resolve_lea_args(Src, Dst=#x86_temp{})
+  when is_record(Src, x86_mem); is_record(Src, x86_mem2) ->
   {temp_to_regArch(Dst),mem_to_ea(Src)}.
 
 resolve_sse2_op(Op) ->

@@ -32,6 +32,9 @@
 -module(?HIPE_X86_POSTPASS).
 -export([postpass/2]).
 -include("../x86/hipe_x86.hrl").
+-include("../rtl/hipe_literals.hrl").
+-define(PROC, 5).
+-define(HP, 15).
 
 %%>----------------------------------------------------------------------<
 %  Procedure : postpass/2
@@ -203,6 +206,80 @@ peep([#lea{mem=#x86_mem{base=Src,off=#x86_temp{reg=DstR}},
 %% this transformation is disabled.
 %% peep([#alu{aluop='sub',src=#x86_imm{value=1},dst=Dst},J=#jcc{cc='l'}|Insns], Res, Lst) ->
 %%   peep(Insns, [J, #dec{dst=Dst} | Res], [subToDec|Lst]);
+
+%% GcTest
+%% ------
+%% Optimise gctests by calculating the amount of remaining heap space after
+%% allocation, and checking its sign bit. This assumes that value fits a signed
+%% word, and that Temp is unused after here (should always be true).
+%%
+%% Additionally, GcTest3 improves on GcTest2 by optimising the computation of
+%% the fixnum to be passed to gc_1 in cases we can know it is safe.
+peep([#move{src=#x86_mem{base=#x86_temp{reg=?PROC},off=#x86_imm{value=Off}}
+	    =HLimMem, dst=Temp},
+      #alu{aluop='sub', src=#x86_temp{reg=?HP}=HPTemp, dst=Temp},
+      C=#cmp{src=Need=#x86_imm{}, dst=Temp},
+      J=#jcc{cc='l', label=GCLbl}
+      | Insns] = AllInsns, Res, Lst) ->
+  case ?P_HP_LIMIT of % Can't be checked in guard, alas
+    Off ->
+      peep(Insns, [J#jcc{cc='s', label=GCLbl}, C#cmp{src=Temp, dst=HLimMem},
+		   #lea{mem=#x86_mem{base=HPTemp, off=Need}, temp=Temp} | Res],
+	   [gcTest1 | Lst]);
+    _ -> peep(tl(AllInsns), [hd(AllInsns)|Res], Lst)
+  end;
+peep([#lea{mem=Mem1=#x86_mem{off=#x86_imm{value=Imm1}}, temp=#x86_temp{reg=FixnumTmp}},
+      #shift{shiftop='shr', src=#x86_imm{value=3}, dst=#x86_temp{reg=FixnumTmp}},
+      #lea{mem=#x86_mem{base=#x86_temp{reg=FixnumTmp},off=#x86_imm{value=Imm2}},
+	   temp=#x86_temp{reg=NeedFixnum}},
+      #comment{}=C1, #comment{}=C2,
+      #move{src=#x86_mem{base=#x86_temp{reg=?PROC},off=#x86_imm{value=Off}}
+	    =HLimMem, dst=Tmp=#x86_temp{reg=TmpReg}},
+      #alu{aluop='sub', src=#x86_temp{reg=?HP}=HPTemp, dst=#x86_temp{reg=TmpReg}},
+      #move{src=#x86_temp{reg=NeedFixnum}, dst=#x86_temp{reg=NeedReg}},
+      #shift{shiftop='shl', src=#x86_imm{value=3}, dst=#x86_temp{reg=NeedReg}},
+      #shift{shiftop='shl', src=#x86_imm{value=4}, dst=#x86_temp{reg=NeedFixnum}},
+      #alu{aluop='add', src=#x86_imm{value=16#f},
+	      dst=#x86_temp{reg=NeedFixnum}=NeedFixnumTemp},
+      C=#cmp{src=#x86_temp{reg=NeedReg}, dst=#x86_temp{reg=TmpReg}},
+      J=#jcc{cc='l', label=GCLbl}
+      | Insns] = AllInsns, Res, Lst)
+%% FixnumTmp needs to be clobbered in order for us to be sure that this is safe
+  when FixnumTmp =:= NeedReg; FixnumTmp =:= NeedFixnum ->
+  case ?P_HP_LIMIT of % Can't be checked in guard, alas
+    Off ->
+      peep(Insns, [J#jcc{cc='s', label=GCLbl}, C#cmp{src=Tmp, dst=HLimMem},
+		   #lea{mem=#x86_mem2{off=16#f, base=NeedFixnumTemp, index=NeedFixnumTemp},
+			temp=NeedFixnumTemp},
+		   #lea{mem=#x86_mem{base=HPTemp, off=NeedFixnumTemp}, temp=Tmp},
+		   C2, C1,
+		   #alu{aluop='and', src=#x86_imm{value=-8},dst=NeedFixnumTemp},
+		   #lea{mem=Mem1#x86_mem{off=#x86_imm{value=Imm1+Imm2*8}},temp=NeedFixnumTemp}
+		   | Res],
+	   [gcTest3 | Lst]);
+    _ -> peep(tl(AllInsns), [hd(AllInsns)|Res], Lst)
+  end;
+peep([#move{src=#x86_mem{base=#x86_temp{reg=?PROC},off=#x86_imm{value=Off}}
+	    =HLimMem, dst=Tmp=#x86_temp{reg=TmpReg}},
+      #alu{aluop='sub', src=#x86_temp{reg=?HP}=HPTemp, dst=#x86_temp{reg=TmpReg}},
+      #move{src=#x86_temp{reg=NeedFixnum}, dst=#x86_temp{reg=NeedReg}},
+      #shift{shiftop='shl', src=#x86_imm{value=3}, dst=#x86_temp{reg=NeedReg}},
+      I1=#shift{shiftop='shl', src=#x86_imm{value=4}, dst=#x86_temp{reg=NeedFixnum}},
+      I2=#alu{aluop='add', src=#x86_imm{value=16#f},
+	      dst=#x86_temp{reg=NeedFixnum}=NeedFixnumTemp},
+      C=#cmp{src=#x86_temp{reg=NeedReg}, dst=#x86_temp{reg=TmpReg}},
+      J=#jcc{cc='l', label=GCLbl}
+      | Insns] = AllInsns, Res, Lst) ->
+  case ?P_HP_LIMIT of % Can't be checked in guard, alas
+    Off ->
+      peep(Insns, [J#jcc{cc='s', label=GCLbl}, C#cmp{src=Tmp, dst=HLimMem},
+		   I2, I1,
+		   #lea{mem=#x86_mem2{base=HPTemp, index=NeedFixnumTemp,
+				      scale=8, off=0}, temp=Tmp}
+		   | Res],
+	   [gcTest2 | Lst]);
+    _ -> peep(tl(AllInsns), [hd(AllInsns)|Res], Lst)
+  end;
 
 %% Standard list recursion clause
 %% ------------------------------

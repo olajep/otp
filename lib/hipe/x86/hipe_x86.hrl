@@ -65,6 +65,7 @@
 -record(x86_temp, {reg, type, allocatable}).
 -record(x86_imm, {value}).
 -record(x86_mem, {base, off, type}).
+-record(x86_mem2, {off=0, base=[], index=[], scale=1}).
 -record(x86_fpreg, {reg, pseudo}).
 -record(x86_mfa, {m::atom(), f::atom(), a::arity()}).
 -record(x86_prim, {prim}).

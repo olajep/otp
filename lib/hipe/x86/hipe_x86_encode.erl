@@ -85,7 +85,7 @@
 -export([dotest/0, dotest/1]).	% for testing, don't use
 -endif.
 
--define(ASSERT(F,G), if G -> [] ; true -> exit({?MODULE,F}) end).
+-define(ASSERT(F,G), if G -> [] ; true -> error({assertion_failed,F}) end).
 %-define(ASSERT(F,G), []).
 
 %%% condition codes

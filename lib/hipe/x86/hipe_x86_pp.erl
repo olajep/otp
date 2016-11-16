@@ -311,19 +311,34 @@ pp_imm(Dev, #x86_imm{value=Value}, Dollar) ->
      true -> io:format(Dev, "~w", [Value])
   end.
 
-pp_mem(Dev, #x86_mem{base=Base, off=Off}) ->
-  pp_off(Dev, Off),
-  case Base of
-    [] ->
+pp_mem(Dev, #x86_mem{base=Base, off=#x86_temp{}=Index}) ->
+  pp_mem_1(Dev, 0, Base, Index, 1);
+pp_mem(Dev, #x86_mem{base=Base, off=#x86_imm{value=Off}}) ->
+  pp_mem_1(Dev, Off, Base, [], 1);
+pp_mem(Dev, #x86_mem2{off=Off, base=Base, index=Index, scale=Scale}) ->
+  pp_mem_1(Dev, Off, Base, Index, Scale).
+
+pp_mem_1(Dev, Off, Base, Index, Scale) ->
+  case Off =/= 0 of false -> ok; true ->
+      io:format(Dev, "~s", [to_hex(Off)])
+  end,
+  case {Base, Index} of
+    {[], []} ->
       ok;
     _ ->
       io:format(Dev, "(", []),
-      pp_temp(Dev, Base),
+      case Base =/= [] of false -> ok; true ->
+	  pp_temp(Dev, Base)
+      end,
+      case Index =/= [] of false -> ok; true ->
+	  io:format(Dev, ",", []),
+	  pp_temp(Dev, Index),
+	  case Scale =/= 1 of false -> ok; true ->
+	      io:format(Dev, ",~w", [Scale])
+	  end
+      end,
       io:format(Dev, ")", [])
   end.
-
-pp_off(Dev, Off) ->
-  pp_src(Dev, Off, false).
 
 pp_src(Dev, Src) ->
   pp_src(Dev, Src, true).

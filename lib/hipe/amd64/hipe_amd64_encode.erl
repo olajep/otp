@@ -71,7 +71,7 @@
 	 ea_disp32_base/2, ea_disp32_sib/2,
 	 ea_disp8_base/2, ea_disp8_sib/2,
 	 ea_base/1,
-	 ea_disp32_sindex/1, %%ea_disp32_sindex/2,
+	 ea_disp32_sindex/1, ea_disp32_sindex/2,
 	 ea_sib/1, %ea_disp32_rip/1,
 	 rm_reg/1, rm_mem/1,
 	 % instructions
@@ -82,7 +82,7 @@
 -export([dotest/0, dotest/1]).	% for testing, don't use
 -endif.
 
--define(ASSERT(F,G), if G -> [] ; true -> exit({?MODULE,F}) end).
+-define(ASSERT(F,G), if G -> [] ; true -> error({assertion_failed,F}) end).
 %-define(ASSERT(F,G), []).
 
 %%% condition codes
@@ -182,7 +182,7 @@ ea_base(Base) when is_integer(Base) ->
     ?ASSERT(ea_base, Base =/= ?EBP),
     {ea_base, Base}.
 ea_disp32_sindex(Disp32) -> {ea_disp32_sindex, Disp32, none}.
-%% ea_disp32_sindex(Disp32, Sindex) -> {ea_disp32_sindex, Disp32, Sindex}.
+ea_disp32_sindex(Disp32, Sindex) -> {ea_disp32_sindex, Disp32, Sindex}.
 ea_sib(SIB) ->
     ?ASSERT(ea_sib, SIB#sib.base =/= ?EBP),
     {ea_sib, SIB}.
