@@ -271,6 +271,16 @@ gen_primop({Op,Dst,Args,Cont,Fail}, IsGuard, ConstTab) ->
 	    [Index, Tuple] = Args,	    
 	    [gen_element_1(Dst1, Index, Tuple, IsGuard, Cont, Fail,
 			   TupleInfo, IndexInfo)];
+	  %%---------------------------------------------
+	  %% Map handling
+	  %%---------------------------------------------
+	  #unsafe_flatmap_get{index=N} ->
+	    case Dst of
+	      [] -> [GotoCont];
+	      [Dst1] ->
+		[Map] = Args,
+		[hipe_tagscheme:unsafe_flatmap_get(Dst1, N, Map), GotoCont]
+	    end;
 
 	  %%---------------------------------------------
 	  %% Apply-fixarity

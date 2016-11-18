@@ -61,6 +61,7 @@
 -export([test_subbinary/3, test_heap_binary/3]).
 -export([create_heap_binary/3, create_refc_binary/3, create_refc_binary/4]).
 -export([create_matchstate/6, convert_matchstate/1, compare_matchstate/4]).
+-export([flatmap_limit/0, keysort_flatmap_pairs/1, unsafe_flatmap_get/3]).
 -export([get_field_from_term/3, get_field_from_pointer/3,
 	 set_field_from_term/3, set_field_from_pointer/3,
 	 extract_matchbuffer/2, extract_binary_bytes/2]).
@@ -1080,6 +1081,25 @@ compare_matchstate(Max, Ms, LargeEnough, TooSmall) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
+%% Map Code
+
+flatmap_limit() -> ?MAP_SMALL_MAP_LIMIT.
+
+unsafe_flatmap_get(Dst, Index, Map) when is_integer(Index) ->
+  get_field_from_term({flatmap, {value, Index}}, Map, Dst).
+
+%% Sorts a key-value list by keys using the same ordering as used by flatmaps
+-spec keysort_flatmap_pairs([KVTuple]) -> [KVTuple] when
+    KVTuple :: tuple(). % First element is the key
+keysort_flatmap_pairs(Pairs) ->
+  %% Is using erts_internal:cmp_term/2 ugly? Is it better to reimplement term
+  %% comparison here?
+  lists:sort(fun(A, B) ->
+		 erts_internal:cmp_term(element(1,A), element(1,B)) =< 0
+	     end, Pairs).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
 %% Struct manipulation code
 
 get_field_offset({matchstate, thing_word}) ->
@@ -1133,7 +1153,9 @@ get_field_offset({matchbuffer, orig}) ->
 get_field_offset({matchbuffer, base}) ->  
   ?MB_BASE;
 get_field_offset({matchbuffer, binsize}) ->  
-  ?MB_SIZE.
+  ?MB_SIZE;
+get_field_offset({flatmap, {value, N}} = Field) ->
+  ?FLATMAP_FIRST_VALUE + N*get_field_size1(Field).
 
 get_field_size(Field) ->
   WordSize = hipe_rtl_arch:word_size(),
@@ -1193,7 +1215,9 @@ get_field_size1({matchbuffer, orig}) ->
 get_field_size1({matchbuffer, base}) ->  
   ?MB_BASE_SIZE;
 get_field_size1({matchbuffer, binsize}) ->  
-  ?MB_SIZE_SIZE.
+  ?MB_SIZE_SIZE;
+get_field_size1({flatmap, {value, _}}) ->
+  hipe_rtl_arch:word_size().
 
 get_field_from_term(Struct, Term, Dst) ->
   Offset = hipe_rtl:mk_imm(get_field_offset(Struct) - ?TAG_PRIMARY_BOXED),

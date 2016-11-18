@@ -1180,13 +1180,14 @@ basic_type(fp_mul) -> not_int;
 basic_type(fp_sub) -> not_int;
 basic_type(unsafe_tag_float) -> not_int;
 basic_type(unsafe_untag_float) -> not_int;
-%% Lists, tuples, records
+%% Lists, tuples, records, maps
 basic_type(cons) -> not_int;
 basic_type(mktuple) -> not_int;
 basic_type(unsafe_hd) -> not_analysed;
 basic_type(unsafe_tl) -> not_int;
 basic_type(#element{}) -> not_analysed;
 basic_type(#unsafe_element{}) -> not_analysed;
+basic_type(#unsafe_flatmap_get{}) -> not_analysed;
 basic_type(#unsafe_update_element{}) -> not_analysed.
 
 -spec analyse_bs_get_integer(integer(), integer(), boolean()) -> range_tuple().

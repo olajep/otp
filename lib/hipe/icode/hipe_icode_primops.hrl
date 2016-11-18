@@ -39,3 +39,5 @@
 -record(unsafe_element, {index :: non_neg_integer()}).
 
 -record(unsafe_update_element, {index :: non_neg_integer()}).
+
+-record(unsafe_flatmap_get, {index :: non_neg_integer()}).

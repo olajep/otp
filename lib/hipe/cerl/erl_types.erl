@@ -187,6 +187,7 @@
 	 %% t_maybe_improper_list/2,
 	 t_product/1,
 	 t_reference/0,
+	 t_singleton_to_term/1,
 	 t_singleton_to_term/2,
 	 t_string/0,
 	 t_struct_from_opaque/2,
@@ -5414,6 +5415,11 @@ is_singleton_type(_) ->
   false.
 
 %% Returns the only possible value of a singleton type.
+-spec t_singleton_to_term(erl_type()) -> term().
+
+t_singleton_to_term(Type) ->
+  t_singleton_to_term(Type, 'universe').
+
 -spec t_singleton_to_term(erl_type(), opaques()) -> term().
 
 t_singleton_to_term(Type, Opaques) ->

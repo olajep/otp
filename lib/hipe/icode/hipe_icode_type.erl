@@ -94,6 +94,8 @@
 		    t_is_reference/1, t_is_subtype/2, t_is_tuple/1,
 		    t_limit/2, t_matchstate_present/1, t_matchstate/0, 
 		    t_matchstate_slots/1, t_maybe_improper_list/0, t_map/0,
+		    t_map_def_key/1, t_map_entries/1,
+		    t_is_singleton/1, t_singleton_to_term/1,
 		    t_nil/0, t_none/0, t_number/0, t_number/1, t_number_vals/1,
 		    t_pid/0, t_port/0, t_reference/0, t_subtract/2, t_sup/2,
 		    t_to_tlist/1, t_tuple/0, t_tuple/1, t_tuple_sizes/1]).
@@ -1171,6 +1173,17 @@ handle_call_and_enter(I) ->
       end;
     {erlang, hd, 1} -> transform_hd_or_tl(I, unsafe_hd);
     {erlang, tl, 1} -> transform_hd_or_tl(I, unsafe_tl);
+    {maps, get, 2} ->
+      [Key, Map] = hipe_icode:args(I),
+      case t_is_map(get_type(Map)) of
+	false -> I;
+	true ->
+	  case known_flatmap_index(get_type(Key), get_type(Map)) of
+	    none -> I;
+	    Index ->
+	      update_call_or_enter(I, #unsafe_flatmap_get{index=Index}, [Map])
+	  end
+      end;
     {hipe_bs_primop, BsOP} ->
       NewBsOp =
 	bit_opts(BsOP, get_type_list(hipe_icode:args(I))),
@@ -1464,6 +1477,24 @@ transform_element2(I) ->
 	  update_call_or_enter(I, NewFun)
       end
   end.
+
+known_flatmap_index(KeyT, MapT) ->
+  Elements = t_map_entries(MapT),
+  case t_is_none(t_map_def_key(MapT))
+    andalso t_is_singleton(KeyT)
+    andalso length(Elements) =< hipe_tagscheme:flatmap_limit()
+  of
+    false -> none;
+    true ->
+      Sorted = hipe_tagscheme:keysort_flatmap_pairs(
+		 [{t_singleton_to_term(K), M, V} || {K, M, V} <- Elements]),
+      known_flatmap_index_1(t_singleton_to_term(KeyT), 0, Sorted)
+  end.
+
+known_flatmap_index_1(Key, Index, [{Key, mandatory, _}|_]) -> Index;
+known_flatmap_index_1(Key, Index, [{_, mandatory, _}|Rest]) ->
+  known_flatmap_index_1(Key, Index+1, Rest);
+known_flatmap_index_1(_Key, _Index, _Pairs) -> none.
 
 transform_hd_or_tl(I, Primop) ->
   [Arg] = hipe_icode:args(I),

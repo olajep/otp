@@ -140,6 +140,7 @@
 #undef STORE_ARG_REGS
 #include "hipe_sparc_asm.h"
 #include "erl_binary.h"
+#include "erl_map.h"
 
 #define ARRAY_SIZE(x)	(sizeof(x) / sizeof((x)[0]))
 
@@ -339,6 +340,9 @@ static const struct literal {
     /* messages */
     { "MSG_NEXT", offsetof(struct erl_mesg, next) },
 
+    /* maps */
+    { "FLATMAP_FIRST_VALUE", ((MAP_HEADER_FLATMAP_SZ) * sizeof(Eterm)) },
+
     /* ARM */
     { "ARM_LEAF_WORDS", ARM_LEAF_WORDS },
     { "ARM_NR_ARG_REGS", ARM_NR_ARG_REGS },
@@ -528,6 +532,9 @@ static const struct rts_param rts_params[] = {
       1, offsetof(struct process, hipe.gc_is_unsafe)
 #endif
     },
+
+    /* maps */
+    { 60, "MAP_SMALL_MAP_LIMIT", 1, MAP_SMALL_MAP_LIMIT },
 };
 
 #define NR_PARAMS	ARRAY_SIZE(rts_params)

@@ -138,6 +138,7 @@ is_safe({hipe_bs_primop, {bs_private_append, _, _}}) -> false;
 is_safe({hipe_bs_primop, bs_init_writable}) -> true;
 is_safe(#mkfun{}) -> true;
 is_safe(#unsafe_element{}) -> true;
+is_safe(#unsafe_flatmap_get{}) -> true;
 is_safe(#unsafe_update_element{}) -> true;
 is_safe(debug_native_called) -> false.
 
@@ -238,6 +239,7 @@ fails({hipe_bs_primop, {bs_private_append, _, _}}) -> true;
 fails({hipe_bs_primop, bs_init_writable}) -> true;
 fails(#mkfun{}) -> false;
 fails(#unsafe_element{}) -> false;
+fails(#unsafe_flatmap_get{}) -> false;
 fails(#unsafe_update_element{}) -> false;
 fails(debug_native_called) -> false;
 %% Apparently, we are calling fails/1 for all MFAs which are compiled.
@@ -356,6 +358,8 @@ pp(Dev, Op) ->
       io:format(Dev, "mkfun<~w,~w,~w,~w,~w>", [Mod, Fun, Arity, Unique, I]);
     #unsafe_element{index = N} ->
       io:format(Dev, "unsafe_element<~w>", [N]);
+    #unsafe_flatmap_get{index = N} ->
+      io:format(Dev, "unsafe_flatmap_get<~w>", [N]);
     #unsafe_update_element{index = N} ->
       io:format(Dev, "unsafe_update_element<~w>", [N]);
     Fun when is_atom(Fun) ->
@@ -681,6 +685,20 @@ type(Primop, Args) ->
     {hipe_bs_primop, _BsOp} ->
       erl_types:t_any();
 %%% -----------------------------------------------------
+%%% Maps
+    #unsafe_flatmap_get{index = N} ->
+      [Type] = Args,
+      case erl_types:t_is_map(Type) of
+	false ->
+	  erl_types:t_none();
+	true ->
+	  Pairs = [{erl_types:t_singleton_to_term(K), V}
+		   || {K, _, V} <- erl_types:t_map_entries(Type)],
+	  {_, Res} = lists:nth(N+1, hipe_tagscheme:keysort_flatmap_pairs(
+				      Pairs)),
+	  Res
+      end;
+%%% -----------------------------------------------------
 %%% Funs
     #mkfun{mfa = {_M, _F, A}} ->
       %% Note that the arity includes the bound variables in args
@@ -870,6 +888,10 @@ type(Primop) ->
       erl_types:t_bitstr();
     {hipe_bs_primop, _BsOp} ->
       erl_types:t_any();
+%%% -----------------------------------------------------
+%%% Maps
+    #unsafe_flatmap_get{} ->
+      erl_bif_types:type(maps, get, 2);
 %%% -----------------------------------------------------
 %%% Funs
     #mkfun{} ->
