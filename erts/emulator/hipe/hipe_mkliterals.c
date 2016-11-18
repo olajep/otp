@@ -341,6 +341,11 @@ static const struct literal {
     { "MSG_NEXT", offsetof(struct erl_mesg, next) },
 
     /* maps */
+    { "MAP_HEADER_FLATMAP", MAP_HEADER_FLATMAP },
+    { "MAP_HEADER_FLATMAP_SZ", MAP_HEADER_FLATMAP_SZ },
+    { "FLATMAP_THING", offsetof(flatmap_t, thing_word) },
+    { "FLATMAP_SIZE", offsetof(flatmap_t, size) },
+    { "FLATMAP_KEYS", offsetof(flatmap_t, keys) },
     { "FLATMAP_FIRST_VALUE", ((MAP_HEADER_FLATMAP_SZ) * sizeof(Eterm)) },
 
     /* ARM */

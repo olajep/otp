@@ -71,6 +71,7 @@ is_safe(fp_add) -> false;
 is_safe(fp_div) -> false;
 is_safe(fp_mul) -> false;
 is_safe(fp_sub) -> false;
+is_safe(mkflatmap) -> true;
 is_safe(mktuple) -> true;
 is_safe(next_msg) -> false;
 is_safe(redtest) -> false;
@@ -170,6 +171,7 @@ fails(fp_add) -> false;
 fails(fp_div) -> false;
 fails(fp_mul) -> false;
 fails(fp_sub) -> false;
+fails(mkflatmap) -> false;
 fails(mktuple) -> false;
 fails(next_msg) -> false;
 fails(redtest) -> false;
@@ -686,6 +688,15 @@ type(Primop, Args) ->
       erl_types:t_any();
 %%% -----------------------------------------------------
 %%% Maps
+    mkflatmap ->
+      [KeyTuple | Values] = Args,
+      case erl_types:t_tuple_sizes(KeyTuple) of
+	unknown -> % Keys have been lost
+	  erl_types:t_map([], erl_types:t_any(), erl_types:t_sup(Values));
+	[_] ->
+	  lists:foldl(fun erl_types:t_map_put/2, erl_types:t_from_term(#{}),
+		      lists:zip(erl_types:t_tuple_args(KeyTuple), Values))
+      end;
     #unsafe_flatmap_get{index = N} ->
       [Type] = Args,
       case erl_types:t_is_map(Type) of
@@ -890,6 +901,8 @@ type(Primop) ->
       erl_types:t_any();
 %%% -----------------------------------------------------
 %%% Maps
+    mkflatmap ->
+      erl_types:t_map();
     #unsafe_flatmap_get{} ->
       erl_bif_types:type(maps, get, 2);
 %%% -----------------------------------------------------

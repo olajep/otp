@@ -146,6 +146,9 @@ primop_need(Op, As) ->
   case Op of
     cons ->
       2;
+    mkflatmap ->
+      %% first arg is key tuple, which is included in MAP_HEADER_FLATMAP_SZ
+      ?MAP_HEADER_FLATMAP_SZ + length(As) - 1;
     mktuple ->
       length(As) + 1;
     #mkfun{} ->
@@ -182,6 +185,7 @@ known_heap_need(Name) ->
     fp_div -> true;
     fp_mul -> true;
     fp_sub -> true;
+    mkflatmap -> true;
     mktuple -> true;
     unsafe_hd -> true;
     unsafe_tag_float -> true;

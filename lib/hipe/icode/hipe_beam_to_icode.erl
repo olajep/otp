@@ -1116,18 +1116,24 @@ trans_fun([{get_map_elements,{f,Lbl},Map,{list,KVPs}}|Instructions], Env) ->
     trans_map_query(MapVar, map_label(Lbl), Env1, KVPs),
   [MapMove, TestInstructions, GetInstructions | trans_fun(Instructions, Env2)];
 %%--- put_map_assoc ---
-trans_fun([{put_map_assoc,{f,Lbl},Map,Dst,_N,{list,Pairs}}|Instructions], Env) ->
-  {MapMove, MapVar, Env1} = mk_move_and_var(Map, Env),
-  TempMapVar = mk_var(new),
-  TempMapMove = hipe_icode:mk_move(TempMapVar, MapVar),
-  {PutInstructions, Env2}
-    = case Lbl > 0 of
-	true ->
-	  gen_put_map_instrs(exists, assoc, TempMapVar, Dst, Lbl, Pairs, Env1);
-	false ->
-	  gen_put_map_instrs(new, assoc, TempMapVar, Dst, new, Pairs, Env1)
-      end,
-  [MapMove, TempMapMove, PutInstructions | trans_fun(Instructions, Env2)];
+trans_fun([{put_map_assoc,{f,Lbl},Map,Dst,_N,{list,Pairs}}=I|Instructions], Env) ->
+  case gen_mk_flatmap(I) of
+    {yes, MkMapInstr} ->
+      [MkMapInstr | trans_fun(Instructions, Env)];
+    no ->
+      {MapMove, MapVar, Env1} = mk_move_and_var(Map, Env),
+      TempMapVar = mk_var(new),
+      TempMapMove = hipe_icode:mk_move(TempMapVar, MapVar),
+      {PutInstructions, Env2}
+	= case Lbl > 0 of
+	    true ->
+	      gen_put_map_instrs(exists, assoc, TempMapVar, Dst, Lbl, Pairs,
+				 Env1);
+	    false ->
+	      gen_put_map_instrs(new, assoc, TempMapVar, Dst, new, Pairs, Env1)
+	  end,
+      [MapMove, TempMapMove, PutInstructions | trans_fun(Instructions, Env2)]
+  end;
 %%--- put_map_exact ---
 trans_fun([{put_map_exact,{f,Lbl},Map,Dst,_N,{list,Pairs}}|Instructions], Env) ->
   {MapMove, MapVar, Env1} = mk_move_and_var(Map, Env),
@@ -1520,6 +1526,33 @@ trans_type_test2(function2, Lbl, Arg, Arity, Env) ->
   I = hipe_icode:mk_type([Var1,Var2], function2,
 			 hipe_icode:label_name(True), map_label(Lbl)),
   {[Move1,Move2,I,True],Env2}.
+
+%%
+%% Generates a mkflatmap primop from a put_map_assoc instruction if valid
+%%
+gen_mk_flatmap({put_map_assoc,{f,0},{literal,Map0},Dst,_N,{list,Pairs}})
+  when is_map(Map0) ->
+  MaxSize = hipe_tagscheme:flatmap_limit(),
+  Map = maps:from_list([{K, hipe_icode:mk_const(V)}
+			|| {K, V} <- maps:to_list(Map0)]),
+  case gen_mk_flatmap_1(Pairs, Map) of
+    {KeyTuple, Values} when tuple_size(KeyTuple) =< MaxSize ->
+      {yes, hipe_icode:mk_primop([mk_var(Dst)], mkflatmap,
+				 [hipe_icode:mk_const(KeyTuple) | Values])};
+    _ -> no
+  end;
+gen_mk_flatmap(_) -> no.
+
+gen_mk_flatmap_1([Key,Val|KVPs], Acc) ->
+  case is_var(Key) of
+    true -> false;
+    false ->
+      gen_mk_flatmap_1(KVPs, Acc#{get_const(Key) => trans_arg(Val)})
+  end;
+gen_mk_flatmap_1([], Acc) ->
+  {Keys, Vals} = lists:unzip(hipe_tagscheme:keysort_flatmap_pairs(
+			       maps:to_list(Acc))),
+  {list_to_tuple(Keys), Vals}.
 
 %%
 %% Handles the get_map_elements instruction and the has_map_fields
@@ -2055,21 +2088,24 @@ trans_arg(Arg) ->
 %%-----------------------------------------------------------------------
 
 trans_const(Const) ->
+  hipe_icode:mk_const(get_const(Const)).
+
+get_const(Const) ->
   case Const of
     {atom,Atom} when is_atom(Atom) ->
-      hipe_icode:mk_const(Atom);
+      Atom;
     {integer,N} when is_integer(N) ->
-      hipe_icode:mk_const(N);
+      N;
     {float,Float} when is_float(Float) ->
-      hipe_icode:mk_const(Float);
+      Float;
     {string,String} ->
-      hipe_icode:mk_const(String);
+      String;
     {literal,Literal} ->
-      hipe_icode:mk_const(Literal);
+      Literal;
     nil ->
-      hipe_icode:mk_const([]);
+      [];
     Int when is_integer(Int) ->
-      hipe_icode:mk_const(Int)
+      Int
   end.
 
 %%-----------------------------------------------------------------------

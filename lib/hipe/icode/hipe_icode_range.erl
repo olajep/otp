@@ -1182,6 +1182,7 @@ basic_type(unsafe_tag_float) -> not_int;
 basic_type(unsafe_untag_float) -> not_int;
 %% Lists, tuples, records, maps
 basic_type(cons) -> not_int;
+basic_type(mkflatmap) -> not_int;
 basic_type(mktuple) -> not_int;
 basic_type(unsafe_hd) -> not_analysed;
 basic_type(unsafe_tl) -> not_int;

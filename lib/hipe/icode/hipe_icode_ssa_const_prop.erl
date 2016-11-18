@@ -276,6 +276,9 @@ call_continuation_labels(I) ->
 %% Unary calls
 evaluate_call_or_enter([Argument], Fun) ->
   case Fun of
+    mkflatmap ->
+      {} = Argument,
+      hipe_icode:mk_const(#{});
     mktuple ->
       hipe_icode:mk_const(list_to_tuple([Argument]));
     unsafe_untag_float ->
@@ -350,6 +353,8 @@ evaluate_call_or_enter([Argument1,Argument2], Fun) ->
       hipe_icode:mk_const(Argument1 / Argument2);
     cons ->
       hipe_icode:mk_const([Argument1 | Argument2]);
+    mkflatmap ->
+      mkflatmap_to_const([Argument1,Argument2]);
     mktuple -> 
       hipe_icode:mk_const(list_to_tuple([Argument1,Argument2]));
     #unsafe_update_element{index=N} ->
@@ -376,12 +381,17 @@ evaluate_call_or_enter(Arguments, Fun) ->
   case Fun of
     mktuple ->
       hipe_icode:mk_const(list_to_tuple(Arguments));
+    mkflatmap ->
+      mkflatmap_to_const(Arguments);
     {erlang, setelement, 3} ->
       [Argument1, Argument2, Argument3] = Arguments,
       hipe_icode:mk_const(setelement(Argument1, Argument2, Argument3));
     _ ->
       bottom
   end.
+
+mkflatmap_to_const([KeyTuple | Values]) ->
+  maps:from_list(lists:zip(tuple_to_list(KeyTuple), Values)).
 
 %%-----------------------------------------------------------------------------
 

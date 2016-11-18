@@ -61,7 +61,8 @@
 -export([test_subbinary/3, test_heap_binary/3]).
 -export([create_heap_binary/3, create_refc_binary/3, create_refc_binary/4]).
 -export([create_matchstate/6, convert_matchstate/1, compare_matchstate/4]).
--export([flatmap_limit/0, keysort_flatmap_pairs/1, unsafe_flatmap_get/3]).
+-export([flatmap_limit/0, tag_flatmap/2, keysort_flatmap_pairs/1,
+	 unsafe_flatmap_get/3]).
 -export([get_field_from_term/3, get_field_from_pointer/3,
 	 set_field_from_term/3, set_field_from_pointer/3,
 	 extract_matchbuffer/2, extract_binary_bytes/2]).
@@ -160,6 +161,7 @@ tag_boxed(Res, X) ->
 %% tag_bignum(Res, X) -> tag_boxed(Res, X).
 tag_flonum(Res, X) -> tag_boxed(Res, X).
 tag_tuple(Res, X) -> tag_boxed(Res, X).
+tag_flatmap(Res, X) -> tag_boxed(Res, X).
 
 tag_cons(Res, X) ->
   hipe_rtl:mk_alu(Res, X, 'add', hipe_rtl:mk_imm(?TAG_PRIMARY_LIST)).

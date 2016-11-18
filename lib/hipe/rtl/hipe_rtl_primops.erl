@@ -274,6 +274,14 @@ gen_primop({Op,Dst,Args,Cont,Fail}, IsGuard, ConstTab) ->
 	  %%---------------------------------------------
 	  %% Map handling
 	  %%---------------------------------------------
+	  mkflatmap ->
+	    case Dst of
+	      [] -> %% The result is not used.
+		[GotoCont];
+	      [Dst1] ->
+		[KeyTuple | Values] = Args,
+		[gen_mk_flatmap(Dst1, KeyTuple, Values), GotoCont]
+	    end;
 	  #unsafe_flatmap_get{index=N} ->
 	    case Dst of
 	      [] -> [GotoCont];
@@ -948,6 +956,30 @@ gen_apply_N_common(Dst, Arity, M, F, CallArgs, Cont, Fail) ->
        hipe_rtl:mk_call(Dst, CodeAddress, CallArgs, Cont, Fail, not_remote)
    end].
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% mkFlatmap
+%%
+gen_mk_flatmap(Dst, KeyTuple, Values) ->
+  {GetHPInsn, HP, PutHPInsn} = hipe_rtl_arch:heap_pointer(),
+  3 = ?MAP_HEADER_FLATMAP_SZ, % assert that we're not missing a field
+  Size = length(Values),
+  WordSize = hipe_rtl_arch:word_size(),
+  HeapNeed = (Size+?MAP_HEADER_FLATMAP_SZ)*WordSize,
+  [GetHPInsn,
+   store_struct_field(HP, ?FLATMAP_THING, hipe_rtl:mk_imm(?MAP_HEADER_FLATMAP)),
+   store_struct_field(HP, ?FLATMAP_SIZE, hipe_rtl:mk_imm(Size)),
+   store_struct_field(HP, ?FLATMAP_KEYS, KeyTuple),
+   set_flatmap_values(Values, 0, HP),
+   hipe_tagscheme:tag_flatmap(Dst, HP),
+   hipe_rtl:mk_alu(HP, HP, add, hipe_rtl:mk_imm(HeapNeed)),
+   PutHPInsn].
+
+set_flatmap_values([], _Index, _Base) -> [];
+set_flatmap_values([V|Vs], Index, Base) ->
+  [hipe_tagscheme:set_field_from_pointer({flatmap, {value, Index}}, Base, V)
+   |set_flatmap_values(Vs, Index+1, Base)].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
