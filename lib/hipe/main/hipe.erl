@@ -1402,7 +1402,8 @@ o1_opts(TargetArch) ->
 	    icode_ssa_const_prop, icode_ssa_copy_prop, icode_inline_bifs,
 	    rtl_ssa, rtl_ssa_const_prop, rtl_ssapre,
 	    spillmin_color, use_indexing, remove_comments,
-	    binary_opt, {regalloc,coalescing} | o0_opts(TargetArch)],
+	    binary_opt, {regalloc,coalescing}, ra_restore_reuse
+	    | o0_opts(TargetArch)],
   case TargetArch of
     ultrasparc ->
       Common;
@@ -1422,8 +1423,8 @@ o1_opts(TargetArch) ->
 
 o2_opts(TargetArch) ->
   Common = [icode_type, icode_call_elim, % icode_ssa_struct_reuse,
-	    ra_restore_reuse,
-	    rtl_lcm | (o1_opts(TargetArch) -- [rtl_ssapre])],
+	    ra_range_split,
+	    rtl_lcm | (o1_opts(TargetArch) -- [rtl_ssapre, ra_restore_reuse])],
   case TargetArch of
     T when T =:= amd64 orelse T =:= ppc64 -> % 64-bit targets
       [icode_range | Common];
@@ -1433,7 +1434,7 @@ o2_opts(TargetArch) ->
 
 o3_opts(TargetArch) ->
   %% no point checking for target architecture since this is checked in 'o1'
-  [ra_range_split, icode_range | o2_opts(TargetArch)].
+  [icode_range | o2_opts(TargetArch)].
 
 %% Note that in general, the normal form for options should be positive.
 %% This is a good programming convention, so that tests in the code say

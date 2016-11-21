@@ -54,7 +54,7 @@
 %% Heuristic tuning constants
 -define(GAIN_FACTOR_THRESH, 1.1).
 -define(MODE2_PREFERENCE, 1.1).
--define(WEIGHT_FUN(Wt), math:pow(Wt, math:log(4*1.1*1.1)/math:log(100))).
+-define(WEIGHT_FUN(Wt), math:pow(Wt, math:log(2)/math:log(100))).
 
 -type spill_grouping()   :: hipe_spill_grouping:grouping_list().
 -type target_cfg()       :: any().
