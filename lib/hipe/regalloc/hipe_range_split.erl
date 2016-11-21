@@ -717,14 +717,15 @@ scan_bbs([{L,BB}|BBs], Liveness, PLive, Weights, Defs, RDefs, Avail, Target,
   DUCounts = DUCounts0#{L => DUCount},
   M2SpillSet = ordsets:from_list(Mode2Spills),
   Costs6 = costs_insert(spill, L, Wt, M2SpillSet, Costs5),
-  Costs7 = costs_insert(restore, L, Wt, ordsets:intersection(M2SpillSet, Mode3Splits), Costs6),
+  Mode3Renames = mode3_block_renameset(L, Avail),
+  Costs7 = costs_insert(restore, L, Wt, ordsets:intersection(M2SpillSet, Mode3Renames), Costs6),
   Costs8 = costs_insert(restore, L, Wt, ordsets:from_list(Restored), Costs7),
-  Costs = add_unsplit_mode3_costs(DUCount, Mode3Splits, L, Costs8),
+  Costs = add_unsplit_mode3_costs(DUCount, Mode3Renames, L, Costs8),
   scan_bbs(BBs, Liveness, PLive, Weights, Defs, RDefs, Avail, Target, DUCounts,
 	   Costs, DSets, [{L,BB#bb{code=Code}}|Acc]).
 
-add_unsplit_mode3_costs(DUCount, Mode3Splits, L, Costs) ->
-  Unsplit = orddict_without_ordset(Mode3Splits,
+add_unsplit_mode3_costs(DUCount, Mode3Renames, L, Costs) ->
+  Unsplit = orddict_without_ordset(Mode3Renames,
 				   orddict:from_list(ducount_to_list(DUCount))),
   add_unsplit_mode3_costs_1(Unsplit, L, Costs).
 

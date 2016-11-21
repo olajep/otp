@@ -297,11 +297,13 @@ rewrite([L|Ls], Target, Avail, Input0, SpillGroups0, CFG0) ->
 
 -spec renamed_in_block(label(), avail()) -> ordsets:ordset(temp()).
 renamed_in_block(L, Avail) ->
-  ordsets:union(avail_self(L, Avail), demand_out(L, Avail)).
+  ordsets:union([avail_self(L, Avail), demand_in(L, Avail),
+		 demand_out(L, Avail)]).
 
 -spec split_in_block(label(), avail()) -> ordsets:ordset(temp()).
 split_in_block(L, Avail) ->
-  ordsets:subtract(renamed_in_block(L, Avail), demand_in(L, Avail)).
+  ordsets:subtract(ordsets:union(avail_self(L, Avail), demand_out(L, Avail)),
+		   demand_in(L, Avail)).
 
 rewrite_instrs([], _Target, Output, DefOut, [], SpillGroups) ->
   {[], Output, DefOut, SpillGroups};
