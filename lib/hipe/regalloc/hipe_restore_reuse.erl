@@ -20,7 +20,7 @@
 %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%@doc
-%%	       TEMPORARY LIVE RANGE SPLITTING PASS
+%%	       RESTORE REUSE LIVE RANGE SPLITTING PASS
 %%
 %% This is a simple live range splitter that tries to avoid sequences where a
 %% temporary is accessed on stack multiple times by keeping a copy of that temp
@@ -35,8 +35,6 @@
 %%     will introduce a new temp number for each of them, and later be forced to
 %%     generate phi blocks. It would be more efficient to introduce just a
 %%     single temp number. That would also remove the need for the phi blocks.
-%%   ** Phi blocks are not inlined into the successor even if that successor has
-%%      only the one predecessor.
 %%   * If a live range part ends in a definition, that definition should just
 %%     define the base temp rather than the substitution, since some CISC
 %%     targets might be able to inline the memory access in the instruction.
@@ -64,7 +62,9 @@
 -type target_context()   :: any().
 -type target()           :: {target_module(), target_context()}.
 -type label()            :: non_neg_integer().
--type temp()             :: non_neg_integer().
+-type reg()              :: non_neg_integer().
+-type instr()            :: any().
+-type temp()             :: any().
 
 -spec split(target_cfg(), liveness(), target_module(), target_context())
 	   -> {target_cfg(), spill_grouping()}.
@@ -77,16 +77,19 @@ split(CFG, Liveness, TargetMod, TargetContext) ->
 -opaque avail() :: #{label() => avail_bb()}.
 
 -record(avail_bb, {
+	  %% Blocks where HasCall is true are considered to have too high
+	  %% register pressure to support a register copy of a temp
 	  has_call :: boolean(),
+	  %% AvailOut: Temps that can be split (are available)
 	  out      :: availset(),
 	  %% Gen: AvailOut generated locally
 	  gen      :: availset(),
-	  %% Want: DemandIn generated locally
-	  want     :: ordsets:ordset(temp()),
-	  %% Self: Temps with avail-demand pairs locally
-	  self     :: ordsets:ordset(temp()),
-	  %% DefIn: Temps shadowed
-	  defin    :: ordsets:ordset(temp()),
+	  %% WantIn: Temps that are split
+	  want     :: regset(),
+	  %% Self: Temps with avail-want pairs locally
+	  self     :: regset(),
+	  %% DefIn: Temps shadowed by later def in same live range part
+	  defin    :: regset(),
 	  pred     :: [label()],
 	  succ     :: [label()]
 	 }).
@@ -109,10 +112,10 @@ avail_in(L, Avail) ->
 		  end, availset_top(), Pred)
   end.
 
-demand_in(L, Avail) -> (avail_get(L, Avail))#avail_bb.want.
-demand_out(L, Avail) ->
+want_in(L, Avail) -> (avail_get(L, Avail))#avail_bb.want.
+want_out(L, Avail) ->
   lists:foldl(fun(S, Set) ->
-		  ordsets:union(demand_in(S, Avail), Set)
+		  ordsets:union(want_in(S, Avail), Set)
 	      end, ordsets:new(), avail_succ(L, Avail)).
 
 def_in(L, Avail) -> (avail_get(L, Avail))#avail_bb.defin.
@@ -123,7 +126,8 @@ def_out(L, Avail) ->
       ordsets:intersection([def_in(S, Avail) || S <- Succ])
   end.
 
--type availset() :: top | ordsets:ordset(temp()).
+-type regset()  :: ordsets:ordset(reg()).
+-type availset() :: top | regset().
 availset_empty() -> [].
 availset_top() -> top.
 availset_intersect(top, B) -> B;
@@ -132,13 +136,28 @@ availset_intersect(A, B) -> ordsets:intersection(A, B).
 availset_union(top, _) -> top;
 availset_union(_, top) -> top;
 availset_union(A, B) -> ordsets:union(A, B).
-%% availset_add_list(_, top) -> top;
-%% availset_add_list(L, AS) -> ordsets:union(ordsets:from_list(L), AS).
-%% availset_from_ordset(OS) -> OS.
 ordset_intersect_availset(OS, top) -> OS;
 ordset_intersect_availset(OS, AS) -> ordsets:intersection(OS, AS).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Analysis pass
+%%
+%% The analysis pass collects the set of temps we're interested in splitting
+%% (Spills), and computes three dataflow analyses for this subset of temps.
+%%
+%% Avail, which is the set of temps which are available in register from a
+%%   previous (potential) spill or restore without going through a HasCall
+%%   block.
+%% Want, which is a liveness analysis for the subset of temps used by an
+%%   instruction that are also in Avail at that point. In other words, Want is
+%%   the set of temps that are split (has a register copy) at a particular
+%%   point.
+%% Def, which are the temps that are already going to be spilled later, and so
+%%   need not be spilled when they're defined.
+%%
+%% Lastly, it computes the set Self for each block, which is the temps that have
+%% avail-want pairs in the same block, and so should be split in that block even
+%% if they're not in WantIn for the block.
 
 -spec analyse(target_cfg(), liveness(), target()) -> avail().
 analyse(CFG, Liveness, Target) ->
@@ -148,11 +167,15 @@ analyse(CFG, Liveness, Target) ->
   Avail1 = avail_dataf(AvailLs, Avail0),
   Avail2 = analyse_filter_want(maps:keys(Avail1), Avail1),
   PO = lists:reverse(RPO),
-  demand_dataf(PO, Avail2).
+  want_dataf(PO, Avail2).
 
+-spec analyse_init(target_cfg(), liveness(), target()) -> avail().
 analyse_init(CFG, Liveness, Target) ->
   analyse_init(labels(CFG, Target), CFG, Liveness, Target, #{}, []).
 
+-spec analyse_init([label()], target_cfg(), liveness(), target(), spillset(),
+		   [{label(), avail_bb()}])
+		  -> avail().
 analyse_init([], _CFG, _Liveness, _Target, Spills, Acc) ->
   analyse_init_1(Acc, Spills, []);
 analyse_init([L|Ls], CFG, Liveness, Target, Spills0, Acc) ->
@@ -173,6 +196,9 @@ analyse_init([L|Ls], CFG, Liveness, Target, Spills0, Acc) ->
 		  pred=Pred, succ=Succ, defin=DefIn},
   analyse_init(Ls, CFG, Liveness, Target, Spills, [{L, Val} | Acc]).
 
+-spec analyse_init_1([{label(), avail_bb()}], spillset(),
+		     [{label(), avail_bb()}])
+		    -> avail().
 analyse_init_1([], _Spills, Acc) -> maps:from_list(Acc);
 analyse_init_1([{L, Val0}|Vs], Spills, Acc) ->
   #avail_bb{out=Out,gen=Gen,want=Want,self=Self} = Val0,
@@ -183,9 +209,12 @@ analyse_init_1([{L, Val0}|Vs], Spills, Acc) ->
 	  self = spills_filter_availset(Self, Spills)},
   analyse_init_1(Vs, Spills, [{L, Val} | Acc]).
 
+-type spillset() :: #{reg() => []}.
+-spec spills_add_list([reg()], spillset()) -> spillset().
 spills_add_list([], Spills) -> Spills;
 spills_add_list([R|Rs], Spills) -> spills_add_list(Rs, Spills#{R => []}).
 
+-spec spills_filter_availset(availset(), spillset()) -> availset().
 spills_filter_availset([E|Es], Spills) ->
   case Spills of
     #{E := _} -> [E|spills_filter_availset(Es, Spills)];
@@ -194,6 +223,13 @@ spills_filter_availset([E|Es], Spills) ->
 spills_filter_availset([], _) -> [];
 spills_filter_availset(top, _) -> top.
 
+-spec analyse_scan([instr()], target(), Defset, Gen, Self, Want)
+		  -> {Defset, Gen, Self, Want, HasCall} when
+    HasCall :: false | {true, regset()},
+    Defset  :: regset(),
+    Gen     :: availset(),
+    Self    :: regset(),
+    Want    :: regset().
 analyse_scan([], _Target, Defs, Gen, Self, Want) ->
   {Defs, Gen, Self, Want, false};
 analyse_scan([I|Is], Target, Defs0, Gen0, Self0, Want0) ->
@@ -212,6 +248,7 @@ analyse_scan([I|Is], Target, Defs0, Gen0, Self0, Want0) ->
       analyse_scan(Is, Target, Defs, Gen, Self, Want)
   end.
 
+-spec avail_dataf([label()], avail()) -> avail().
 avail_dataf(RPO, Avail0) ->
   case avail_dataf_once(RPO, Avail0, 0) of
     {Avail, 0} -> Avail;
@@ -219,6 +256,8 @@ avail_dataf(RPO, Avail0) ->
       avail_dataf(RPO, Avail)
   end.
 
+-spec avail_dataf_once([label()], avail(), non_neg_integer())
+		      -> {avail(), non_neg_integer()}.
 avail_dataf_once([], Avail, Changed) -> {Avail, Changed};
 avail_dataf_once([L|Ls], Avail0, Changed0) ->
   ABB = #avail_bb{out=OldOut, gen=Gen} = avail_get(L, Avail0),
@@ -230,6 +269,7 @@ avail_dataf_once([L|Ls], Avail0, Changed0) ->
     end,
   avail_dataf_once(Ls, Avail, Changed).
 
+-spec analyse_filter_want([label()], avail()) -> avail().
 analyse_filter_want([], Avail) -> Avail;
 analyse_filter_want([L|Ls], Avail0) ->
   ABB = #avail_bb{want=Want0, defin=DefIn0} = avail_get(L, Avail0),
@@ -239,18 +279,21 @@ analyse_filter_want([L|Ls], Avail0) ->
   Avail = avail_set(L, ABB#avail_bb{want=Want, defin=DefIn}, Avail0),
   analyse_filter_want(Ls, Avail).
 
-demand_dataf(PO, Avail0) ->
-  case demand_dataf_once(PO, Avail0, 0) of
+-spec want_dataf([label()], avail()) -> avail().
+want_dataf(PO, Avail0) ->
+  case want_dataf_once(PO, Avail0, 0) of
     {Avail, 0} -> Avail;
     {Avail, _Changed} ->
-      demand_dataf(PO, Avail)
+      want_dataf(PO, Avail)
   end.
 
-demand_dataf_once([], Avail, Changed) -> {Avail, Changed};
-demand_dataf_once([L|Ls], Avail0, Changed0) ->
+-spec want_dataf_once([label()], avail(), non_neg_integer())
+		     -> {avail(), non_neg_integer()}.
+want_dataf_once([], Avail, Changed) -> {Avail, Changed};
+want_dataf_once([L|Ls], Avail0, Changed0) ->
   ABB0 = #avail_bb{want=OldIn,defin=OldDef} = avail_get(L, Avail0),
   AvailIn = avail_in(L, Avail0),
-  Out = demand_out(L, Avail0),
+  Out = want_out(L, Avail0),
   DefOut = def_out(L, Avail0),
   {Changed, Avail} =
     case {ordsets:union(ordset_intersect_availset(Out,    AvailIn), OldIn),
@@ -261,14 +304,21 @@ demand_dataf_once([L|Ls], Avail0, Changed0) ->
 	ABB = ABB0#avail_bb{want=In,defin=DefIn},
 	{Changed0+1, avail_set(L, ABB, Avail0)}
     end,
-  demand_dataf_once(Ls, Avail, Changed).
+  want_dataf_once(Ls, Avail, Changed).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Rewrite pass
+-type subst_dict() :: orddicts:orddict(reg(), reg()).
 
+-spec rewrite(target_cfg(), target(), avail())
+	     -> {target_cfg(), spill_grouping()}.
 rewrite(CFG, Target, Avail) ->
   RPO = reverse_postorder(CFG, Target),
   rewrite(RPO, Target, Avail, #{}, [], CFG).
 
+-spec rewrite([label()], target(), avail(), subst_dict(), spill_grouping(),
+	      target_cfg())
+	     -> {target_cfg(), spill_grouping()}.
 rewrite([], _Target, _Avail, _Input, SpillGroups, CFG) -> {CFG, SpillGroups};
 rewrite([L|Ls], Target, Avail, Input0, SpillGroups0, CFG0) ->
   SplitHere = split_in_block(L, Avail),
@@ -278,7 +328,7 @@ rewrite([L|Ls], Target, Avail, Input0, SpillGroups0, CFG0) ->
       #{} -> {Input0#{L => []}, []} % entry block
     end,
   ?ASSERT([] =:= [X || X <- SplitHere, orddict:is_key(X, LInput)]),
-  ?ASSERT(demand_in(L, Avail) =:= orddict:fetch_keys(LInput)),
+  ?ASSERT(want_in(L, Avail) =:= orddict:fetch_keys(LInput)),
   {CFG1, LOutput, SpillGroups} =
     case {SplitHere, LInput} of
       {[], []} -> % optimisation (rewrite will do nothing, so skip it)
@@ -295,21 +345,27 @@ rewrite([L|Ls], Target, Avail, Input0, SpillGroups0, CFG0) ->
 			       Input1, CFG1),
   rewrite(Ls, Target, Avail, Input, SpillGroups, CFG).
 
--spec renamed_in_block(label(), avail()) -> ordsets:ordset(temp()).
+-spec renamed_in_block(label(), avail()) -> ordsets:ordset(reg()).
 renamed_in_block(L, Avail) ->
-  ordsets:union([avail_self(L, Avail), demand_in(L, Avail),
-		 demand_out(L, Avail)]).
+  ordsets:union([avail_self(L, Avail), want_in(L, Avail),
+		 want_out(L, Avail)]).
 
--spec split_in_block(label(), avail()) -> ordsets:ordset(temp()).
+-spec split_in_block(label(), avail()) -> ordsets:ordset(reg()).
 split_in_block(L, Avail) ->
-  ordsets:subtract(ordsets:union(avail_self(L, Avail), demand_out(L, Avail)),
-		   demand_in(L, Avail)).
+  ordsets:subtract(ordsets:union(avail_self(L, Avail), want_out(L, Avail)),
+		   want_in(L, Avail)).
 
+-spec rewrite_instrs([instr()], target(), subst_dict(), regset(), [reg()],
+		     spill_grouping())
+		    ->  {[instr()], subst_dict(), regset(), spill_grouping()}.
 rewrite_instrs([], _Target, Output, DefOut, [], SpillGroups) ->
   {[], Output, DefOut, SpillGroups};
 rewrite_instrs([I|Is], Target, Input0, BBDefOut, SplitHere0, SpillGroups0) ->
   {TDef, TUse} = def_use(I, Target),
   {Def, Use} = {reg_names(TDef, Target), reg_names(TUse, Target)},
+  %% Restores are generated in forward order by picking temps from SplitHere as
+  %% they're used or defined. After the last instruction, all temps have been
+  %% picked.
   {ISplits, SplitHere} =
     lists:partition(fun(R) ->
 			lists:member(R, Def) orelse lists:member(R, Use)
@@ -320,19 +376,25 @@ rewrite_instrs([I|Is], Target, Input0, BBDefOut, SplitHere0, SpillGroups0) ->
       _ ->
 	make_splits(ISplits, Target, TDef, TUse, Input0, SpillGroups0, [])
     end,
+  %% Here's the recursive call
+  {Acc0, Output, DefOut, SpillGroups} =
+    rewrite_instrs(Is, Target, Input, BBDefOut, SplitHere, SpillGroups1),
+  %% From here we're processing instructions in reverse order, because to avoid
+  %% redundant spills we need to walk the 'def' dataflow, which is in reverse.
   SubstFun = fun(Temp) ->
 		 case orddict:find(reg_nr(Temp, Target), Input) of
 		   {ok, NewTemp} -> NewTemp;
 		   error -> Temp
 		 end
 	     end,
-  {Acc0, Output, DefOut, SpillGroups} =
-    rewrite_instrs(Is, Target, Input, BBDefOut, SplitHere, SpillGroups1),
   Acc1 = insert_spills(TDef, Target, Input, DefOut, Acc0),
   Acc = Restores ++ [subst_temps(SubstFun, I, Target) | Acc1],
-  DefIn = ordsets:union(DefOut, Def),
+  DefIn = ordsets:union(DefOut, ordsets:from_list(Def)),
   {Acc, Output, DefIn, SpillGroups}.
 
+-spec make_splits([reg()], target(), [temp()], [temp()], subst_dict(),
+		  spill_grouping(), [instr()])
+		 -> {subst_dict(), spill_grouping(), [instr()]}.
 make_splits([], _Target, _TDef, _TUse, Input, SpillGroups, Acc) ->
   {Input, SpillGroups, Acc};
 make_splits([S|Ss], Target, TDef, TUse, Input0, SpillGroups0, Acc0) ->
@@ -351,6 +413,7 @@ make_splits([S|Ss], Target, TDef, TUse, Input0, SpillGroups0, Acc0) ->
   SpillGroups = [{SubstReg, S} | SpillGroups0],
   make_splits(Ss, Target, TDef, TUse, Input, SpillGroups, Acc).
 
+-spec find_reg_temp(reg(), [temp()], target()) -> error | {ok, temp()}.
 find_reg_temp(_Reg, [], _Target) -> error;
 find_reg_temp(Reg, [T|Ts], Target) ->
   case reg_nr(T, Target) of
@@ -358,6 +421,8 @@ find_reg_temp(Reg, [T|Ts], Target) ->
     _ -> find_reg_temp(Reg, Ts, Target)
   end.
 
+-spec insert_spills([temp()], target(), subst_dict(), regset(), [instr()])
+		   -> [instr()].
 insert_spills([], _Target, _Input, _DefOut, Acc) -> Acc;
 insert_spills([T|Ts], Target, Input, DefOut, Acc0) ->
   R = reg_nr(T, Target),
@@ -372,9 +437,11 @@ insert_spills([T|Ts], Target, Input, DefOut, Acc0) ->
     end,
   insert_spills(Ts, Target, Input, DefOut, Acc).
 
+-spec rewrite_succs([label()], target(), label(), subst_dict(), avail(),
+		    subst_dict(), target_cfg()) -> {subst_dict(), target_cfg()}.
 rewrite_succs([], _Target, _P, _POutput, _Avail, Input, CFG) -> {Input, CFG};
 rewrite_succs([L|Ls], Target, P, POutput, Avail, Input0, CFG0) ->
-  NewLInput = orddict_intersect_ordset(POutput, demand_in(L, Avail)),
+  NewLInput = orddict_with_ordset(want_in(L, Avail), POutput),
   {Input, CFG} =
     case Input0 of
       #{L := LInput} ->
@@ -391,30 +458,35 @@ rewrite_succs([L|Ls], Target, P, POutput, Avail, Input0, CFG0) ->
 	  end,
 	{Input0, CFG2};
       #{} ->
-
 	{Input0#{L => NewLInput}, CFG0}
     end,
   rewrite_succs(Ls, Target, P, POutput, Avail, Input, CFG).
 
+-spec bb_redirect_jmp(label(), label(), label(), target_cfg(), target())
+		     -> target_cfg().
 bb_redirect_jmp(From, To, Lb, CFG, Target) ->
   BB0 = bb(CFG, Lb, Target),
   Last = redirect_jmp(hipe_bb:last(BB0), From, To, Target),
   BB = hipe_bb:code_update(BB0, hipe_bb:butlast(BB0) ++ [Last]),
   update_bb(CFG, Lb, BB, Target).
 
+-spec required_phi_moves(subst_dict(), subst_dict()) -> [{reg(), reg()}].
 required_phi_moves([], []) -> [];
 required_phi_moves([P|Is], [P|Os]) -> required_phi_moves(Is, Os);
 required_phi_moves([{K, In}|Is], [{K, Out}|Os]) ->
   [{Out, In}|required_phi_moves(Is, Os)].
 
-orddict_intersect_ordset([], _) -> [];
-orddict_intersect_ordset(_, []) -> [];
-orddict_intersect_ordset([{K, _}=P|Ds], [K|Ss]) ->
-  [P|orddict_intersect_ordset(Ds, Ss)];
-orddict_intersect_ordset([{K1, _}|Ds], [K2|_]=Ss) when K1 < K2 ->
-  orddict_intersect_ordset(Ds, Ss);
-orddict_intersect_ordset([{K1, _}|_]=Ds, [K2|Ss]) when K1 > K2 ->
-  orddict_intersect_ordset(Ds, Ss).
+%% @doc Returns a new orddict with the keys in Set and their associated values.
+-spec orddict_with_ordset(ordsets:ordset(K), orddict:orddict(K, V))
+			 -> orddict:orddict(K, V).
+orddict_with_ordset([S|Ss], [{K, _}|_]=Dict) when S < K ->
+  orddict_with_ordset(Ss, Dict);
+orddict_with_ordset([S|_]=Set, [{K, _}|Ds]) when S > K ->
+  orddict_with_ordset(Set, Ds);
+orddict_with_ordset([_S|Ss], [{_K, _}=P|Ds]) -> % _S == _K
+  [P|orddict_with_ordset(Ss, Ds)];
+orddict_with_ordset([], _) -> [];
+orddict_with_ordset(_, []) -> [].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Target module interface functions
@@ -426,15 +498,12 @@ orddict_intersect_ordset([{K1, _}|_]=Ds, [K2|Ss]) when K1 > K2 ->
 
 ?TGT_IFACE_2(bb).
 ?TGT_IFACE_1(def_use).
-%% ?TGT_IFACE_1(defines).
 ?TGT_IFACE_1(defines_all_alloc).
-%% ?TGT_IFACE_1(is_precoloured).
 ?TGT_IFACE_1(labels).
 ?TGT_IFACE_1(mk_goto).
 ?TGT_IFACE_2(mk_move).
 ?TGT_IFACE_0(new_label).
 ?TGT_IFACE_0(new_reg_nr).
-%% ?TGT_IFACE_1(postorder).
 ?TGT_IFACE_3(redirect_jmp).
 ?TGT_IFACE_1(reg_nr).
 ?TGT_IFACE_1(reverse_postorder).
@@ -442,19 +511,8 @@ orddict_intersect_ordset([{K1, _}|_]=Ds, [K2|Ss]) when K1 > K2 ->
 ?TGT_IFACE_3(update_bb).
 ?TGT_IFACE_2(update_reg_nr).
 
-%% branch_preds(Instr, {TgtMod,TgtCtx}) ->
-%%   merge_sorted_preds(lists:keysort(1, TgtMod:branch_preds(Instr, TgtCtx))).
-
-%% livein(Liveness, L, Target={TgtMod,TgtCtx}) ->
-%%   ordsets:from_list(reg_names(TgtMod:livein(Liveness, L, TgtCtx), Target)).
-
 liveout(Liveness, L, Target={TgtMod,TgtCtx}) ->
   ordsets:from_list(reg_names(TgtMod:liveout(Liveness, L, TgtCtx), Target)).
-
-%% merge_sorted_preds([]) -> [];
-%% merge_sorted_preds([{L, P1}, {L, P2}|LPs]) ->
-%%   merge_sorted_preds([{L, P1+P2}|LPs]);
-%% merge_sorted_preds([LP|LPs]) -> [LP|merge_sorted_preds(LPs)].
 
 reg_names(Regs, {TgtMod,TgtCtx}) ->
   [TgtMod:reg_nr(X,TgtCtx) || X <- Regs].
