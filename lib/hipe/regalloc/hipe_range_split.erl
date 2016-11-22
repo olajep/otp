@@ -270,6 +270,7 @@ def_init_scan([#instr{def=Def}|Is], Defset0) ->
   Defset = defseti_add_ordset(Def, Defset0),
   def_init_scan(Is, Defset).
 
+-spec def_dataf([label()], target_cfg(), defsi()) -> defs().
 def_dataf(Labels, TCFG, Defs0) ->
   case def_dataf_once(Labels, TCFG, Defs0, 0) of
     {Defs, 0} ->
@@ -278,10 +279,13 @@ def_dataf(Labels, TCFG, Defs0) ->
       def_dataf(Labels, TCFG, Defs)
   end.
 
+-spec def_finalise(defsi()) -> defs().
 def_finalise(Defs) ->
   maps:from_list([{K, defseti_finalise(BL)}
 		  || {K, {call, BL, _}} <- maps:to_list(Defs)]).
 
+-spec def_dataf_once([label()], target_cfg(), defsi(), non_neg_integer())
+		    -> {defsi(), non_neg_integer()}.
 def_dataf_once([], _TCFG, Defs, Changed) -> {Defs, Changed};
 def_dataf_once([L|Ls], TCFG, Defs0, Changed0) ->
   AddPreds =
@@ -310,6 +314,15 @@ defout(L, Defs) ->
 
 -spec defbutlast(label(), defs()) -> defsetf().
 defbutlast(L, Defs) -> maps:get(L, Defs).
+
+-spec defseti_new() -> defseti().
+-spec defseti_union(defseti(), defseti()) -> defseti().
+-spec defseti_add_ordset(ordset:ordset(temp()), defseti()) -> defseti().
+-spec defseti_from_ordset(ordset:ordset(temp())) -> defseti().
+-spec defseti_finalise(defseti()) -> defsetf().
+-spec defsetf_member(temp(), defsetf()) -> boolean().
+-spec defsetf_intersect_ordset(ordsets:ordset(temp()), defsetf())
+			      -> ordsets:ordset(temp()).
 
 -type defseti() :: bitord().
 defseti_new() -> bitord_new().
@@ -376,6 +389,7 @@ rdef_analyse(CFG = #cfg{rpo_labels=RPO}) ->
   rdef_dataf(PO, Defs0).
 
 %% Filter out 'call' labels, since they don't change
+-spec rdef_postorder([label()], cfg(), [label()]) -> [label()].
 rdef_postorder([], _CFG, Acc) -> Acc;
 rdef_postorder([L|Ls], CFG, Acc) ->
   case bb_has_call(cfg_bb(L, CFG)) of
@@ -396,11 +410,13 @@ rdef_init(#cfg{bbs = BBs}) ->
 	 end}
      || {L, BB = #bb{has_call=HasCall, succ=Succs}} <- maps:to_list(BBs)]).
 
+-spec rdef_init_scan([instr()], rdefseti()) -> rdefseti().
 rdef_init_scan([], Defset) -> Defset;
 rdef_init_scan([#instr{def=Def}|Is], Defset0) ->
   Defset = rdefseti_add_ordset(Def, Defset0),
   rdef_init_scan(Is, Defset).
 
+-spec rdef_dataf([label()], rdefsi()) -> rdefs().
 rdef_dataf(Labels, Defs0) ->
   case rdef_dataf_once(Labels, Defs0, 0) of
     {Defs, 0} ->
@@ -409,6 +425,7 @@ rdef_dataf(Labels, Defs0) ->
       rdef_dataf(Labels, Defs)
   end.
 
+-spec rdef_finalise(rdefsi()) -> rdefs().
 rdef_finalise(Defs) ->
   maps:map(fun(L, V) ->
 	       Succs = rsuccs_val(V),
@@ -416,6 +433,8 @@ rdef_finalise(Defs) ->
 	       {final, rdefset_finalise(Defout0), Succs}
 	   end, Defs).
 
+-spec rdef_dataf_once([label()], rdefsi(), non_neg_integer())
+		     -> {rdefsi(), non_neg_integer()}.
 rdef_dataf_once([], Defs, Changed) -> {Defs, Changed};
 rdef_dataf_once([L|Ls], Defs0, Changed0) ->
   #{L := {nocall, Gen, Defin0, Succs}} = Defs0,
@@ -451,15 +470,19 @@ rdefout_intersect(L, Defs, Init) ->
 -type rdefseti() :: bitord() | top.
 rdefseti_top() -> top.
 rdefseti_empty() -> bitord_new().
+-spec rdefseti_from_ordset(ordsets:ordset(temp())) -> rdefseti().
 rdefseti_from_ordset(OS) -> bitord_from_ordset(OS).
 
+-spec rdefseti_add_ordset(ordsets:ordset(temp()), rdefseti()) -> rdefseti().
 rdefseti_add_ordset(_, top) -> top; % Should never happen in rdef_dataf
 rdefseti_add_ordset(OS, D) -> rdefseti_union(rdefseti_from_ordset(OS), D).
 
+-spec rdefseti_union(rdefseti(), rdefseti()) -> rdefseti().
 rdefseti_union(top, _) -> top;
 rdefseti_union(_, top) -> top;
 rdefseti_union(A, B) -> bitord_union(A, B).
 
+-spec rdefseti_intersect(rdefseti(), rdefseti()) -> rdefseti().
 rdefseti_intersect(top, D) -> D;
 rdefseti_intersect(D, top) -> D;
 rdefseti_intersect(A, B) -> bitord_intersect(A, B).
@@ -472,14 +495,18 @@ rdefset_finalise(Ord) -> {arr, bitarr_from_bitord(Ord)}.
 %% rdefsetf_top() -> top.
 rdefsetf_empty() -> {arr, bitarr_new()}.
 
+-spec rdefsetf_add_ordset(ordset:ordset(temp()), rdefsetf()) -> rdefsetf().
 rdefsetf_add_ordset(_, top) -> top;
 rdefsetf_add_ordset(OS, {arr, Arr}) ->
   {arr, lists:foldl(fun bitarr_set/2, Arr, OS)}.
 
+-spec rdef_step(instr(), rdefsetf()) -> rdefsetf().
 rdef_step(#instr{def=Def}, Defset) ->
   %% ?ASSERT(not defines_all_alloc(I, Target)),
   rdefsetf_add_ordset(Def, Defset).
 
+-spec ordset_subtract_rdefsetf(ordsets:ordset(temp()), rdefsetf())
+			      -> ordsets:ordset(temp()).
 ordset_subtract_rdefsetf(_, top) -> [];
 ordset_subtract_rdefsetf(OS, {arr, Arr}) ->
   %% Lazy implementation; could do better if OS can grow
@@ -580,6 +607,7 @@ plive_init(#cfg{bbs = BBs}) ->
 	   end}
      end || {L, BB = #bb{has_call=HasCall, succ=Succs}} <- maps:to_list(BBs)]).
 
+-spec plive_init_scan([instr()]) -> {liveset(), liveset()}.
 plive_init_scan([]) -> {liveset_empty(), liveset_empty()};
 plive_init_scan([#instr{def=InstrKill, use=InstrGen}|Is]) ->
   {Gen0, Kill0} = plive_init_scan(Is),
@@ -593,6 +621,7 @@ plive_init_scan([#instr{def=InstrKill, use=InstrGen}|Is]) ->
 %%   ?ASSERT(not defines_all_alloc(I, Target)),
 %%   liveness_step(I, Target, Liveset).
 
+-spec plive_dataf([label()], plive()) -> plive().
 plive_dataf(Labels, PLive0) ->
   case plive_dataf_once(Labels, PLive0, 0) of
     {PLive, 0} -> PLive;
@@ -600,6 +629,8 @@ plive_dataf(Labels, PLive0) ->
       plive_dataf(Labels, PLive)
   end.
 
+-spec plive_dataf_once([label()], plive(), non_neg_integer()) ->
+			  {plive(), non_neg_integer()}.
 plive_dataf_once([], PLive, Changed) -> {PLive, Changed};
 plive_dataf_once([L|Ls], PLive0, Changed0) ->
   Liveset =
@@ -619,13 +650,16 @@ plive_dataf_once([L|Ls], PLive0, Changed0) ->
 	    end,
   plive_dataf_once(Ls, PLive0#{L := Liveset}, Changed).
 
+-spec pliveout(label(), plive()) -> liveset().
 pliveout(L, PLive) ->
   liveset_union([plivein(S, PLive) || S <- psuccs(L, PLive)]).
 
+-spec psuccs(label(), plive()) -> [label()].
 psuccs(L, PLive) -> psuccs_val(maps:get(L, PLive)).
 psuccs_val({call, _Livein, Succs}) -> Succs;
 psuccs_val({nocall, _GenKill, _Livein, Succs}) -> Succs.
 
+-spec plivein(label(), plive()) -> liveset().
 plivein(L, PLive) -> plivein_val(maps:get(L, PLive)).
 plivein_val({call, Livein, _Succs}) -> Livein;
 plivein_val({nocall, _GenKill, Livein, _Succs}) ->  Livein.
@@ -639,12 +673,17 @@ liveset_union(LivesetList) -> ordsets:union(LivesetList).
 %% Reuse analysis implementation in hipe_restore_reuse.
 %% XXX: hipe_restore_reuse has it's own "rdef"; we would like to reuse that one
 %% too.
+-type avail() :: hipe_restore_reuse:avail().
+
+-spec avail_analyse(target_cfg(), liveness(), target()) -> avail().
 avail_analyse(CFG, Liveness, Target) ->
   hipe_restore_reuse:analyse(CFG, Liveness, Target).
 
+-spec mode3_split_in_block(label(), avail()) -> ordsets:ordset(temp()).
 mode3_split_in_block(L, Avail) ->
   hipe_restore_reuse:split_in_block(L, Avail).
 
+-spec mode3_block_renameset(label(), avail()) -> ordsets:ordset(temp()).
 mode3_block_renameset(L, Avail) ->
   hipe_restore_reuse:renamed_in_block(L, Avail).
 
@@ -655,9 +694,11 @@ mode3_block_renameset(L, Avail) ->
 %% heuristic.
 -type part_key() :: label().
 -type part_dsets() :: hipe_dsets:dsets(part_key()).
-%%-type part_dsets_map() :: #{part_key() => part_key()}.
+-type part_dsets_map() :: #{part_key() => part_key()}.
 -type ducounts() :: #{part_key() => ducount()}.
 
+-spec scan(cfg(), liveness(), plive(), weights(), defs(), rdefs(), avail(),
+	   target()) -> {cfg(), ducounts(), costs(), part_dsets()}.
 scan(CFG0, Liveness, PLive, Weights, Defs, RDefs, Avail, Target) ->
   #cfg{rpo_labels = Labels, bbs = BBs0} = CFG0,
   CFG = CFG0#cfg{bbs=#{}}, % kill reference
@@ -673,6 +714,8 @@ scan(CFG0, Liveness, PLive, Weights, Defs, RDefs, Avail, Target) ->
   DUCounts = collect_ducounts(RLList, DUCounts0, #{}),
   {CFG#cfg{bbs=maps:from_list(BBs)}, DUCounts, Costs, DSets}.
 
+-spec collect_ducounts([{label(), [label()]}], ducounts(), ducounts())
+		      -> ducounts().
 collect_ducounts([], _, Acc) -> Acc;
 collect_ducounts([{R,Ls}|RLs], DUCounts, Acc) ->
   DUCount = lists:foldl(
@@ -681,6 +724,10 @@ collect_ducounts([{R,Ls}|RLs], DUCounts, Acc) ->
 	      end, ducount_new(), Ls),
   collect_ducounts(RLs, DUCounts, Acc#{R => DUCount}).
 
+-spec scan_bbs([{label(), bb()}], liveness(), plive(), weights(), defs(),
+	       rdefs(), avail(), target(), ducounts(), costs(), part_dsets(),
+	       [{label(), bb()}])
+	      -> {[{label(), bb()}], ducounts(), costs(), part_dsets()}.
 scan_bbs([], _Liveness, _PLive, _Weights, _Defs, _RDefs, _Avail, _Target,
 	 DUCounts, Costs, DSets, Acc) ->
   {Acc, DUCounts, Costs, DSets};
@@ -724,11 +771,15 @@ scan_bbs([{L,BB}|BBs], Liveness, PLive, Weights, Defs, RDefs, Avail, Target,
   scan_bbs(BBs, Liveness, PLive, Weights, Defs, RDefs, Avail, Target, DUCounts,
 	   Costs, DSets, [{L,BB#bb{code=Code}}|Acc]).
 
+-spec add_unsplit_mode3_costs(ducount(), ordsets:ordset(temp()), label(), costs())
+			     -> costs().
 add_unsplit_mode3_costs(DUCount, Mode3Renames, L, Costs) ->
   Unsplit = orddict_without_ordset(Mode3Renames,
 				   orddict:from_list(ducount_to_list(DUCount))),
   add_unsplit_mode3_costs_1(Unsplit, L, Costs).
 
+-spec add_unsplit_mode3_costs_1([{temp(),float()}], label(), costs())
+			       -> costs().
 add_unsplit_mode3_costs_1([], _L, Costs) -> Costs;
 add_unsplit_mode3_costs_1([{T,C}|Cs], L, Costs) ->
   add_unsplit_mode3_costs_1(Cs, L, costs_insert(restore, L, C, [T], Costs)).
@@ -746,6 +797,9 @@ orddict_without_ordset(_, []) -> [];
 orddict_without_ordset([], Dict) -> Dict.
 
 %% Scans the code forward, collecting and inserting mode3 restores
+-spec scan_bb_fwd([instr()], ordsets:ordset(temp()), ordsets:ordset(temp()),
+		  [code_elem()])
+		 -> {[code_elem()], ordsets:ordset(temp())}.
 scan_bb_fwd([], [], Restored, Acc) -> {Acc, Restored};
 scan_bb_fwd([I|Is], SplitHere0, Restored0, Acc0) ->
   #instr{def=Def, use=Use} = I,
@@ -760,6 +814,9 @@ scan_bb_fwd([I|Is], SplitHere0, Restored0, Acc0) ->
   scan_bb_fwd(Is, SplitHere, ToRestore ++ Restored0, Acc).
 
 %% Scans the code backwards, collecting def/use counts and mode2 spills
+-spec scan_bb([code_elem()], float(), rdefsetf(), liveset(), ducount(),
+	      [temp()], [code_elem()])
+	     -> {[code_elem()], ducount(), [temp()]}.
 scan_bb([], _Wt, _RDefout, _Liveout, DUCount, Spills, Acc) ->
   {Acc, DUCount, Spills};
 scan_bb([I=#mode3_restores{}|Is], Wt, RDefout, Liveout, DUCount, Spills, Acc) ->
@@ -781,16 +838,24 @@ scan_bb([I|Is], Wt, RDefout, Liveout, DUCount0, Spills0, Acc0) ->
 	 end,
   scan_bb(Is, Wt, RDefin, Livein, DUCount, Spills, [I|Acc1]).
 
+-spec liveness_step(instr(), liveset()) -> liveset().
 liveness_step(#instr{def=Def, use=Use}, Liveout) ->
   ordsets:union(Use, ordsets:subtract(Liveout, Def)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec weight(label(), weights()) -> float().
+-spec compute_weights(target_cfg(), target_module(), target_context())
+		     -> weights().
+-spec weight_scaled(label(), float(), weights()) -> float().
+
 weight(L, Weights) -> weight_scaled(L, 1.0, Weights).
 -ifndef(USE_BB_WEIGHTS).
+-type weights() :: [].
 compute_weights(_, _, _) -> [].
 weight_scaled(_L, _Scale, _Weights) -> 1.0.
 
 -else.
+-type weights() :: hipe_bb_weights:weights().
 compute_weights(CFG, TargetMod, TargetContext) ->
   %% try
     hipe_bb_weights:compute(CFG, TargetMod, TargetContext)
@@ -824,11 +889,15 @@ weight_scaled(L, Scale, Weights) ->
 decide(DUCounts, Costs, Target) ->
   decide_parts(maps:to_list(DUCounts), Costs, Target, #{}).
 
+-spec decide_parts([{part_key(), ducount()}], costs(), target(), renames())
+		  -> renames().
 decide_parts([], _Costs, _Target, Acc) -> Acc;
 decide_parts([{Part,DUCount}|Ps], Costs, Target, Acc) ->
   Spills = decide_temps(ducount_to_list(DUCount), Part, Costs, Target, #{}),
   decide_parts(Ps, Costs, Target, Acc#{Part => Spills}).
 
+-spec decide_temps([{temp(), float()}], part_key(), costs(), target(), ren())
+		  -> ren().
 decide_temps([], _Part, _Costs, _Target, Acc) -> Acc;
 decide_temps([{Temp, SpillGain}|Ts], Part, Costs, Target, Acc0) ->
   SpillCost1 = costs_query(Temp, entry1, Part, Costs)
@@ -868,11 +937,18 @@ decide_temps([{Temp, SpillGain}|Ts], Part, Costs, Target, Acc0) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Actual second pass
+
+-spec rewrite(cfg(), target_cfg(), target(), liveness(), plive(), defs(),
+	      avail(), part_dsets_map(), renames(), temps())
+	     -> target_cfg().
 rewrite(#cfg{bbs=BBs}, TCFG, Target, Liveness, PLive, Defs, Avail, DSets,
 	Renames, Temps) ->
   rewrite_bbs(maps:to_list(BBs), Target, Liveness, PLive, Defs, Avail, DSets,
 	      Renames, Temps, TCFG).
 
+-spec rewrite_bbs([{label(), bb()}], target(), liveness(), plive(), defs(),
+		  avail(), part_dsets_map(), renames(), temps(), target_cfg())
+		 -> target_cfg().
 rewrite_bbs([], _Target, _Liveness, _PLive, _Defs, _Avail, _DSets, _Renames,
 	    _Temps, TCFG) ->
   TCFG;
@@ -906,6 +982,10 @@ rewrite_bbs([{L,BB}|BBs], Target, Liveness, PLive, Defs, Avail, DSets, Renames,
   rewrite_bbs(BBs, Target, Liveness, PLive, Defs, Avail, DSets, Renames, Temps,
 	      update_bb(TCFG, L, TBB, Target)).
 
+-spec rewrite_instrs([code_elem()], rewrite_fun(), ren(),
+		     ordsets:ordset(temp()), temps(), target(),
+		     [target_instr()])
+		    -> [target_instr()].
 rewrite_instrs([], _Fun, _Ren, _M3Ren, _Temps, _Target, Acc) -> Acc;
 rewrite_instrs([I|Is], Fun, Ren, M3Ren, Temps, Target, Acc0) ->
   Acc =
@@ -918,6 +998,9 @@ rewrite_instrs([I|Is], Fun, Ren, M3Ren, Temps, Target, Acc0) ->
     end,
   rewrite_instrs(Is, Fun, Ren, M3Ren, Temps, Target, Acc).
 
+-spec add_mode2_spills(ordsets:ordset(temp()), target(), ren(),
+		       ordsets:ordset(temp()), temps(), [target_instr()])
+		      -> [target_instr()].
 add_mode2_spills([], _Target, _Ren, _M3Ren, _Temps, Acc) -> Acc;
 add_mode2_spills([R|Rs], Target, Ren, M3Ren, Temps, Acc0) ->
   Acc =
@@ -935,6 +1018,9 @@ add_mode2_spills([R|Rs], Target, Ren, M3Ren, Temps, Acc0) ->
   end,
   add_mode2_spills(Rs, Target, Ren, M3Ren, Temps, Acc).
 
+-spec add_mode3_restores(ordsets:ordset(temp()), target(), ren(), temps(),
+			 [target_instr()])
+			-> [target_instr()].
 add_mode3_restores([], _Target, _Ren, _Temps, Acc) -> Acc;
 add_mode3_restores([R|Rs], Target, Ren, Temps, Acc) ->
   case Ren of
@@ -946,6 +1032,9 @@ add_mode3_restores([R|Rs], Target, Ren, Temps, Acc) ->
       add_mode3_restores(Rs, Target, Ren, Temps, Acc)
   end.
 
+-type rewrite_fun() :: fun((target_instr()) -> target_instr()).
+-type subst_fun() :: fun((target_temp()) -> target_temp()).
+-spec rewrite_subst_fun(target(), ren(), ordsets:ordset(temp())) -> subst_fun().
 rewrite_subst_fun(Target, Ren, M3Ren) ->
   fun(Temp) ->
       Reg = reg_nr(Temp, Target),
@@ -959,6 +1048,9 @@ rewrite_subst_fun(Target, Ren, M3Ren) ->
       end
   end.
 
+-type spillmap() :: [{temp(), target_instr()}].
+-spec mk_spillmap(ren(), liveset(), defsetf(), temps(), target())
+		 -> spillmap().
 mk_spillmap(Ren, Livein, Defout, Temps, Target) ->
   [begin
      Temp = maps:get(Reg, Temps),
@@ -966,6 +1058,8 @@ mk_spillmap(Ren, Livein, Defout, Temps, Target) ->
    end || {Reg, {mode1, NewName}} <- maps:to_list(Ren),
 	  lists:member(Reg, Livein), defsetf_member(Reg, Defout)].
 
+-spec mk_restores(ren(), liveset(), liveset(), temps(), target())
+		 -> [target_instr()].
 mk_restores(Ren, Livein, PLivein, Temps, Target) ->
   [begin
      Temp = maps:get(Reg, Temps),
@@ -974,6 +1068,10 @@ mk_restores(Ren, Livein, PLivein, Temps, Target) ->
 	  (       (Mode =:= mode1 andalso lists:member(Reg, Livein ))
 	   orelse (Mode =:= mode2 andalso lists:member(Reg, PLivein)))].
 
+-spec inject_restores([label()], target(), liveness(), plive(),
+		      part_dsets_map(), renames(), temps(), target_instr(),
+		      target_cfg())
+		     -> {target_instr(), target_cfg()}.
 inject_restores([], _Target, _Liveness, _PLive, _DSets, _Renames, _Temps, CFTI,
 		TCFG) ->
   {CFTI, TCFG};
@@ -1000,6 +1098,8 @@ inject_restores([L|Ls], Target, Liveness, PLive, DSets, Renames, Temps, CFTI0,
 
 %% Heuristic. Move spills up until we meet the edge of the BB or a definition of
 %% that temp.
+-spec lift_spills([target_instr()], target(), spillmap(), [target_instr()])
+		 -> [target_instr()].
 lift_spills([], _Target, SpillMap, Acc) ->
   [SpillI || {_, SpillI} <- SpillMap] ++ Acc;
 lift_spills([I|Is], Target, SpillMap0, Acc) ->
