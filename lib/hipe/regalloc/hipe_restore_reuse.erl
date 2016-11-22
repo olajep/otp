@@ -308,7 +308,8 @@ want_dataf_once([L|Ls], Avail0, Changed0) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Rewrite pass
--type subst_dict() :: orddicts:orddict(reg(), reg()).
+-type subst_dict() :: orddict:orddict(reg(), reg()).
+-type input()      :: #{label() => subst_dict()}.
 
 -spec rewrite(target_cfg(), target(), avail())
 	     -> {target_cfg(), spill_grouping()}.
@@ -316,7 +317,7 @@ rewrite(CFG, Target, Avail) ->
   RPO = reverse_postorder(CFG, Target),
   rewrite(RPO, Target, Avail, #{}, [], CFG).
 
--spec rewrite([label()], target(), avail(), subst_dict(), spill_grouping(),
+-spec rewrite([label()], target(), avail(), input(), spill_grouping(),
 	      target_cfg())
 	     -> {target_cfg(), spill_grouping()}.
 rewrite([], _Target, _Avail, _Input, SpillGroups, CFG) -> {CFG, SpillGroups};
@@ -438,7 +439,7 @@ insert_spills([T|Ts], Target, Input, DefOut, Acc0) ->
   insert_spills(Ts, Target, Input, DefOut, Acc).
 
 -spec rewrite_succs([label()], target(), label(), subst_dict(), avail(),
-		    subst_dict(), target_cfg()) -> {subst_dict(), target_cfg()}.
+		    input(), target_cfg()) -> {input(), target_cfg()}.
 rewrite_succs([], _Target, _P, _POutput, _Avail, Input, CFG) -> {Input, CFG};
 rewrite_succs([L|Ls], Target, P, POutput, Avail, Input0, CFG0) ->
   NewLInput = orddict_with_ordset(want_in(L, Avail), POutput),
