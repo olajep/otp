@@ -32,15 +32,33 @@
 %% infeasably slow in practice. Instead, this module uses heuristics to choose
 %% which temporaries should have their live ranges split, and at which points.
 %%
-%% Candidate heuristic: For every temp alive over a killall
+%% The range splitter only considers temps which are live during a call
+%% instruction, since they're known to be spilled. The control-flow graph is
+%% partitioned at call instructions and splitting decisions are made separately
+%% for each partition. The register copy of a temp (if any) gets a separate name
+%% in each partition.
 %%
-%% Moreover, since the spill slot allocator does not perform move coalescing,
-%% this module returns a grouping of temporaries, that can later be used with
-%% combine_spills/2 to make sure all the ranges of a temporary are allocated to
-%% the same spill slot.
-%% TODO: How do we make sure these spill slot move-to-selfs are omitted from the
-%% machine code? Is it best to alter every check_and_rewrite/2, as well as
-%%_frame or _ra_finalise? Can it be done in a simpler way?
+%% There are three different ways the range splitter may choose to split a
+%% temporary in a program partition:
+%%
+%%  * Mode1: Spill the temp before calls, and restore it after them
+%%  * Mode2: Spill the temp after definitions, restore it after calls
+%%  * Mode3: Spill the temp after definitions, restore it before uses
+%%
+%% To pick which of these should be used for each temp×partiton pair, the range
+%% splitter uses a cost function. The cost is simply the sum of the cost of all
+%% expected stack accesses, and the cost for an individual stack access is based
+%% on the probability weight of the basic block that it resides in. This biases
+%% the range splitter so that it attempts moving stack accesses from a functions
+%% hot path to the cold path.
+%%
+%% The heuristic has a couple of tuning knobs, adjusting its preference for
+%% different spilling modes, aggressiveness, and how much influence the basic
+%% block probability weights have.
+%%
+%% Edge case not handled: Call instructions directly defining a pseudo. In that
+%% case, if that pseudo has been selected for mode2 spills, no spill is inserted
+%% after the call.
 -module(hipe_range_split).
 
 -export([split/4]).
@@ -67,34 +85,6 @@
 -type liveset()          :: ordsets:ordset(temp()).
 -type temp()             :: non_neg_integer().
 -type label()            :: non_neg_integer().
-
-%% Tasks:
-%%  * DSETS partitioning of program space at clobber points.
-%%
-%%  **? Collect partition edges (clobber points) with liveset and/or clobberset?
-%%
-%%  ** Count uses and definitions of each temp, grouped by partition. (Will
-%%     possibly require some cleaverness to be efficient if done during the
-%%     partitioning pass)
-%%
-%% * P({DEF}) lattice fwd dataflow (for eliding stores at SPILL splits)
-%%
-%% Q: Do we need a partition refinement data structure? No, it does not do quite
-%% what we need. We want something akin to a graph, where we delete edges (by
-%% inserting splits) to partition the space. Can 'sofs' do that?
-%%
-%% Idea: Second "spill mode," where temps are spilled at definitions rather than
-%% exit edges. Heuristic decision based on similar "cost" as first spill mode.
-%% Q: Can we do the same to restores? Is there any benefit?
-%%
-%%   Idea: Backward P({DEF}) analysis can elide redundant mode2 spills stores.
-%%
-%%   Idea: Custom liveness analysis, killing liveness at call instructions can
-%%   be used to elide restores in second spill mode
-%%
-%% Edge case not handled: Call instructions directly defining a pseudo. In that
-%% case, if that pseudo has been selected for mode2 spills, no spill is inserted
-%% after the call.
 
 -spec split(target_cfg(), liveness(), target_module(), target_context())
 	   -> {target_cfg(), spill_grouping()}.
@@ -157,6 +147,7 @@ split(TCFG0, Liveness, TargetMod, TargetContext) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Internal program representation
 %%
+%% Second pass: Convert cfg to internal representation
 
 -record(cfg, {
 	  rpo_labels :: [label()],
@@ -242,9 +233,8 @@ add_temps([T|Ts], Target, Temps) ->
   add_temps(Ts, Target, Temps#{reg_nr(T, Target) => T}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Zeroth pass
-%%
-%% P({DEF}) lattice fwd dataflow (for eliding stores at SPILL splits)
+%% Fourth pass: P({DEF}) lattice fwd dataflow (for eliding stores at SPILL
+%% splits)
 -type defsi() :: #{label() => defseti() | {call, defseti(), defseti()}}.
 -type defs()  :: #{label() => defsetf()}.
 
@@ -376,7 +366,8 @@ defsetf_intersect_ordset(O, D) -> ordsets:intersection(D, O).
 -endif.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% P({DEF}) lattice reverse dataflow (for eliding stores at defines in mode2)
+%% Fifth pass: P({DEF}) lattice reverse dataflow (for eliding stores at defines
+%% in mode2)
 -type rdefsi() :: #{label() =>
 		     {call, rdefseti(), [label()]}
 		   | {nocall, rdefseti(), rdefseti(), [label()]}}.
@@ -575,7 +566,7 @@ bitarr_from_bitord(Ord) ->
   array:from_orddict(Ord, 0).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Partition-local liveness analysis
+%% Sixth pass: Partition-local liveness analysis
 %%
 %% As temps are not spilled when exiting a partition in mode2, only
 %% partition-local uses need to be considered when deciding which temps need
@@ -597,8 +588,6 @@ plive_init(#cfg{bbs = BBs}) ->
     [begin
        {L, case HasCall of
 	     true ->
-	       %% XXX: It should be code and not butlast, right?
-	       %% Otherwise we'll forget call uses, right?
 	       {Gen, _} = plive_init_scan(bb_code(BB)),
 	       {call, Gen, Succs};
 	     false ->
@@ -617,10 +606,6 @@ plive_init_scan([#instr{def=InstrKill, use=InstrGen}|Is]) ->
   Kill = liveset_subtract(Kill1, InstrGen),
   {Gen, Kill}.
 
-%% plive_step(I, Target, Liveset) ->
-%%   ?ASSERT(not defines_all_alloc(I, Target)),
-%%   liveness_step(I, Target, Liveset).
-
 -spec plive_dataf([label()], plive()) -> plive().
 plive_dataf(Labels, PLive0) ->
   case plive_dataf_once(Labels, PLive0, 0) of
@@ -636,9 +621,7 @@ plive_dataf_once([L|Ls], PLive0, Changed0) ->
   Liveset =
     case Liveset0 = maps:get(L, PLive0) of
       {call, Livein, Succs} ->
-	%% XXX: This is right, right?
 	{call, Livein, Succs};
-	%% {call, rdefout_intersect(L, PLive0, Defin), Succs};
       {nocall, {Gen, Kill} = GenKill, _OldLivein, Succs} ->
 	Liveout = pliveout(L, PLive0),
 	Livein = liveset_union(Gen, liveset_subtract(Liveout, Kill)),
@@ -670,6 +653,8 @@ liveset_union(A, B) -> ordsets:union(A, B).
 liveset_union(LivesetList) -> ordsets:union(LivesetList).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Third pass: Compute dataflow analyses required for placing mode3
+%% spills/restores.
 %% Reuse analysis implementation in hipe_restore_reuse.
 %% XXX: hipe_restore_reuse has it's own "rdef"; we would like to reuse that one
 %% too.
@@ -688,7 +673,7 @@ mode3_block_renameset(L, Avail) ->
   hipe_restore_reuse:renamed_in_block(L, Avail).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% First pass
+%% Seventh pass
 %%
 %% Compute program space partitioning, collect information required by the
 %% heuristic.
@@ -843,6 +828,8 @@ liveness_step(#instr{def=Def, use=Use}, Liveout) ->
   ordsets:union(Use, ordsets:subtract(Liveout, Def)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% First pass: compute basic-block weighting
+
 -spec weight(label(), weights()) -> float().
 -spec compute_weights(target_cfg(), target_module(), target_context())
 		     -> weights().
@@ -857,26 +844,17 @@ weight_scaled(_L, _Scale, _Weights) -> 1.0.
 -else.
 -type weights() :: hipe_bb_weights:weights().
 compute_weights(CFG, TargetMod, TargetContext) ->
-  %% try
-    hipe_bb_weights:compute(CFG, TargetMod, TargetContext)
-  %% catch error:E ->
-  %%     io:fwrite(standard_error, "BB weighting failed: ~p:~n~p~n",
-  %% 		[E, erlang:get_stacktrace()]),
-  %%     []
-  %% end
-    .
+  hipe_bb_weights:compute(CFG, TargetMod, TargetContext).
 
-%% weight_scaled(_L, _Scale, []) -> 1.0;
 weight_scaled(L, Scale, Weights) ->
   Wt0 = hipe_bb_weights:weight(L, Weights) * Scale,
   %% true = Wt > 0.0000000000000000001,
   Wt = erlang:min(erlang:max(Wt0, 0.0000000000000000001), 10000.0),
-  %% math:sqrt(Wt).
   ?WEIGHT_FUN(Wt).
 -endif.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Second pass (not really pass :/)
+%% Heuristic splitting decision.
 %%
 %% Decide which temps to split, in which parts, and pick new names for them.
 -type spill_mode() :: mode1 % Spill temps at partition exits
@@ -936,7 +914,7 @@ decide_temps([{Temp, SpillGain}|Ts], Part, Costs, Target, Acc0) ->
   decide_temps(Ts, Part, Costs, Target, Acc).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Actual second pass
+%% Eighth pass: Rewrite program performing range splitting.
 
 -spec rewrite(cfg(), target_cfg(), target(), liveness(), plive(), defs(),
 	      avail(), part_dsets_map(), renames(), temps())
