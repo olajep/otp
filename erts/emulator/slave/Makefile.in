@@ -639,18 +639,18 @@ $(OBJDIR)/%.o: ../hipe/%.c
 	$(V_CC) $(subst O2,O3, $(CFLAGS)) $(INCLUDES) -c $< -o $@
 
 $(BINDIR)/hipe_mkliterals$(TF_MARKER):	$(OBJDIR)/hipe_mkliterals.o
-	$(ld_verbose)$(CC) $(CFLAGS) $(INCLUDES) -o $@ $<
+	$(ld_verbose)$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< -Wl,-T sys/p16_legacy_hack2.ldf
 
 # XXX: This is quite the horrid way of doing it
 $(OBJDIR)/hipe_mkliterals.o: ../hipe/hipe_mkliterals.c $(HIPE_ASM) \
 	$(TTF_DIR)/erl_alloc_types.h $(TTF_DIR)/OPCODES-GENERATED \
 	$(TARGET)/TABLES-GENERATED
 	$(V_CC) $(CFLAGS) -DEPIPHANY_NO_WRITE_REDIRECT \
-		-DEPIPHANY_NO_ALLOC_REDIRECT -DE_RUN_ARGV_GRAB \
+		-DEPIPHANY_NO_ALLOC_REDIRECT \
 		$(INCLUDES) -c ../hipe/hipe_mkliterals.c -o $@
 
 $(TTF_DIR)/hipe_literals.h:	$(BINDIR)/hipe_mkliterals$(TF_MARKER)
-	$(gen_verbose)e-run $(BINDIR)/hipe_mkliterals$(TF_MARKER) -c > $@ && \
+	$(gen_verbose)e-run --e-external-fetch $(BINDIR)/hipe_mkliterals$(TF_MARKER) -c > $@ && \
 		[ -s $@ ] || (ret=$$?; rm -f $@ && exit $$ret)
 
 
