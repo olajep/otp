@@ -94,7 +94,7 @@ e_epiphany_t slave_workgroup;
 #define O_ROW 040
 #define O_COL 010
 
-static int get_desired_maps(struct desired_map **mapsp) {
+static int get_desired_maps(struct desired_map **mapsp, int phy_is_ephy) {
     int count = ROWS * COLS + 1;
     unsigned row, col;
     struct desired_map *maps = *mapsp
@@ -102,7 +102,7 @@ static int get_desired_maps(struct desired_map **mapsp) {
 
     /* ETODO: parse the HDF ourselves (we can't use the e_platform symbol since
      * the library is dynamically linked) */
-    unsigned phy_base  = 0x3e000000;
+    unsigned phy_base  = phy_is_ephy ? 0x8e000000 : 0x3e000000;
     unsigned size      = 0x02000000;
     unsigned ephy_base = 0x8e000000;
 #ifdef DEBUG
@@ -141,17 +141,25 @@ static int memfd = 0;
  */
 static int map_shm(void) {
     void *ret;
-    int i, count;
+    int i, count, phy_is_ephy = 0;
     struct desired_map *maps;
 
-    memfd = open("/dev/epiphany", O_RDWR | O_SYNC);
+    memfd = open("/dev/epiphany/mesh0", O_RDWR | O_SYNC);
+    if (memfd >= 0) {
+	/* use epiphany address space as offset */
+	phy_is_ephy = 1;
+    }
+    if (memfd == -1) {
+        /* Old epiphany driver */
+        memfd = open("/dev/epiphany", O_RDWR | O_SYNC);
+    }
     if (memfd == -1) {
 	/* The old way, for devices without the Epiphany kernel driver */
 	memfd = open("/dev/mem", O_RDWR | O_SYNC);
     }
     if (memfd == -1) return -1;
 
-    count = get_desired_maps(&maps);
+    count = get_desired_maps(&maps, phy_is_ephy);
 
     for (i = 0; i < count; i++) {
 	/* We avoid using MAP_FIXED because we'd rather know if there is another
@@ -161,12 +169,12 @@ static int map_shm(void) {
 		   memfd, maps[i].phy_addr);
 	if (ret == MAP_FAILED) {
 	    perror("mmap");
-	    fprintf(stderr, "Tried to map %p to %#x, size %#x\n",
+	    fprintf(stderr, "%s: Tried to map %p to %#x, size %#x\n",__func__,
 		    maps[i].virt_addr, maps[i].phy_addr, maps[i].size);
 	    goto cleanup_exit;
 	}
 	if (ret != maps[i].virt_addr) {
-	    fprintf(stderr, "mmap: wanted %p, got %p\n",
+	    fprintf(stderr, "%s: mmap: wanted %p, got %p\n", __func__,
 		    maps[i].virt_addr, ret);
 	    /* So this mmap is cleaned up too */
 	    maps[i++].virt_addr = ret;
@@ -200,7 +208,7 @@ static int spoof_mmap(void) {
     int i, count, result = 0;
     struct desired_map *maps;
 
-    count = get_desired_maps(&maps);
+    count = get_desired_maps(&maps, 0);
 
     for (i = 0; i < count; i++) {
 	ret = mmap(maps[i].virt_addr, maps[i].size,
@@ -214,7 +222,7 @@ static int spoof_mmap(void) {
 	    continue;
 	}
 	if (ret != maps[i].virt_addr) {
-	    fprintf(stderr, "mmap: wanted %p, got %p\n",
+	    fprintf(stderr, "%s: mmap: wanted %p, got %p\n", __func__,
 		    maps[i].virt_addr, ret);
 	    result = -1;
 	}
