@@ -1055,7 +1055,7 @@ $(TTF_DIR)/hipe_literals.h:	$(BINDIR)/hipe_mkliterals$(TF_MARKER)
 		[ -s $@ ] || (ret=$$?; rm -f $@ && exit $$ret)
 
 $(TTF_DIR)/hipe_slave_literals.h: $(SLAVE_MKLITERALS)$(TF_MARKER)
-	$(gen_verbose)e-run $< -c -s -x > $@ \
+	$(gen_verbose)e-run --e-external-fetch $< -c -s -x > $@ \
 		&& [ -s $@ ] || (ret=$$?; rm -f $@ && exit $$ret)
 
 $(OBJDIR)/hipe_x86_glue.o:	hipe/hipe_x86_glue.S \
