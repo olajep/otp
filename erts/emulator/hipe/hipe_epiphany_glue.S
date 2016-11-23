@@ -17,7 +17,6 @@
  * %CopyrightEnd%
  */
 
-
 #include "hipe_literals.h"
 #define ASM
 #include "hipe_epiphany_asm.h"
@@ -120,8 +119,8 @@
  * int hipe_epiphany_call_to_native(Process *p);
  * Emulated code recursively calls native code.
  */
-	.global	_hipe_epiphany_call_to_native
-_hipe_epiphany_call_to_native:
+	.global	SYM(hipe_epiphany_call_to_native)
+SYM(hipe_epiphany_call_to_native):
 	ENTER_FROM_C
 	/* Load the target (hoisted to avoid stall) */
 	ldr	r0, [P, #P_NCALLEE/4]
@@ -136,8 +135,8 @@ _hipe_epiphany_call_to_native:
  *
  * This is where native code returns to emulated code.
  */
-	.global	_nbif_return
-_nbif_return:
+	.global	SYM(nbif_return)
+SYM(nbif_return):
 	str	r0, [P, #P_ARG0/4]			/* save retval */
 	mov	r0, #HIPE_MODE_SWITCH_RES_RETURN
 	b	.flush_exit
@@ -146,8 +145,8 @@ _nbif_return:
  * int hipe_epiphany_return_to_native(Process *p);
  * Emulated code returns to its native code caller.
  */
-	.global	_hipe_epiphany_return_to_native
-_hipe_epiphany_return_to_native:
+	.global	SYM(hipe_epiphany_return_to_native)
+SYM(hipe_epiphany_return_to_native):
 	ENTER_FROM_C
 	/* restore return address */
 	ldr	lr, [P, #P_NRA/4]
@@ -164,8 +163,8 @@ _hipe_epiphany_return_to_native:
  * int hipe_epiphany_tailcall_to_native(Process *p);
  * Emulated code tailcalls native code.
  */
-	.global	_hipe_epiphany_tailcall_to_native
-_hipe_epiphany_tailcall_to_native:
+	.global	SYM(hipe_epiphany_tailcall_to_native)
+SYM(hipe_epiphany_tailcall_to_native):
 	ENTER_FROM_C
 	/* Load the target (hoisted to avoid stall) */
 	ldr	r0, [P, #P_NCALLEE/4]
@@ -180,8 +179,8 @@ _hipe_epiphany_tailcall_to_native:
  * int hipe_epiphany_throw_to_native(Process *p);
  * Emulated code throws an exception to its native code caller.
  */
-	.global	_hipe_epiphany_throw_to_native
-_hipe_epiphany_throw_to_native:
+	.global	SYM(hipe_epiphany_throw_to_native)
+SYM(hipe_epiphany_throw_to_native):
 	ENTER_FROM_C
 	/* invoke the handler */
 	ldr	r0, [P, #P_NCALLEE/4]	/* set by hipe_find_handler() */
@@ -194,12 +193,12 @@ _hipe_epiphany_throw_to_native:
  * stub for f/N:
  *	<set r8 to f's BEAM code address>
  *	<set r0 to N>
- *	b _nbif_callemu
+ *	b SYM(nbif_callemu)
  *
  * XXX: Different stubs for different number of register parameters?
  */
-	.global	_nbif_callemu
-_nbif_callemu:
+	.global	SYM(nbif_callemu)
+SYM(nbif_callemu):
 	str	r8, [P, #P_BEAM_IP/4]
 	str	r0, [P, #P_ARITY/4]
 	STORE_ARG_REGS
@@ -209,8 +208,8 @@ _nbif_callemu:
 /*
  * _nbif_apply
  */
-	.global	_nbif_apply
-_nbif_apply:
+	.global	SYM(nbif_apply)
+SYM(nbif_apply):
 	STORE_ARG_REGS
 	mov	r0, #HIPE_MODE_SWITCH_RES_APPLY
 	b	.suspend_exit
@@ -225,8 +224,8 @@ _nbif_apply:
  * of parameters in registers, not the total number of parameters.
  */
 #if NR_ARG_REGS >= 6
-	.global	_nbif_ccallemu6
-_nbif_ccallemu6:
+	.global	SYM(nbif_ccallemu6)
+SYM(nbif_ccallemu6):
 	str	ARG5, [P, #P_ARG5/4]
 #if NR_ARG_REGS > 6
 	mov	ARG5, ARG6
@@ -237,8 +236,8 @@ _nbif_ccallemu6:
 #endif
 
 #if NR_ARG_REGS >= 5
-	.global	_nbif_ccallemu5
-_nbif_ccallemu5:
+	.global	SYM(nbif_ccallemu5)
+SYM(nbif_ccallemu5):
 	str	ARG4, [P, #P_ARG4/4]
 #if NR_ARG_REGS > 5
 	mov	ARG4, ARG5
@@ -249,8 +248,8 @@ _nbif_ccallemu5:
 #endif
 
 #if NR_ARG_REGS >= 4
-	.global	_nbif_ccallemu4
-_nbif_ccallemu4:
+	.global	SYM(nbif_ccallemu4)
+SYM(nbif_ccallemu4):
 	str	ARG3, [P, #P_ARG3/4]
 #if NR_ARG_REGS > 4
 	mov	ARG3, ARG4
@@ -261,8 +260,8 @@ _nbif_ccallemu4:
 #endif
 
 #if NR_ARG_REGS >= 3
-	.global	_nbif_ccallemu3
-_nbif_ccallemu3:
+	.global	SYM(nbif_ccallemu3)
+SYM(nbif_ccallemu3):
 	str	ARG2, [P, #P_ARG2/4]
 #if NR_ARG_REGS > 3
 	mov	ARG2, ARG3
@@ -273,8 +272,8 @@ _nbif_ccallemu3:
 #endif
 
 #if NR_ARG_REGS >= 2
-	.global	_nbif_ccallemu2
-_nbif_ccallemu2:
+	.global	SYM(nbif_ccallemu2)
+SYM(nbif_ccallemu2):
 	str	ARG1, [P, #P_ARG1/4]
 #if NR_ARG_REGS > 2
 	mov	ARG1, ARG2
@@ -285,8 +284,8 @@ _nbif_ccallemu2:
 #endif
 
 #if NR_ARG_REGS >= 1
-	.global	_nbif_ccallemu1
-_nbif_ccallemu1:
+	.global	SYM(nbif_ccallemu1)
+SYM(nbif_ccallemu1):
 	str	ARG0, [P, #P_ARG0/4]
 #if NR_ARG_REGS > 1
 	mov	ARG0, ARG1
@@ -296,8 +295,8 @@ _nbif_ccallemu1:
 	/*FALLTHROUGH*/
 #endif
 
-	.global	_nbif_ccallemu0
-_nbif_ccallemu0:
+	.global	SYM(nbif_ccallemu0)
+SYM(nbif_ccallemu0):
 	/* We use r1 not ARG0 here because ARG0 is not
 	   defined when NR_ARG_REGS == 0. */
 #if NR_ARG_REGS == 0
@@ -310,16 +309,16 @@ _nbif_ccallemu0:
 /*
  * This is where native code suspends.
  */
-	.global	_nbif_suspend_0
-_nbif_suspend_0:
+	.global	SYM(nbif_suspend_0)
+SYM(nbif_suspend_0):
 	mov	r0, #HIPE_MODE_SWITCH_RES_SUSPEND
 	b	.suspend_exit
 
 /*
  * Suspend from a receive (waiting for a message)
  */
-	.global	_nbif_suspend_msg
-_nbif_suspend_msg:
+	.global	SYM(nbif_suspend_msg)
+SYM(nbif_suspend_msg):
 	mov	r0, #HIPE_MODE_SWITCH_RES_WAIT
 	b	.suspend_exit
 
@@ -328,8 +327,8 @@ _nbif_suspend_msg:
  *	if (!(p->flags & F_TIMO)) { suspend }
  *	else { return 0; }
  */
-	.global	_nbif_suspend_msg_timeout
-_nbif_suspend_msg_timeout:
+	.global	SYM(nbif_suspend_msg_timeout)
+SYM(nbif_suspend_msg_timeout):
 	ldr	r1, [P, #P_FLAGS/4]
 	/* this relies on F_TIMO (1<<2) fitting in a uimm16 */
 	mov	r2, #F_TIMO
@@ -343,25 +342,25 @@ _nbif_suspend_msg_timeout:
 /*
  * This is the default exception handler for native code.
  */
-	.global	_nbif_fail
-_nbif_fail:
+	.global	SYM(nbif_fail)
+SYM(nbif_fail):
 	mov	r0, #HIPE_MODE_SWITCH_RES_THROW
 	b	.flush_exit	/* no need to save RA */
 
-	.global	_nbif_0_gc_after_bif
-	.global	_nbif_1_gc_after_bif
-	.global	_nbif_2_gc_after_bif
-	.global	_nbif_3_gc_after_bif
-_nbif_0_gc_after_bif:
+	.global	SYM(nbif_0_gc_after_bif)
+	.global	SYM(nbif_1_gc_after_bif)
+	.global	SYM(nbif_2_gc_after_bif)
+	.global	SYM(nbif_3_gc_after_bif)
+SYM(nbif_0_gc_after_bif):
 	mov	r1, #0
 	b	.gc_after_bif
-_nbif_1_gc_after_bif:
+SYM(nbif_1_gc_after_bif):
 	mov	r1, #1
 	b	.gc_after_bif
-_nbif_2_gc_after_bif:
+SYM(nbif_2_gc_after_bif):
 	mov	r1, #2
 	b	.gc_after_bif
-_nbif_3_gc_after_bif:
+SYM(nbif_3_gc_after_bif):
 	mov	r1, #3
 	/*FALLTHROUGH*/
 .gc_after_bif:
@@ -373,7 +372,7 @@ _nbif_3_gc_after_bif:
 	mov	r2, #0			/* Pass NULL in regs */
 	mov	r1, r0
 	mov	r0, P
-	bl	_erts_gc_after_bif_call
+	bl	SYM(erts_gc_after_bif_call)
 	mov	lr, TEMP_LR
 	mov	r1, #0
 	ldr	TEMP_LR, [P, #P_NRA/4]
@@ -387,20 +386,20 @@ _nbif_3_gc_after_bif:
  * NSP has not been saved in P.
  * TEMP_LR contains a copy of LR
  */
-	.global	_nbif_0_simple_exception
-_nbif_0_simple_exception:
+	.global	SYM(nbif_0_simple_exception)
+SYM(nbif_0_simple_exception):
 	mov	r1, #0
 	b	.nbif_simple_exception
-	.global	_nbif_1_simple_exception
-_nbif_1_simple_exception:
+	.global	SYM(nbif_1_simple_exception)
+SYM(nbif_1_simple_exception):
 	mov	r1, #1
 	b	.nbif_simple_exception
-	.global	_nbif_2_simple_exception
-_nbif_2_simple_exception:
+	.global	SYM(nbif_2_simple_exception)
+SYM(nbif_2_simple_exception):
 	mov	r1, #2
 	b	.nbif_simple_exception
-	.global	_nbif_3_simple_exception
-_nbif_3_simple_exception:
+	.global	SYM(nbif_3_simple_exception)
+SYM(nbif_3_simple_exception):
 	mov	r1, #3
 	/*FALLTHROUGH*/
 .nbif_simple_exception:
@@ -419,7 +418,7 @@ _nbif_3_simple_exception:
 	str	r1, [P, #P_NARITY/4]
 	/* find and prepare to invoke the handler */
 	mov	r0, P
-	bl	_hipe_handle_exception	/* Note: hipe_handle_exception() conses */
+	bl	SYM(hipe_handle_exception)	/* Note: hipe_handle_exception() conses */
 	ldr	r0, [P, #P_NCALLEE/4]	/* set by hipe_find_handler() */
 	RESTORE_CACHED_STATE		/* NSP updated by hipe_find_handler() */
 	/* now invoke the handler */
@@ -443,14 +442,14 @@ _nbif_3_simple_exception:
  * _nbif_stack_trap_ra: trap return address for maintaining
  * the gray/white stack boundary
  */
-	.global	_nbif_stack_trap_ra
-_nbif_stack_trap_ra:		/* a return address, not a function */
+	.global	SYM(nbif_stack_trap_ra)
+SYM(nbif_stack_trap_ra):	/* a return address, not a function */
 	# This only handles a single return value.
 	# If we have more, we need to save them in the PCB.
 	mov	TEMP_ARG0, r0		/* save retval */
 	str	NSP, [P, #P_NSP/4]
 	mov	r0, P
-	bl	_hipe_handle_stack_trap	/* must not cons */
+	bl	SYM(hipe_handle_stack_trap)	/* must not cons */
 	mov	lr, r0			/* original RA */
 	mov	r0, TEMP_ARG0		/* restore retval */
 	rts
@@ -459,15 +458,15 @@ _nbif_stack_trap_ra:		/* a return address, not a function */
  * hipe_epiphany_inc_stack
  * Caller saved its LR in TEMP_LR (== TEMP1) before calling us.
  */
-	.global	_hipe_epiphany_inc_stack
-_hipe_epiphany_inc_stack:
+	.global	SYM(hipe_epiphany_inc_stack)
+SYM(hipe_epiphany_inc_stack):
 	STORE_ARG_REGS
 	mov	TEMP_ARG0, lr
 	str	NSP, [P, #P_NSP/4]
 	mov	r0, P
 	# hipe_inc_nstack reads and writes NSP and NSP_LIMIT,
 	# but does not access LR/RA, HP, or FCALLS.
-	bl	_hipe_inc_nstack
+	bl	SYM(hipe_inc_nstack)
 	ldr	NSP, [P, #P_NSP/4]
 	LOAD_ARG_REGS
 	# this relies on LOAD_ARG_REGS not clobbering TEMP_ARG0

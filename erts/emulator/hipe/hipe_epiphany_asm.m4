@@ -27,6 +27,12 @@ changecom(`/*', `*/')dnl
 `#  include' "hipe_literals.h"
 `#endif'
 
+/* ANSI concatenation macros.  */
+#define CONCAT1(a, b) CONCAT2(a, b)
+#define CONCAT2(a, b) a ## b
+/* Use the right prefix for global labels.  */
+#define SYM(x) CONCAT1 (__USER_LABEL_PREFIX__, x)
+
 /*
  * Tunables.
  */

@@ -31,7 +31,7 @@ include(`hipe/hipe_epiphany_asm.m4')
         mov    lr, %low(\f)
         movt   lr, %high(\f)
         str    lr, [r0, #P_BIF_CALLEE/4]
-        bl     _hipe_debug_bif_wrapper
+        bl     SYM(hipe_debug_bif_wrapper)
         .endm
 #  define CALL_BIF(F)	_CALL_BIF_MACRO F
 #else
@@ -43,7 +43,7 @@ define(TEST_GOT_MBUF,``/* TEST_GOT_MBUF($1) */'
         ldr	r1, [P, #P_MBUF/4]
         sub	r1, r1, #0
         beq	9f
-        bl	_nbif_$1_gc_after_bif
+        bl	SYM(nbif_$1_gc_after_bif)
 9:')
 
 /*
@@ -59,8 +59,8 @@ define(standard_bif_interface_1,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-        .global	_$1
-_$1:
+        .global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,1,0)
@@ -69,24 +69,24 @@ _$1:
 	SAVE_CONTEXT_BIF
         str	r1, [r0, #P_ARG0/4]	/* Store BIF__ARGS in def_arg_reg[] */
 	add	r1, r0, #P_ARG0
-        CALL_BIF(_$2)
+        CALL_BIF(SYM($2))
 	TEST_GOT_MBUF(1)
 
 	/* Restore registers. Check for exception. */
         sub	r1, r0, #THE_NON_VALUE
         RESTORE_CONTEXT_BIF
-        beq	_nbif_1_simple_exception
+        beq	SYM(nbif_1_simple_exception)
 	NBIF_RET(1)
-        .size	_$1, .-_$1
-        .type	_$1, %function
+        .size	SYM($1), .-SYM($1)
+        .type	SYM($1), %function
 #endif')
 
 define(standard_bif_interface_2,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,2,0)
@@ -97,24 +97,24 @@ _$1:
         str	r1, [r0, #P_ARG0/4]	/* Store BIF__ARGS in def_arg_reg[] */
         str	r2, [r0, #P_ARG1/4]
 	add	r1, r0, #P_ARG0
-	CALL_BIF(_$2)
+	CALL_BIF(SYM($2))
 	TEST_GOT_MBUF(2)
 
 	/* Restore registers. Check for exception. */
         sub	r1, r0, #THE_NON_VALUE
 	RESTORE_CONTEXT_BIF
-        beq	_nbif_2_simple_exception
+        beq	SYM(nbif_2_simple_exception)
 	NBIF_RET(2)
-        .size	_$1, .-_$1
-	.type	_$1, %function
+        .size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(standard_bif_interface_3,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,3,0)
@@ -127,40 +127,40 @@ _$1:
         str	r2, [r0, #P_ARG1/4]
         str	r3, [r0, #P_ARG2/4]
 	add	r1, r0, #P_ARG0
-	CALL_BIF(_$2)
+	CALL_BIF(SYM($2))
 	TEST_GOT_MBUF(3)
 
 	/* Restore registers. Check for exception. */
         sub	r1, r0, #THE_NON_VALUE
 	RESTORE_CONTEXT_BIF
-	beq	_nbif_3_simple_exception
+	beq	SYM(nbif_3_simple_exception)
 	NBIF_RET(3)
-        .size	_$1, .-_$1
-	.type	_$1, %function
+        .size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(standard_bif_interface_0,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-        .global	_$1
-_$1:
+        .global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 
 	/* Save caller-save registers and call the C function. */
 	SAVE_CONTEXT_BIF
 	/* ignore empty BIF__ARGS */
-        CALL_BIF(_$2)
+        CALL_BIF(SYM($2))
 	TEST_GOT_MBUF(0)
 
 	/* Restore registers. Check for exception. */
         sub	r1, r0, #THE_NON_VALUE
 	RESTORE_CONTEXT_BIF
-        beq	_nbif_0_simple_exception
+        beq	SYM(nbif_0_simple_exception)
         NBIF_RET(0)
-        .size	_$1, .-_$1
-        .type	_$1, %function
+        .size	SYM($1), .-SYM($1)
+        .type	SYM($1), %function
 #endif')
 
 /*
@@ -176,30 +176,30 @@ define(gc_bif_interface_0,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 
 	/* Save caller-save registers and call the C function. */
 	SAVE_CONTEXT_GC
 	/* ignore empty BIF__ARGS */
-	CALL_BIF(_$2)
+	CALL_BIF(SYM($2))
 	TEST_GOT_MBUF(0)
 
 	/* Restore registers. */
 	RESTORE_CONTEXT_GC
 	NBIF_RET(0)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(gc_bif_interface_1,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,1,0)
@@ -208,24 +208,24 @@ _$1:
 	SAVE_CONTEXT_GC
         str     r1, [r0, #P_ARG0/4]       /* Store BIF__ARGS in def_arg_reg[] */
         add     r1, r0, #P_ARG0
-	CALL_BIF(_$2)
+	CALL_BIF(SYM($2))
 	TEST_GOT_MBUF(1)
 
 	/* Restore registers. Check for exception. */
         sub	r1, r0, #THE_NON_VALUE
 	RESTORE_CONTEXT_GC
-	beq	_nbif_1_simple_exception
+	beq	SYM(nbif_1_simple_exception)
 	NBIF_RET(1)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(gc_bif_interface_2,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,2,0)
@@ -236,16 +236,16 @@ _$1:
         str     r1, [r0, #P_ARG0/4]       /* Store BIF__ARGS in def_arg_reg[] */
         str     r2, [r0, #P_ARG1/4]
         add     r1, r0, #P_ARG0
-	CALL_BIF(_$2)
+	CALL_BIF(SYM($2))
 	TEST_GOT_MBUF(2)
 
 	/* Restore registers. Check for exception. */
         sub	r1, r0, #THE_NON_VALUE
 	RESTORE_CONTEXT_GC
-	beq	_nbif_2_simple_exception
+	beq	SYM(nbif_2_simple_exception)
 	NBIF_RET(2)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 /*
@@ -259,21 +259,21 @@ define(gc_nofail_primop_interface_1,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,1,0)
 
 	/* Save caller-save registers and call the C function. */
 	SAVE_CONTEXT_GC
-	bl	_$2
+	bl	SYM($2)
 
 	/* Restore registers. */
 	RESTORE_CONTEXT_GC
 	NBIF_RET(1)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 /*
@@ -290,51 +290,51 @@ define(nofail_primop_interface_0,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 
 	/* Save caller-save registers and call the C function. */
 	SAVE_CONTEXT_BIF
-	bl	_$2
+	bl	SYM($2)
 	TEST_GOT_MBUF(0)
 
 	/* Restore registers. */
 	RESTORE_CONTEXT_BIF
 	NBIF_RET(0)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(nofail_primop_interface_1,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,1,0)
 
 	/* Save caller-save registers and call the C function. */
 	SAVE_CONTEXT_BIF
-	bl	_$2
+	bl	SYM($2)
 	TEST_GOT_MBUF(1)
 
 	/* Restore registers. */
 	RESTORE_CONTEXT_BIF
 	NBIF_RET(1)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(nofail_primop_interface_2,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,2,0)
@@ -342,22 +342,22 @@ _$1:
 
 	/* Save caller-save registers and call the C function. */
 	SAVE_CONTEXT_BIF
-	bl	_$2
+	bl	SYM($2)
 	TEST_GOT_MBUF(2)
 
 	/* Restore registers. */
 	RESTORE_CONTEXT_BIF
 	NBIF_RET(2)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(nofail_primop_interface_3,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,3,0)
@@ -366,14 +366,14 @@ _$1:
 
 	/* Save caller-save registers and call the C function. */
 	SAVE_CONTEXT_BIF
-	bl	_$2
+	bl	SYM($2)
 	TEST_GOT_MBUF(3)
 
 	/* Restore registers. */
 	RESTORE_CONTEXT_BIF
 	NBIF_RET(3)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 /*
@@ -390,56 +390,56 @@ define(nocons_nofail_primop_interface_0,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 
 	/* Perform a quick save;call;restore;ret sequence. */
-	QUICK_CALL_RET(_$2,0)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	QUICK_CALL_RET(SYM($2),0)
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(nocons_nofail_primop_interface_1,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,1,0)
 
 	/* Perform a quick save;call;restore;ret sequence. */
-	QUICK_CALL_RET(_$2,1)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	QUICK_CALL_RET(SYM($2),1)
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(nocons_nofail_primop_interface_2,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,2,0)
 	NBIF_ARG(r2,2,1)
 
 	/* Perform a quick save;call;restore;ret sequence. */
-	QUICK_CALL_RET(_$2,2)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	QUICK_CALL_RET(SYM($2),2)
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(nocons_nofail_primop_interface_5,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-        .global	_$1
-_$1:
+        .global	SYM($1)
+SYM($1):
         /* Set up C argument registers. */
 	mov	r0, P
 	NBIF_ARG(r1,5,0)
@@ -453,9 +453,9 @@ _$1:
         str	r5, [sp, #3]
 
 	/* Perform a quick save;call;restore;ret sequence. */
-        QUICK_CALL_RET(_$2,5)
-        .size	_$1, .-_$1
-        .type	_$1, %function
+        QUICK_CALL_RET(SYM($2),5)
+        .size	SYM($1), .-SYM($1)
+        .type	SYM($1), %function
 #endif')
 
 /*
@@ -486,56 +486,56 @@ define(noproc_primop_interface_1,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	NBIF_ARG(r0,1,0)
 
 	/* Perform a quick save;call;restore;ret sequence. */
-	QUICK_CALL_RET(_$2,1)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	QUICK_CALL_RET(SYM($2),1)
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(noproc_primop_interface_2,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	NBIF_ARG(r0,2,0)
 	NBIF_ARG(r1,2,1)
 
 	/* Perform a quick save;call;restore;ret sequence. */
-	QUICK_CALL_RET(_$2,2)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	QUICK_CALL_RET(SYM($2),2)
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(noproc_primop_interface_3,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-	.global	_$1
-_$1:
+	.global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	NBIF_ARG(r0,3,0)
 	NBIF_ARG(r1,3,1)
 	NBIF_ARG(r2,3,2)
 
 	/* Perform a quick save;call;restore;ret sequence. */
-	QUICK_CALL_RET(_$2,3)
-	.size	_$1, .-_$1
-	.type	_$1, %function
+	QUICK_CALL_RET(SYM($2),3)
+	.size	SYM($1), .-SYM($1)
+	.type	SYM($1), %function
 #endif')
 
 define(noproc_primop_interface_5,
 `
 #ifndef HAVE_$1
 #`define' HAVE_$1
-        .global	_$1
-_$1:
+        .global	SYM($1)
+SYM($1):
 	/* Set up C argument registers. */
 	NBIF_ARG(r0,5,0)
 	NBIF_ARG(r1,5,1)
@@ -545,9 +545,9 @@ _$1:
         str	r4, [sp, #2]
 
 	/* Perform a quick save;call;restore;ret sequence. */
-        QUICK_CALL_RET(_$2,5)
-        .size	_$1, .-_$1
-        .type	_$1, %function
+        QUICK_CALL_RET(SYM($2),5)
+        .size	SYM($1), .-SYM($1)
+        .type	SYM($1), %function
 #endif')
 
 include(`hipe/hipe_bif_list.m4')
