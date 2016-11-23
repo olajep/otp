@@ -30,7 +30,7 @@
 
 static int is_leader(void);
 static void grab_barrier(void);
-EPIPHANY_SRAM_FUNC static void __attribute__((interrupt)) handl(int);
+EPIPHANY_SRAM_FUNC void __attribute__((interrupt)) handl(void);
 
 static int is_leader() {
     if (epiphany_in_emulator()) {
@@ -125,8 +125,8 @@ void erts_start_schedulers() {
 }
 #endif
 
-EPIPHANY_SRAM_FUNC static void __attribute__((interrupt))
-handl(int __attribute__((unused)) crap) {
+EPIPHANY_SRAM_FUNC void __attribute__((interrupt))
+handl(void) {
     unsigned lr;
     asm("mov %0, lr" : "=r"(lr) : );
     erts_printf("Interrupted! IPEND=%x, IRET=%#x, lr=%#x\n",
