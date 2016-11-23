@@ -10,7 +10,7 @@ if [ x$SLAVE_TARGET != x -a -d "$ROOT/bin/$SLAVE_TARGET/" ]; then
 else
     SLAVE_BINDIR="$ROOT/bin/epiphany-unknown-elf/"
 fi
-if [ -c /dev/epiphany ]; then
+if [ -c /dev/epiphany -o -d /dev/epiphany ]; then
     PREFIX="env"
     # Loading ELF is significantly faster than loading SREC
     EXT=""
