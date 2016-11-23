@@ -278,7 +278,7 @@ static int term_to_timer_config(Eterm term, e_ctimer_config_t *out)
 static EPIPHANY_SRAM_DATA unsigned high_zero, high_one;
 
 static void EPIPHANY_SRAM_FUNC __attribute__((interrupt))
-timer_zero_wrap_handler(int __attribute__((unused)) _unused)
+timer_zero_wrap_handler(void)
 {
     /* We will spill all caller-save registers to stack if we call anything */
     asm("movts ctimer0, %0" : /* No output */ : "r"(E_CTIMER_MAX));
@@ -286,7 +286,7 @@ timer_zero_wrap_handler(int __attribute__((unused)) _unused)
 }
 
 static void EPIPHANY_SRAM_FUNC __attribute__((interrupt))
-timer_one_wrap_handler(int __attribute__((unused)) _unused)
+timer_one_wrap_handler(void)
 {
     /* We will spill all caller-save registers to stack if we call anything */
     asm("movts ctimer1, %0" : /* No output */ : "r"(E_CTIMER_MAX));
