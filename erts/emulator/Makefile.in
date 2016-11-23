@@ -623,7 +623,7 @@ $(TTF_DIR)/slave_syms.h: $(SLAVE_EXECUTABLE)
 # Note: the $(GREP) literals contain the tab (\t) character
 	$(gen_verbose)$(SLAVE_OBJDUMP) -t $< \
 		| $(EGREP) '^[0-9a-f]{8} (g | w).* [^ .]+$$' \
-		| $(SED) 's/^\([^ ]*\).* \([^ ]*\)$$/#define SLAVE_SYM\2 0x\1/g' \
+		| $(SED) 's/^\([^ ]*\).* '`echo __USER_LABEL_PREFIX__ | $(EMU_CC) -E - | $(EGREP) -v "#"`'\([^ ]*\)$$/#define SLAVE_SYM_\2 0x\1/g' \
 		> $@
 
 GENERATE += $(TTF_DIR)/slave_syms.h
