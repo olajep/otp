@@ -10,10 +10,10 @@ void *internal_realloc(void *ptr, size_t size);
 
 #ifndef EPIPHANY_NO_ALLOC_REDIRECT
 /* ETODO: Do we need this? */
-void *malloc(size_t size) asm("_internal_malloc");
-void free(void *ptr) asm("_internal_free");
-void *calloc(size_t nmemb, size_t size) asm("_internal_calloc");
-void *realloc(void *ptr, size_t size) asm("_internal_realloc");
+void *malloc(size_t size) asm(__USER_LABEL_PREFIX__ "internal_malloc");
+void free(void *ptr) asm(__USER_LABEL_PREFIX__ "internal_free");
+void *calloc(size_t nmemb, size_t size) asm(__USER_LABEL_PREFIX__ "internal_calloc");
+void *realloc(void *ptr, size_t size) asm(__USER_LABEL_PREFIX__ "internal_realloc");
 
 /*
  * I don't trust the header files to not inline something that calls malloc; we
